@@ -8,10 +8,10 @@ A lightweight TUI for people who just want to run some queries fast.
 ![License](https://img.shields.io/badge/license-MIT-green.svg)
 
 ### Multi-database Support
-![Database Providers](demo-providers.gif)
+![Database Providers](demos/demo-providers.gif)
 
 ### Query History
-![Query History](demo-history.gif)
+![Query History](demos/demo-history.gif)
 
 
 ## Features

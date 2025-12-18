@@ -301,11 +301,97 @@ def create_default_mysql_adapter() -> MockDatabaseAdapter:
     )
 
 
+def create_default_supabase_adapter() -> MockDatabaseAdapter:
+    """Create a default Supabase mock adapter with typical Supabase tables."""
+    return MockDatabaseAdapter(
+        name="Supabase",
+        tables=[
+            ("public", "profiles"),
+            ("public", "posts"),
+            ("public", "comments"),
+            ("auth", "users"),
+        ],
+        views=[],
+        columns={
+            "profiles": [
+                ColumnInfo("id", "UUID"),
+                ColumnInfo("username", "TEXT"),
+                ColumnInfo("full_name", "TEXT"),
+                ColumnInfo("avatar_url", "TEXT"),
+                ColumnInfo("created_at", "TIMESTAMPTZ"),
+                ColumnInfo("updated_at", "TIMESTAMPTZ"),
+            ],
+            "posts": [
+                ColumnInfo("id", "UUID"),
+                ColumnInfo("user_id", "UUID"),
+                ColumnInfo("title", "TEXT"),
+                ColumnInfo("content", "TEXT"),
+                ColumnInfo("published", "BOOLEAN"),
+                ColumnInfo("created_at", "TIMESTAMPTZ"),
+            ],
+            "comments": [
+                ColumnInfo("id", "UUID"),
+                ColumnInfo("post_id", "UUID"),
+                ColumnInfo("user_id", "UUID"),
+                ColumnInfo("content", "TEXT"),
+                ColumnInfo("created_at", "TIMESTAMPTZ"),
+            ],
+            "auth.users": [
+                ColumnInfo("id", "UUID"),
+                ColumnInfo("email", "TEXT"),
+                ColumnInfo("encrypted_password", "TEXT"),
+                ColumnInfo("email_confirmed_at", "TIMESTAMPTZ"),
+                ColumnInfo("last_sign_in_at", "TIMESTAMPTZ"),
+                ColumnInfo("created_at", "TIMESTAMPTZ"),
+                ColumnInfo("updated_at", "TIMESTAMPTZ"),
+            ],
+        },
+        query_results={
+            "profiles": (
+                ["id", "username", "full_name", "avatar_url", "created_at", "updated_at"],
+                [
+                    ("a1b2c3d4-e5f6-7890-abcd-ef1234567890", "alice_dev", "Alice Developer", "https://avatars.example.com/alice.png", "2024-01-15 10:30:00+00", "2024-01-20 14:22:00+00"),
+                    ("b2c3d4e5-f6a7-8901-bcde-f12345678901", "bob_builder", "Bob Builder", "https://avatars.example.com/bob.png", "2024-01-16 11:45:00+00", "2024-01-21 09:15:00+00"),
+                    ("c3d4e5f6-a7b8-9012-cdef-123456789012", "charlie_coder", "Charlie Coder", None, "2024-01-17 08:00:00+00", "2024-01-17 08:00:00+00"),
+                ],
+            ),
+            "posts": (
+                ["id", "user_id", "title", "content", "published", "created_at"],
+                [
+                    ("d4e5f6a7-b8c9-0123-def0-234567890123", "a1b2c3d4-e5f6-7890-abcd-ef1234567890", "Getting Started with Supabase", "Supabase is an open source Firebase alternative...", True, "2024-01-18 12:00:00+00"),
+                    ("e5f6a7b8-c9d0-1234-ef01-345678901234", "b2c3d4e5-f6a7-8901-bcde-f12345678901", "Building Real-time Apps", "Real-time functionality is built into Supabase...", True, "2024-01-19 15:30:00+00"),
+                ],
+            ),
+            "comments": (
+                ["id", "post_id", "user_id", "content", "created_at"],
+                [
+                    ("f6a7b8c9-d0e1-2345-f012-456789012345", "d4e5f6a7-b8c9-0123-def0-234567890123", "b2c3d4e5-f6a7-8901-bcde-f12345678901", "Great introduction!", "2024-01-18 14:00:00+00"),
+                    ("a7b8c9d0-e1f2-3456-0123-567890123456", "d4e5f6a7-b8c9-0123-def0-234567890123", "c3d4e5f6-a7b8-9012-cdef-123456789012", "Very helpful, thanks!", "2024-01-18 16:30:00+00"),
+                ],
+            ),
+            "auth.users": (
+                ["id", "email", "encrypted_password", "email_confirmed_at", "last_sign_in_at", "created_at", "updated_at"],
+                [
+                    ("a1b2c3d4-e5f6-7890-abcd-ef1234567890", "alice@example.com", "$2a$10$...", "2024-01-15 10:35:00+00", "2024-01-22 08:00:00+00", "2024-01-15 10:30:00+00", "2024-01-22 08:00:00+00"),
+                    ("b2c3d4e5-f6a7-8901-bcde-f12345678901", "bob@example.com", "$2a$10$...", "2024-01-16 12:00:00+00", "2024-01-21 09:00:00+00", "2024-01-16 11:45:00+00", "2024-01-21 09:00:00+00"),
+                    ("c3d4e5f6-a7b8-9012-cdef-123456789012", "charlie@example.com", "$2a$10$...", "2024-01-17 08:05:00+00", "2024-01-20 17:30:00+00", "2024-01-17 08:00:00+00", "2024-01-20 17:30:00+00"),
+                ],
+            ),
+        },
+        default_schema="public",
+        default_query_result=(
+            ["result"],
+            [("Query executed successfully",)],
+        ),
+    )
+
+
 # Registry of default adapters by database type
 DEFAULT_MOCK_ADAPTERS: dict[str, Callable[[], MockDatabaseAdapter]] = {
     "sqlite": create_default_sqlite_adapter,
     "postgresql": create_default_postgresql_adapter,
     "mysql": create_default_mysql_adapter,
+    "supabase": create_default_supabase_adapter,
 }
 
 
@@ -450,6 +536,16 @@ def _create_driver_install_fail_profile() -> MockProfile:
     )
 
 
+def _create_supabase_demo_profile() -> MockProfile:
+    """Create a Supabase demo profile with empty connections but mock adapter."""
+    return MockProfile(
+        name="supabase-demo",
+        connections=[],
+        adapters={"supabase": create_default_supabase_adapter()},
+        use_default_adapters=True,
+    )
+
+
 # Registry of available mock profiles
 MOCK_PROFILES: dict[str, Callable[[], MockProfile]] = {
     "sqlite-demo": _create_sqlite_demo_profile,
@@ -457,6 +553,7 @@ MOCK_PROFILES: dict[str, Callable[[], MockProfile]] = {
     "multi-db": _create_multi_db_profile,
     "driver-install-success": _create_driver_install_success_profile,
     "driver-install-fail": _create_driver_install_fail_profile,
+    "supabase-demo": _create_supabase_demo_profile,
 }
 
 
