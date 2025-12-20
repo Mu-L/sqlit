@@ -822,7 +822,6 @@ class ResultsFilterActiveState(BlockingState):
         left: list[DisplayBinding] = [
             DisplayBinding(key="esc", label="Close", action="results_filter_close"),
             DisplayBinding(key="enter", label="Select", action="results_filter_accept"),
-            DisplayBinding(key="n/N", label="Next/Prev", action="results_filter_next"),
         ]
         return left, []
 
