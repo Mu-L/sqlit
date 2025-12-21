@@ -128,6 +128,7 @@ CREDENTIAL_ENV_VARS: dict[str, dict[str, str | list[str]]] = {
         "password": ["APP_USER_PASSWORD", "ORACLE_PASSWORD"],
         "database": ["ORACLE_DATABASE"],
         "default_user": "SYSTEM",
+        "default_database": "FREEPDB1",
     },
     "turso": {
         "user": [],
