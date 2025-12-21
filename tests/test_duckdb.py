@@ -23,6 +23,7 @@ class TestDuckDBIntegration(BaseDatabaseTestsWithLimit):
                 "--file-path",
                 str(db),
             ],
+            timezone_datetime_type="TIMESTAMPTZ",
         )
 
     def test_create_duckdb_connection(self, duckdb_db, cli_runner):

@@ -23,6 +23,7 @@ class TestOracleIntegration(BaseDatabaseTests):
             db_fixture="oracle_db",
             create_connection_args=lambda: [],  # Uses fixtures
             uses_limit=False,  # Oracle uses FETCH FIRST instead of LIMIT
+            timezone_datetime_type="TIMESTAMP WITH TIME ZONE",
         )
 
     def test_create_oracle_connection(self, oracle_db, cli_runner):

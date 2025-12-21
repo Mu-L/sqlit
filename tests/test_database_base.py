@@ -29,6 +29,9 @@ class DatabaseTestConfig:
     create_connection_args: Callable[..., list[str]]
     # Whether this DB uses LIMIT syntax (False for MSSQL TOP, Oracle FETCH FIRST)
     uses_limit: bool = True
+    # Timezone-aware datetime type name (None if not supported)
+    # e.g., "DATETIMEOFFSET" for MSSQL, "TIMESTAMPTZ" for PostgreSQL
+    timezone_datetime_type: str | None = None
 
 
 class BaseDatabaseTests(ABC):
@@ -821,6 +824,136 @@ class BaseDatabaseTests(ABC):
 
             assert isinstance(info, dict), "get_index_definition should return a dict"
             assert "name" in info, "Index info should contain 'name'"
+
+    def test_timezone_aware_datetime(self, request):
+        """Test that timezone-aware datetime columns can be queried.
+
+        This tests that databases with timezone-aware datetime types (like
+        DATETIMEOFFSET, TIMESTAMPTZ, TIMESTAMP WITH TIME ZONE) can be queried
+        without errors. This is important because some drivers (like pyodbc)
+        don't natively support these types and need custom converters.
+
+        See: https://github.com/mkleehammer/pyodbc/issues/134
+        """
+        if self.config.timezone_datetime_type is None:
+            pytest.skip(f"{self.config.display_name} does not have a timezone-aware datetime type")
+
+        from sqlit.config import load_connections
+        from sqlit.db.adapters import get_adapter
+        from sqlit.services.session import ConnectionSession
+
+        connection_name = request.getfixturevalue(self.config.connection_fixture)
+        connections = load_connections()
+        config = next((c for c in connections if c.name == connection_name), None)
+        assert config is not None, f"Connection {connection_name} not found"
+
+        tz_type = self.config.timezone_datetime_type
+
+        with ConnectionSession.create(config, get_adapter) as session:
+            conn = session.connection
+            adapter = session.adapter
+
+            # Create a test table with timezone-aware datetime column
+            # Use a unique table name to avoid conflicts
+            table_name = "test_tz_datetime"
+
+            # Drop table if exists (database-specific syntax)
+            try:
+                if self.config.db_type == "mssql":
+                    adapter.execute_non_query(conn, f"""
+                        IF OBJECT_ID('{table_name}', 'U') IS NOT NULL
+                            DROP TABLE {table_name}
+                    """)
+                elif self.config.db_type == "oracle":
+                    try:
+                        adapter.execute_non_query(conn, f"DROP TABLE {table_name}")
+                    except Exception:
+                        pass  # Table doesn't exist
+                else:
+                    adapter.execute_non_query(conn, f"DROP TABLE IF EXISTS {table_name}")
+            except Exception:
+                pass  # Ignore errors from DROP
+
+            # Create table with timezone-aware datetime
+            if self.config.db_type == "oracle":
+                create_sql = f"""
+                    CREATE TABLE {table_name} (
+                        id NUMBER PRIMARY KEY,
+                        event_name VARCHAR2(100),
+                        event_time {tz_type}
+                    )
+                """
+            else:
+                create_sql = f"""
+                    CREATE TABLE {table_name} (
+                        id INT PRIMARY KEY,
+                        event_name VARCHAR(100),
+                        event_time {tz_type}
+                    )
+                """
+            adapter.execute_non_query(conn, create_sql)
+
+            # Insert test data with timezone info
+            if self.config.db_type == "mssql":
+                insert_sql = f"""
+                    INSERT INTO {table_name} (id, event_name, event_time) VALUES
+                    (1, 'Event UTC', '2024-06-15 12:00:00.000000 +00:00'),
+                    (2, 'Event EST', '2024-06-15 08:00:00.000000 -04:00'),
+                    (3, 'Event IST', '2024-06-15 17:30:00.000000 +05:30')
+                """
+            elif self.config.db_type == "oracle":
+                # Oracle uses different syntax for TIMESTAMP WITH TIME ZONE
+                adapter.execute_non_query(conn, f"""
+                    INSERT INTO {table_name} (id, event_name, event_time) VALUES
+                    (1, 'Event UTC', TIMESTAMP '2024-06-15 12:00:00 +00:00')
+                """)
+                adapter.execute_non_query(conn, f"""
+                    INSERT INTO {table_name} (id, event_name, event_time) VALUES
+                    (2, 'Event EST', TIMESTAMP '2024-06-15 08:00:00 -04:00')
+                """)
+                adapter.execute_non_query(conn, f"""
+                    INSERT INTO {table_name} (id, event_name, event_time) VALUES
+                    (3, 'Event IST', TIMESTAMP '2024-06-15 17:30:00 +05:30')
+                """)
+                insert_sql = None
+            else:
+                # PostgreSQL, CockroachDB, DuckDB use standard syntax
+                insert_sql = f"""
+                    INSERT INTO {table_name} (id, event_name, event_time) VALUES
+                    (1, 'Event UTC', '2024-06-15 12:00:00+00'),
+                    (2, 'Event EST', '2024-06-15 08:00:00-04'),
+                    (3, 'Event IST', '2024-06-15 17:30:00+05:30')
+                """
+
+            if insert_sql:
+                adapter.execute_non_query(conn, insert_sql)
+
+            # Query the table - this is where type -155 errors would occur
+            columns, rows, truncated = adapter.execute_query(
+                conn, f"SELECT * FROM {table_name} ORDER BY id"
+            )
+
+            # Verify we got results
+            assert len(columns) == 3, f"Expected 3 columns, got {len(columns)}"
+            assert len(rows) == 3, f"Expected 3 rows, got {len(rows)}"
+
+            # Verify the data is readable (timezone info should be present in some form)
+            for row in rows:
+                event_time = row[2]
+                assert event_time is not None, "event_time should not be None"
+                # The value should be either a datetime object or a string representation
+                event_time_str = str(event_time)
+                assert "2024" in event_time_str, f"Expected year 2024 in {event_time_str}"
+
+            # Clean up
+            try:
+                if self.config.db_type == "oracle":
+                    adapter.execute_non_query(conn, f"DROP TABLE {table_name}")
+                else:
+                    adapter.execute_non_query(conn, f"DROP TABLE IF EXISTS {table_name}")
+            except Exception:
+                pass
+
 
 class BaseDatabaseTestsWithLimit(BaseDatabaseTests):
     """Base tests for databases that support LIMIT syntax."""

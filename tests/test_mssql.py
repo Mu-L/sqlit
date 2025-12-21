@@ -21,6 +21,7 @@ class TestMSSQLIntegration(BaseDatabaseTests):
             db_fixture="mssql_db",
             create_connection_args=lambda: [],  # Uses fixtures
             uses_limit=False,  # MSSQL uses TOP instead of LIMIT
+            timezone_datetime_type="DATETIMEOFFSET",
         )
 
     def test_create_mssql_connection(self, mssql_db, cli_runner):

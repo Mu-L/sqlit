@@ -10,6 +10,22 @@ if TYPE_CHECKING:
     from ...config import ConnectionConfig
 
 
+def _convert_datetimeoffset(value: bytes) -> str:
+    """Convert SQL Server datetimeoffset binary to ISO 8601 string.
+
+    The binary format is 20 bytes: year(2), month(2), day(2), hour(2),
+    minute(2), second(2), nanoseconds(4), tz_hour(2), tz_minute(2).
+    See: https://github.com/mkleehammer/pyodbc/issues/134
+    """
+    import struct
+
+    tup = struct.unpack("<6hI2h", value)
+    year, month, day, hour, minute, second, ns, tz_hour, tz_min = tup
+    microseconds = ns // 1000
+    tz_sign = "+" if tz_hour >= 0 else "-"
+    return f"{year:04d}-{month:02d}-{day:02d} {hour:02d}:{minute:02d}:{second:02d}.{microseconds:06d} {tz_sign}{abs(tz_hour):02d}:{abs(tz_min):02d}"
+
+
 class SQLServerAdapter(DatabaseAdapter):
     """Adapter for Microsoft SQL Server using pyodbc."""
 
@@ -178,7 +194,12 @@ class SQLServerAdapter(DatabaseAdapter):
             raise MissingODBCDriverError(driver, installed)
 
         conn_str = self._build_connection_string(config)
-        return pyodbc.connect(conn_str, timeout=10)
+        conn = pyodbc.connect(conn_str, timeout=10)
+
+        # Register converter for datetimeoffset (ODBC type -155) which pyodbc doesn't support natively
+        conn.add_output_converter(-155, _convert_datetimeoffset)
+
+        return conn
 
     def get_databases(self, conn: Any) -> list[str]:
         """Get list of databases from SQL Server."""

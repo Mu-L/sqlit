@@ -20,6 +20,7 @@ class TestCockroachDBIntegration(BaseDatabaseTestsWithLimit):
             connection_fixture="cockroachdb_connection",
             db_fixture="cockroachdb_db",
             create_connection_args=lambda: [],  # Uses fixtures
+            timezone_datetime_type="TIMESTAMPTZ",
         )
 
     def test_create_cockroachdb_connection(self, cockroachdb_db, cli_runner):

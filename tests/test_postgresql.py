@@ -20,6 +20,7 @@ class TestPostgreSQLIntegration(BaseDatabaseTestsWithLimit):
             connection_fixture="postgres_connection",
             db_fixture="postgres_db",
             create_connection_args=lambda: [],  # Uses fixtures
+            timezone_datetime_type="TIMESTAMPTZ",
         )
 
     def test_create_postgres_connection(self, postgres_db, cli_runner):
