@@ -4,7 +4,7 @@ from __future__ import annotations
 
 from typing import TYPE_CHECKING, Any
 
-from .base import ColumnInfo, DatabaseAdapter, IndexInfo, SequenceInfo, TableInfo, TriggerInfo
+from .base import ColumnInfo, DatabaseAdapter, IndexInfo, SequenceInfo, TableInfo, TriggerInfo, import_driver_module
 
 if TYPE_CHECKING:
     from ...config import ConnectionConfig
@@ -85,14 +85,12 @@ class SQLServerAdapter(DatabaseAdapter):
 
     def connect(self, config: ConnectionConfig) -> Any:
         """Connect to SQL Server using pyodbc."""
-        try:
-            import pyodbc
-        except ImportError as e:
-            from ...db.exceptions import MissingDriverError
-
-            if not self.install_extra or not self.install_package:
-                raise e
-            raise MissingDriverError(self.name, self.install_extra, self.install_package) from e
+        pyodbc = import_driver_module(
+            "pyodbc",
+            driver_name=self.name,
+            extra_name=self.install_extra,
+            package_name=self.install_package,
+        )
 
         installed = list(pyodbc.drivers())
         if config.driver not in installed:

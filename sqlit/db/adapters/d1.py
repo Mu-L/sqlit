@@ -6,7 +6,7 @@ import os
 from dataclasses import dataclass
 from typing import TYPE_CHECKING, Any, cast
 
-from .base import ColumnInfo, DatabaseAdapter, IndexInfo, SequenceInfo, TableInfo, TriggerInfo
+from .base import ColumnInfo, DatabaseAdapter, IndexInfo, SequenceInfo, TableInfo, TriggerInfo, import_driver_module
 
 if TYPE_CHECKING:
     import requests
@@ -58,14 +58,12 @@ class D1Adapter(DatabaseAdapter):
 
     def connect(self, config: ConnectionConfig) -> D1Connection:
         """Establishes a 'connection' to D1 by preparing authenticated session."""
-        try:
-            import requests
-        except ImportError as e:
-            from ...db.exceptions import MissingDriverError
-
-            if not self.install_extra or not self.install_package:
-                raise e
-            raise MissingDriverError(self.name, self.install_extra, self.install_package) from e
+        requests = import_driver_module(
+            "requests",
+            driver_name=self.name,
+            extra_name=self.install_extra,
+            package_name=self.install_package,
+        )
 
         session = requests.Session()
         session.headers.update({"Authorization": f"Bearer {config.password}"})

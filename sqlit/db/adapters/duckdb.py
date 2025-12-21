@@ -4,7 +4,16 @@ from __future__ import annotations
 
 from typing import TYPE_CHECKING, Any
 
-from .base import ColumnInfo, DatabaseAdapter, IndexInfo, SequenceInfo, TableInfo, TriggerInfo, resolve_file_path
+from .base import (
+    ColumnInfo,
+    DatabaseAdapter,
+    IndexInfo,
+    SequenceInfo,
+    TableInfo,
+    TriggerInfo,
+    import_driver_module,
+    resolve_file_path,
+)
 
 if TYPE_CHECKING:
     from ...config import ConnectionConfig
@@ -58,14 +67,12 @@ class DuckDBAdapter(DatabaseAdapter):
         serialized via exclusive workers to ensure only one thread accesses
         the connection at a time.
         """
-        try:
-            import duckdb
-        except ImportError as e:
-            from ...db.exceptions import MissingDriverError
-
-            if not self.install_extra or not self.install_package:
-                raise e
-            raise MissingDriverError(self.name, self.install_extra, self.install_package) from e
+        duckdb = import_driver_module(
+            "duckdb",
+            driver_name=self.name,
+            extra_name=self.install_extra,
+            package_name=self.install_package,
+        )
 
         file_path = resolve_file_path(config.file_path)
         duckdb_any: Any = duckdb

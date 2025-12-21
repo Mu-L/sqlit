@@ -4,7 +4,7 @@ from __future__ import annotations
 
 from typing import TYPE_CHECKING, Any
 
-from .base import ColumnInfo, DatabaseAdapter, IndexInfo, SequenceInfo, TableInfo, TriggerInfo
+from .base import ColumnInfo, DatabaseAdapter, IndexInfo, SequenceInfo, TableInfo, TriggerInfo, import_driver_module
 
 if TYPE_CHECKING:
     from ...config import ConnectionConfig
@@ -54,14 +54,12 @@ class TursoAdapter(DatabaseAdapter):
         Uses config.server for the database URL and config.password for the auth token.
         Supports libsql://, https://, and http:// URLs.
         """
-        try:
-            from libsql_client import create_client_sync
-        except ImportError as e:
-            from ...db.exceptions import MissingDriverError
-
-            if not self.install_extra or not self.install_package:
-                raise e
-            raise MissingDriverError(self.name, self.install_extra, self.install_package) from e
+        libsql_client = import_driver_module(
+            "libsql_client",
+            driver_name=self.name,
+            extra_name=self.install_extra,
+            package_name=self.install_package,
+        )
 
         url = config.server
         # Ensure URL has proper scheme
@@ -69,7 +67,7 @@ class TursoAdapter(DatabaseAdapter):
             url = f"libsql://{url}"
 
         auth_token = config.password if config.password else None
-        client = create_client_sync(url, auth_token=auth_token)
+        client = libsql_client.create_client_sync(url, auth_token=auth_token)
         return client
 
     def get_databases(self, conn: Any) -> list[str]:

@@ -567,6 +567,15 @@ class ConnectionScreen(ModalScreen):
             error = self._missing_driver_error
 
         if error:
+            if getattr(error, "import_error", None):
+                detail = str(error.import_error).splitlines()[0].strip()
+                detail_hint = escape(detail) if detail else "Import failed."
+                test_status.update(
+                    f"[yellow]⚠ Driver failed to load:[/] {error.package_name}\n"
+                    f"[dim]{detail_hint} Press ^i for details.[/]"
+                )
+                dialog.border_subtitle = "[bold]Help ^i[/]  Cancel <esc>"
+                return
             strategy = detect_strategy(extra_name=error.extra_name, package_name=error.package_name)
             if strategy.can_auto_install:
                 install_cmd = self._format_install_hint(strategy, error.package_name)
@@ -1637,12 +1646,18 @@ class ConnectionScreen(ModalScreen):
             return None
 
     def _prompt_install_missing_driver(self, error: Exception) -> None:
-        from ..screens import ConfirmScreen, MessageScreen
+        from ..screens import ConfirmScreen, MessageScreen, PackageSetupScreen
 
         if not isinstance(error, MissingDriverError):
             return
 
         if self._install_in_progress:
+            return
+
+        if getattr(error, "import_error", None):
+            self.app.push_screen(
+                PackageSetupScreen(error, on_install=lambda err: self._start_missing_driver_install(err))
+            )
             return
 
         strategy = detect_strategy(extra_name=error.extra_name, package_name=error.package_name)

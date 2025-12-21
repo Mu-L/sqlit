@@ -6,7 +6,7 @@ import re
 from typing import TYPE_CHECKING, Any
 
 from ..schema import get_default_port
-from .base import ColumnInfo, IndexInfo, MySQLBaseAdapter, SequenceInfo, TableInfo, TriggerInfo
+from .base import ColumnInfo, IndexInfo, MySQLBaseAdapter, SequenceInfo, TableInfo, TriggerInfo, import_driver_module
 
 if TYPE_CHECKING:
     from ...config import ConnectionConfig
@@ -42,14 +42,12 @@ class MariaDBAdapter(MySQLBaseAdapter):
 
     def connect(self, config: ConnectionConfig) -> Any:
         """Connect to MariaDB database."""
-        try:
-            import mariadb
-        except ImportError as e:
-            from ...db.exceptions import MissingDriverError
-
-            if not self.install_extra or not self.install_package:
-                raise e
-            raise MissingDriverError(self.name, self.install_extra, self.install_package) from e
+        mariadb = import_driver_module(
+            "mariadb",
+            driver_name=self.name,
+            extra_name=self.install_extra,
+            package_name=self.install_package,
+        )
 
         port = int(config.port or get_default_port("mariadb"))
         mariadb_any: Any = mariadb
