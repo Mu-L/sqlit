@@ -86,7 +86,7 @@ uv tool install sqlit-tui
 pip install "sqlit-tui"
 ```
 
-### Method 4: 'aur'
+### Method 4: `aur`
 
 ```bash
 yay -S python-sqlit-tui
