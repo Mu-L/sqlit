@@ -353,15 +353,18 @@ class SQLServerAdapter(DatabaseAdapter):
     ) -> dict[str, Any]:
         """Get detailed information about a SQL Server sequence."""
         cursor = conn.cursor()
+        # Cast sql_variant columns to BIGINT to avoid pyodbc type -25 error
         if database:
             cursor.execute(
-                f"SELECT start_value, increment, minimum_value, maximum_value, is_cycling "
+                f"SELECT CAST(start_value AS BIGINT), CAST(increment AS BIGINT), "
+                f"CAST(minimum_value AS BIGINT), CAST(maximum_value AS BIGINT), is_cycling "
                 f"FROM [{database}].sys.sequences WHERE name = ?",
                 (sequence_name,),
             )
         else:
             cursor.execute(
-                "SELECT start_value, increment, minimum_value, maximum_value, is_cycling "
+                "SELECT CAST(start_value AS BIGINT), CAST(increment AS BIGINT), "
+                "CAST(minimum_value AS BIGINT), CAST(maximum_value AS BIGINT), is_cycling "
                 "FROM sys.sequences WHERE name = ?",
                 (sequence_name,),
             )

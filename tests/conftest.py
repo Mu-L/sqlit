@@ -746,7 +746,7 @@ def oracle_db(oracle_server_ready: bool) -> str:
             CREATE TABLE test_users (
                 id NUMBER PRIMARY KEY,
                 name VARCHAR2(100) NOT NULL,
-                email VARCHAR2(100) UNIQUE
+                email VARCHAR2(100)
             )
         """)
 

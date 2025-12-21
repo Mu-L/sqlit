@@ -402,15 +402,30 @@ def _detect_containers_with_status(
         if container_name.startswith("/"):
             container_name = container_name[1:]
 
+        # Use 127.0.0.1 for MySQL/MariaDB to force TCP connection
+        # (localhost causes them to try Unix socket which doesn't exist on host)
+        if db_type in ("mysql", "mariadb"):
+            host = "127.0.0.1"
+        else:
+            host = "localhost"
+
+        # For databases that don't require auth, use empty string instead of None
+        # This prevents the UI from prompting for a password
+        from ..db.providers import requires_auth
+
+        password = credentials.get("password")
+        if password is None and not requires_auth(db_type):
+            password = ""
+
         detected.append(
             DetectedContainer(
                 container_id=container.short_id,
                 container_name=container_name,
                 db_type=db_type,
-                host="localhost",
+                host=host,
                 port=host_port,
                 username=credentials.get("user"),
-                password=credentials.get("password"),
+                password=password,
                 database=credentials.get("database"),
                 status=container_status,
                 connectable=container_status == ContainerStatus.RUNNING and host_port is not None,
