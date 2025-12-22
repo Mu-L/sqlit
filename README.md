@@ -40,7 +40,7 @@ Load millions of rowws. Inspect data, filter by content, fuzzy search, no more s
 ![Filter results](demos/demo-filter/demo-filter.gif)
 
 ### Docker Discovery
-Automatically finds running database containers. Click 'Enter' to connect, sqlit figures out the details for you.
+Automatically finds running database containers. Press 'Enter' to connect, sqlit figures out the details for you.
 
 ![Docker Discovery](demos/demo-docker-picker.gif)
 
