@@ -8,7 +8,7 @@ from typing import TYPE_CHECKING, Any
 from textual.app import ComposeResult
 from textual.containers import Container, Horizontal, VerticalScroll
 from textual.strip import Strip
-from textual.widgets import Static
+from textual.widgets import Static, TextArea
 from textual_fastdatatable import DataTable as FastDataTable
 
 if TYPE_CHECKING:
@@ -16,6 +16,30 @@ if TYPE_CHECKING:
 
     from textual.events import Key
     from textual.widget import Widget
+
+
+class QueryTextArea(TextArea):
+    """TextArea that defers Enter key to app when autocomplete is visible."""
+
+    def _on_key(self, event: Key) -> None:
+        """Intercept Enter key when autocomplete is visible."""
+        if event.key == "enter":
+            # Check if autocomplete is visible on the app
+            app = self.app
+            if getattr(app, "_autocomplete_visible", False):
+                # Let the app's on_key handler deal with it
+                # Don't process Enter here - just let it bubble up
+                event.prevent_default()
+                # Call app's autocomplete handler directly
+                if hasattr(app, "_apply_autocomplete"):
+                    dropdown = getattr(app, "autocomplete_dropdown", None)
+                    if dropdown and getattr(dropdown, "filtered_items", None):
+                        app._apply_autocomplete()
+                    else:
+                        app._hide_autocomplete()
+                return
+        # For all other keys, use default TextArea behavior
+        super()._on_key(event)
 
 
 class SqlitDataTable(FastDataTable):
@@ -349,6 +373,8 @@ class AutocompleteDropdown(VerticalScroll):
 
         self.selected_index = 0
         self._rebuild()
+        # Reset scroll to top
+        self.scroll_to(y=0, animate=False)
 
     def move_selection(self, delta: int) -> None:
         """Move selection up or down."""
@@ -401,8 +427,9 @@ class AutocompleteDropdown(VerticalScroll):
         self.add_class("visible")
 
     def hide(self) -> None:
-        """Hide the dropdown."""
+        """Hide the dropdown and reset selection."""
         self.remove_class("visible")
+        self.selected_index = 0
 
     @property
     def is_visible(self) -> bool:

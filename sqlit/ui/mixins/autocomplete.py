@@ -17,6 +17,7 @@ from ...sql_completion import (
     fuzzy_match,
     get_all_functions,
     get_all_keywords,
+    get_completions,
     get_context,
 )
 
@@ -30,6 +31,7 @@ class AutocompleteMixin:
     _schema_spinner_timer: Timer | None = None
     _schema_cache: dict[str, Any] = {}
     _table_metadata: dict[str, tuple[str, str, str | None]] = {}
+    _autocomplete_debounce_timer: Timer | None = None
 
     def _run_db_call(self: AppProtocol, fn: Any, *args: Any, **kwargs: Any) -> Any:
         session = getattr(self, "_session", None)
@@ -66,88 +68,54 @@ class AutocompleteMixin:
         return alias_map
 
     def _get_autocomplete_suggestions(self: AppProtocol, text: str, cursor_pos: int) -> list[str]:
-        """Get autocomplete suggestions using the new SQL completion engine."""
+        """Get autocomplete suggestions using the SQL completion engine."""
+        # Build schema data for get_completions
+        tables = self._schema_cache.get("tables", []) + self._schema_cache.get("views", [])
+        columns = self._schema_cache.get("columns", {})
+        procedures = self._schema_cache.get("procedures", [])
+
+        # First check if we need to lazy-load columns before calling get_completions
         suggestions = get_context(text, cursor_pos)
-        if not suggestions:
-            return []
+        if suggestions:
+            alias_map = self._build_alias_map(text)
+            table_refs = extract_table_refs(text)
+            loading = getattr(self, "_columns_loading", set())
 
-        current_word = self._get_current_word(text, cursor_pos)
-        results: list[str] = []
-
-        # Build alias map for column lookups
-        alias_map = self._build_alias_map(text)
-
-        # Get table refs for column scoping
-        table_refs = extract_table_refs(text)
-
-        for suggestion in suggestions:
-            if suggestion.type == SuggestionType.TABLE:
-                # Suggest tables and views
-                results.extend(self._schema_cache.get("tables", []))
-                results.extend(self._schema_cache.get("views", []))
-
-            elif suggestion.type == SuggestionType.COLUMN:
-                # Suggest columns from all tables in scope
-                loading = getattr(self, "_columns_loading", set())
-                any_loading = False
-
-                for ref in table_refs:
-                    table_key = ref.name.lower()
-                    if table_key in self._schema_cache.get("columns", {}):
-                        results.extend(self._schema_cache["columns"][table_key])
-                    elif table_key in loading:
-                        any_loading = True
-                    else:
-                        self._load_columns_for_table(table_key)
-                        any_loading = True
-
-                if any_loading and not results:
-                    results.append("Loading...")
-
-            elif suggestion.type == SuggestionType.ALIAS_COLUMN:
-                # Suggest columns for specific table/alias
-                scope = suggestion.table_scope
-                if scope:
-                    scope_lower = scope.lower()
-                    table_key = scope_lower
-
-                    # Check if it's an alias
-                    if scope_lower in alias_map:
-                        table_key = alias_map[scope_lower].lower()
-
-                    # Check if columns are in cache
-                    if table_key in self._schema_cache.get("columns", {}):
-                        results.extend(self._schema_cache["columns"][table_key])
-                    else:
-                        # Check if currently loading
-                        loading = getattr(self, "_columns_loading", set())
-                        if table_key in loading or scope_lower in loading:
-                            results.append("Loading...")
-                        else:
-                            # Start loading columns
+            for suggestion in suggestions:
+                if suggestion.type == SuggestionType.COLUMN:
+                    # Check if any tables need column loading
+                    for ref in table_refs:
+                        table_key = ref.name.lower()
+                        if table_key not in columns and table_key not in loading:
                             self._load_columns_for_table(table_key)
-                            results.append("Loading...")
+                            return ["Loading..."]
+                        elif table_key in loading:
+                            return ["Loading..."]
 
-            elif suggestion.type == SuggestionType.PROCEDURE:
-                results.extend(self._schema_cache.get("procedures", []))
+                elif suggestion.type == SuggestionType.ALIAS_COLUMN:
+                    scope = suggestion.table_scope
+                    if scope:
+                        scope_lower = scope.lower()
+                        table_key = alias_map.get(scope_lower, scope_lower)
 
-            elif suggestion.type == SuggestionType.KEYWORD:
-                results.extend(get_all_keywords())
-                results.extend(get_all_functions())
+                        if table_key not in columns and table_key not in loading:
+                            self._load_columns_for_table(table_key)
+                            return ["Loading..."]
+                        elif table_key in loading:
+                            return ["Loading..."]
 
-            elif suggestion.type == SuggestionType.OPERATOR:
-                results.extend(SQL_OPERATORS)
+        # Now call get_completions with all available data
+        results = get_completions(
+            text,
+            cursor_pos,
+            tables,
+            columns,
+            procedures,
+            include_keywords=True,
+            include_functions=True,
+        )
 
-        # Remove duplicates while preserving order
-        seen: set[str] = set()
-        unique_results: list[str] = []
-        for r in results:
-            if r.lower() not in seen:
-                seen.add(r.lower())
-                unique_results.append(r)
-
-        # Apply fuzzy matching
-        return fuzzy_match(current_word, unique_results)
+        return results
 
     def _load_columns_for_table(self: AppProtocol, table_name: str) -> None:
         """Lazy load columns for a specific table (async via worker)."""
@@ -305,14 +273,28 @@ class AutocompleteMixin:
         if not self.current_connection:
             return
 
-        text = event.text_area.text
-        cursor_loc = event.text_area.cursor_location
+        # Cancel any pending debounce timer
+        if self._autocomplete_debounce_timer is not None:
+            self._autocomplete_debounce_timer.stop()
+            self._autocomplete_debounce_timer = None
+
+        # Debounce: wait 100ms before triggering autocomplete
+        self._autocomplete_debounce_timer = self.set_timer(
+            0.1, lambda: self._trigger_autocomplete(event.text_area)
+        )
+
+    def _trigger_autocomplete(self: AppProtocol, text_area: TextArea) -> None:
+        """Actually trigger autocomplete after debounce delay."""
+        self._autocomplete_debounce_timer = None
+
+        text = text_area.text
+        cursor_loc = text_area.cursor_location
         cursor_pos = self._location_to_offset(text, cursor_loc)
 
         # Get current word for display purposes
         current_word = self._get_current_word(text, cursor_pos)
 
-        # Get suggestions using the new SQL completion engine
+        # Get suggestions using the SQL completion engine
         suggestions = self._get_autocomplete_suggestions(text, cursor_pos)
 
         if suggestions:
@@ -374,7 +356,7 @@ class AutocompleteMixin:
             dropdown.move_selection(-1)
             event.prevent_default()
             event.stop()
-        elif event.key == "tab":
+        elif event.key in ("tab", "enter"):
             if self.vim_mode == VimMode.INSERT and dropdown.filtered_items:
                 self._apply_autocomplete()
                 event.prevent_default()
@@ -493,26 +475,38 @@ class AutocompleteMixin:
                     # Get tables
                     tables = await run_db_call(adapter.get_tables, connection, database)
                     for schema_name, table_name in tables:
+                        # Use simple name if we have a default database, full qualifier otherwise
+                        if len(databases) == 1:
+                            # Single database - use simple table name
+                            schema_cache["tables"].append(table_name)
+                        else:
+                            # Multiple databases - use full qualifier
+                            full_name = f"{database}.{table_name}" if database else table_name
+                            schema_cache["tables"].append(full_name)
+                        # Keep metadata for column loading
                         display_name = adapter.format_table_name(schema_name, table_name)
-                        schema_cache["tables"].append(display_name)
                         table_metadata[display_name.lower()] = (schema_name, table_name, database)
                         table_metadata[table_name.lower()] = (schema_name, table_name, database)
                         if database:
-                            full_name = f"{adapter.quote_identifier(database)}.{adapter.quote_identifier(display_name)}"
-                            schema_cache["tables"].append(full_name)
-                            table_metadata[full_name.lower()] = (schema_name, table_name, database)
+                            table_metadata[f"{database}.{table_name}".lower()] = (schema_name, table_name, database)
 
                     # Get views
                     views = await run_db_call(adapter.get_views, connection, database)
                     for schema_name, view_name in views:
+                        # Use simple name if we have a default database, full qualifier otherwise
+                        if len(databases) == 1:
+                            # Single database - use simple view name
+                            schema_cache["views"].append(view_name)
+                        else:
+                            # Multiple databases - use full qualifier
+                            full_name = f"{database}.{view_name}" if database else view_name
+                            schema_cache["views"].append(full_name)
+                        # Keep metadata for column loading
                         display_name = adapter.format_table_name(schema_name, view_name)
-                        schema_cache["views"].append(display_name)
                         table_metadata[display_name.lower()] = (schema_name, view_name, database)
                         table_metadata[view_name.lower()] = (schema_name, view_name, database)
                         if database:
-                            full_name = f"{adapter.quote_identifier(database)}.{adapter.quote_identifier(display_name)}"
-                            schema_cache["views"].append(full_name)
-                            table_metadata[full_name.lower()] = (schema_name, view_name, database)
+                            table_metadata[f"{database}.{view_name}".lower()] = (schema_name, view_name, database)
 
                     # Get procedures
                     if adapter.supports_stored_procedures:

@@ -18,7 +18,9 @@ from textual.lazy import Lazy
 from textual.screen import ModalScreen
 from textual.theme import Theme
 from textual.timer import Timer
-from textual.widgets import Static, TextArea, Tree
+from textual.widgets import Static, Tree
+
+from .widgets import QueryTextArea
 from textual.worker import Worker
 
 from .config import (
@@ -420,8 +422,8 @@ class SSMSTUI(
         return self.query_one("#object-tree", Tree)
 
     @property
-    def query_input(self) -> TextArea:
-        return self.query_one("#query-input", TextArea)
+    def query_input(self) -> QueryTextArea:
+        return self.query_one("#query-input", QueryTextArea)
 
     @property
     def results_table(self) -> SqlitDataTable:
@@ -542,7 +544,7 @@ class SSMSTUI(
 
                 with Vertical(id="main-panel"):
                     with Container(id="query-area"):
-                        yield TextArea(
+                        yield QueryTextArea(
                             "",
                             language="sql",
                             id="query-input",
