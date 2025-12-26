@@ -378,6 +378,7 @@ class TreeMixin:
         """Spawn worker to load folder contents (tables/views/indexes/triggers/sequences/procedures)."""
         folder_type = data.folder_type
         db_name = data.database
+        cache_key = db_name or "__default__"
 
         def work() -> None:
             """Run in worker thread."""
@@ -388,10 +389,31 @@ class TreeMixin:
                     adapter = self._session.adapter
                     conn = self._session.connection
 
+                    # Check shared cache first for tables/views/procedures
+                    obj_cache = getattr(self, "_db_object_cache", {})
+
                     if folder_type == "tables":
-                        items = [("table", s, t) for s, t in self._run_db_call(adapter.get_tables, conn, db_name)]
+                        if cache_key in obj_cache and "tables" in obj_cache[cache_key]:
+                            raw_data = obj_cache[cache_key]["tables"]
+                        else:
+                            raw_data = self._run_db_call(adapter.get_tables, conn, db_name)
+                            # Store in shared cache
+                            if cache_key not in obj_cache:
+                                obj_cache[cache_key] = {}
+                            obj_cache[cache_key]["tables"] = raw_data
+                            self._db_object_cache = obj_cache
+                        items = [("table", s, t) for s, t in raw_data]
                     elif folder_type == "views":
-                        items = [("view", s, v) for s, v in self._run_db_call(adapter.get_views, conn, db_name)]
+                        if cache_key in obj_cache and "views" in obj_cache[cache_key]:
+                            raw_data = obj_cache[cache_key]["views"]
+                        else:
+                            raw_data = self._run_db_call(adapter.get_views, conn, db_name)
+                            # Store in shared cache
+                            if cache_key not in obj_cache:
+                                obj_cache[cache_key] = {}
+                            obj_cache[cache_key]["views"] = raw_data
+                            self._db_object_cache = obj_cache
+                        items = [("view", s, v) for s, v in raw_data]
                     elif folder_type == "indexes":
                         if adapter.supports_indexes:
                             items = [
@@ -418,10 +440,16 @@ class TreeMixin:
                             items = []
                     elif folder_type == "procedures":
                         if adapter.supports_stored_procedures:
-                            items = [
-                                ("procedure", "", p)
-                                for p in self._run_db_call(adapter.get_procedures, conn, db_name)
-                            ]
+                            if cache_key in obj_cache and "procedures" in obj_cache[cache_key]:
+                                raw_data = obj_cache[cache_key]["procedures"]
+                            else:
+                                raw_data = self._run_db_call(adapter.get_procedures, conn, db_name)
+                                # Store in shared cache
+                                if cache_key not in obj_cache:
+                                    obj_cache[cache_key] = {}
+                                obj_cache[cache_key]["procedures"] = raw_data
+                                self._db_object_cache = obj_cache
+                            items = [("procedure", "", p) for p in raw_data]
                         else:
                             items = []
                     else:
@@ -563,6 +591,11 @@ class TreeMixin:
 
     def action_refresh_tree(self: AppProtocol) -> None:
         """Refresh the explorer."""
+        # Clear shared object cache so fresh data is fetched
+        self._db_object_cache = {}
+        # Clear column cache too so columns are re-fetched
+        if hasattr(self, "_schema_cache") and "columns" in self._schema_cache:
+            self._schema_cache["columns"] = {}
         self.refresh_tree()
         self.notify("Refreshed")
 
@@ -709,14 +742,14 @@ class TreeMixin:
         if definition:
             self.query_input.text = f"/*\n{definition}\n*/"
 
-    def set_default_database(self: AppProtocol, db_name: str) -> None:
-        """Set the default database for the current connection.
+    def set_default_database(self: AppProtocol, db_name: str | None) -> None:
+        """Set or clear the default database for the current connection.
 
         This is the shared function used by both the USE query handler and
         the explorer 'Use as default' action.
 
         Args:
-            db_name: The database name to set as default.
+            db_name: The database name to set as default, or None to clear.
         """
         from dataclasses import replace
 
@@ -725,9 +758,14 @@ class TreeMixin:
             return
 
         self.current_config = replace(self.current_config, database=db_name)
-        self.notify(f"Switched to database: {db_name}")
+        if db_name:
+            self.notify(f"Switched to database: {db_name}")
+        else:
+            self.notify("Cleared default database")
         self._update_status_bar()
         self._update_database_labels()
+        # Reload schema cache for autocomplete with new database context
+        self._load_schema_cache()
 
     def _update_database_labels(self: AppProtocol) -> None:
         """Update database node labels to show the default database with a star."""
@@ -760,15 +798,21 @@ class TreeMixin:
             break
 
     def action_use_database(self: AppProtocol) -> None:
-        """Set the selected database as the default for the current connection."""
+        """Toggle the selected database as the default for the current connection."""
         node = self.object_tree.cursor_node
 
         if not node or self._get_node_kind(node) != "database":
             return
 
-        if not self.current_connection:
+        if not self.current_connection or not self.current_config:
             self.notify("Not connected", severity="error")
             return
 
         db_name = node.data.name
-        self.set_default_database(db_name)
+        current_default = self.current_config.database
+
+        # Toggle: if already default, clear it; otherwise set it
+        if current_default and current_default.lower() == db_name.lower():
+            self.set_default_database(None)
+        else:
+            self.set_default_database(db_name)

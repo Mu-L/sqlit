@@ -69,8 +69,9 @@ class TestCreateViewStatements:
             sql, len(sql), schema["tables"], schema["columns"], schema["procedures"]
         )
         # Should fall through to normal SELECT handling
-        # Which suggests columns from referenced tables + tables + functions
-        assert "users" in completions  # Tables are suggested in SELECT
+        # Which suggests special SELECT keywords and functions (not tables)
+        assert "*" in completions  # SELECT clause special keyword
+        assert "DISTINCT" in completions  # SELECT clause special keyword
 
     def test_create_view_select_from_table_where(self, schema):
         """CREATE VIEW with full SELECT should work normally."""

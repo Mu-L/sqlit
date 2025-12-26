@@ -81,7 +81,7 @@ class SQLServerAdapter(DatabaseAdapter):
 
     @classmethod
     def docker_image_patterns(cls) -> tuple[str, ...]:
-        return ("mcr.microsoft.com/mssql", "mcr.microsoft.com/azure-sql-edge")
+        return ("mcr.microsoft.com/mssql",)
 
     @classmethod
     def docker_env_vars(cls) -> dict[str, tuple[str, ...]]:
@@ -159,13 +159,7 @@ class SQLServerAdapter(DatabaseAdapter):
         )
 
         conn_str = self._build_connection_string(config)
-        conn = mssql_python.connect(conn_str)
-
-        # Store config and driver for potential reconnection to different databases
-        conn._sqlit_config = config
-        conn._sqlit_driver = mssql_python
-
-        return conn
+        return mssql_python.connect(conn_str)
 
     def get_databases(self, conn: Any) -> list[str]:
         """Get list of databases from SQL Server."""
@@ -174,53 +168,11 @@ class SQLServerAdapter(DatabaseAdapter):
         return [row[0] for row in cursor.fetchall()]
 
     def _get_cursor_for_database(self, conn: Any, database: str | None) -> Any:
-        """Get a cursor for the specified database.
-
-        For regular SQL Server: uses USE [database] to switch context.
-        For Azure SQL Database: creates a new connection to the target database
-        (since USE is not supported).
-
-        Returns a cursor ready to execute queries against the target database.
-        """
+        """Get a cursor for the specified database using USE statement."""
         cursor = conn.cursor()
-
-        if not database:
-            return cursor
-
-        # First try USE (works on regular SQL Server, faster than reconnecting)
-        try:
+        if database:
             cursor.execute(f"USE [{database}]")
-            return cursor
-        except Exception as e:
-            error_msg = str(e).lower()
-            if "use statement is not supported" not in error_msg and "switch between databases" not in error_msg:
-                # Some other error - re-raise
-                raise
-
-        # Azure SQL Database: USE not supported, need a new connection
-        # Check if we have the config stored for reconnection
-        config = getattr(conn, "_sqlit_config", None)
-        driver = getattr(conn, "_sqlit_driver", None)
-
-        if config is None or driver is None:
-            # No config available, can't reconnect - return original cursor
-            # (will query the connected database instead)
-            return cursor
-
-        # Create a new connection with the target database
-        from dataclasses import replace
-        new_config = replace(config, database=database)
-        new_conn_str = self._build_connection_string(new_config)
-
-        try:
-            new_conn = driver.connect(new_conn_str)
-            new_cursor = new_conn.cursor()
-            # Store reference to connection on cursor so it doesn't get garbage collected
-            new_cursor._sqlit_temp_conn = new_conn
-            return new_cursor
-        except Exception:
-            # Failed to connect to target database, fall back to original
-            return cursor
+        return cursor
 
     def get_tables(self, conn: Any, database: str | None = None) -> list[TableInfo]:
         """Get list of tables with schema from SQL Server."""

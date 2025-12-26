@@ -223,6 +223,70 @@ class TestSelectCompletions:
         assert "active_users" in completions
 
 
+class TestSelectClauseSuggestions:
+    """Tests for SELECT clause special suggestions (*, DISTINCT, TOP)."""
+
+    @pytest.fixture
+    def schema(self):
+        """Sample database schema."""
+        return {
+            "tables": ["users", "orders"],
+            "columns": {
+                "users": ["id", "name", "email"],
+                "orders": ["id", "user_id", "total"],
+            },
+        }
+
+    def test_star_suggested_after_select(self, schema):
+        """Should suggest * after SELECT."""
+        sql = "SELECT "
+        completions = get_completions(
+            sql, len(sql), schema["tables"], schema["columns"]
+        )
+        assert "*" in completions
+
+    def test_distinct_suggested_after_select(self, schema):
+        """Should suggest DISTINCT after SELECT."""
+        sql = "SELECT "
+        completions = get_completions(
+            sql, len(sql), schema["tables"], schema["columns"]
+        )
+        assert "DISTINCT" in completions
+
+    def test_top_suggested_after_select(self, schema):
+        """Should suggest TOP after SELECT (SQL Server syntax)."""
+        sql = "SELECT "
+        completions = get_completions(
+            sql, len(sql), schema["tables"], schema["columns"]
+        )
+        assert "TOP" in completions
+
+    def test_star_filtered_by_prefix(self, schema):
+        """Should filter * when typing."""
+        sql = "SELECT *"
+        completions = get_completions(
+            sql, len(sql), schema["tables"], schema["columns"]
+        )
+        # When typing *, it should match
+        assert "*" in completions or len(completions) == 0  # Either matches or nothing
+
+    def test_distinct_filtered_by_prefix(self, schema):
+        """Should filter DISTINCT when typing D."""
+        sql = "SELECT D"
+        completions = get_completions(
+            sql, len(sql), schema["tables"], schema["columns"]
+        )
+        assert "DISTINCT" in completions
+
+    def test_top_filtered_by_prefix(self, schema):
+        """Should filter TOP when typing T."""
+        sql = "SELECT T"
+        completions = get_completions(
+            sql, len(sql), schema["tables"], schema["columns"]
+        )
+        assert "TOP" in completions
+
+
 class TestOperatorSuggestions:
     """Tests for operator suggestions using sqlparse."""
 

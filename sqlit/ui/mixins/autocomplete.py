@@ -32,6 +32,9 @@ class AutocompleteMixin:
     _schema_cache: dict[str, Any] = {}
     _table_metadata: dict[str, tuple[str, str, str | None]] = {}
     _autocomplete_debounce_timer: Timer | None = None
+    # Shared cache for raw DB objects - used by both tree and autocomplete
+    # Structure: {db_name: {"tables": [(schema, name), ...], "views": [...], "procedures": [...]}}
+    _db_object_cache: dict[str, dict[str, list[Any]]] = {}
 
     def _run_db_call(self: AppProtocol, fn: Any, *args: Any, **kwargs: Any) -> Any:
         session = getattr(self, "_session", None)
@@ -178,6 +181,48 @@ class AutocompleteMixin:
             else:
                 self._hide_autocomplete()
 
+    def _has_tables_needing_columns(self: AppProtocol, text: str) -> bool:
+        """Check if there are tables in the query that need column loading."""
+        if not text.strip():
+            return False
+
+        table_refs = extract_table_refs(text)
+        columns_cache = self._schema_cache.get("columns", {})
+        loading = getattr(self, "_columns_loading", set())
+
+        for ref in table_refs:
+            table_key = ref.name.lower()
+            if table_key in columns_cache or table_key in loading:
+                continue
+            if table_key in self._table_metadata:
+                return True
+        return False
+
+    def _preload_columns_for_query(self: AppProtocol) -> None:
+        """Preload columns for all tables found in the current query (runs during idle)."""
+        if not self.current_connection or not self.current_adapter:
+            return
+
+        text = self.query_input.text
+        if not text.strip():
+            return
+
+        # Extract table references from the query
+        table_refs = extract_table_refs(text)
+        columns_cache = self._schema_cache.get("columns", {})
+        loading = getattr(self, "_columns_loading", set())
+
+        for ref in table_refs:
+            table_key = ref.name.lower()
+            # Skip if already loaded or currently loading
+            if table_key in columns_cache or table_key in loading:
+                continue
+            # Skip if not a known table
+            if table_key not in self._table_metadata:
+                continue
+            # Queue column loading
+            self._load_columns_for_table(table_key)
+
     def _show_autocomplete(self: AppProtocol, suggestions: list[str], filter_text: str) -> None:
         """Show the autocomplete dropdown with suggestions."""
 
@@ -254,6 +299,10 @@ class AutocompleteMixin:
     def on_text_area_changed(self: AppProtocol, event: TextArea.Changed) -> None:
         """Handle text changes in the query editor for autocomplete."""
         from ...widgets import VimMode
+        from ...idle_scheduler import on_user_activity
+
+        # Track user activity for idle scheduler
+        on_user_activity()
 
         if event.text_area.id != "query-input":
             return
@@ -285,6 +334,8 @@ class AutocompleteMixin:
 
     def _trigger_autocomplete(self: AppProtocol, text_area: TextArea) -> None:
         """Actually trigger autocomplete after debounce delay."""
+        from ...idle_scheduler import get_idle_scheduler, Priority
+
         self._autocomplete_debounce_timer = None
 
         text = text_area.text
@@ -302,11 +353,23 @@ class AutocompleteMixin:
         else:
             self._hide_autocomplete()
 
+        # Queue column preloading for tables in the query (runs during idle)
+        # Only queue if there are actually tables that need column loading
+        scheduler = get_idle_scheduler()
+        if scheduler and self._has_tables_needing_columns(text):
+            # Cancel any previous preload job - we'll queue a fresh one
+            scheduler.cancel_all(name="preload-columns")
+            scheduler.request_idle_callback(
+                self._preload_columns_for_query,
+                priority=Priority.LOW,
+                name="preload-columns",
+            )
+
     def on_descendant_blur(self: AppProtocol, event: Any) -> None:
-        """Hide autocomplete when query input loses focus."""
-        # Check if the blur is from the query input
-        if hasattr(event, "widget") and getattr(event.widget, "id", None) == "query-input":
-            self._hide_autocomplete()
+        """Handle blur events - don't hide autocomplete on window focus loss."""
+        # Only hide if focus moves to another widget within the app (not window blur)
+        # We want autocomplete to stay visible when user moves mouse to another window
+        pass
 
     def action_autocomplete_next(self: AppProtocol) -> None:
         """Move to next autocomplete suggestion."""
@@ -341,6 +404,10 @@ class AutocompleteMixin:
     def on_key(self: AppProtocol, event: Any) -> None:
         """Handle key events for autocomplete navigation."""
         from ...widgets import VimMode
+        from ...idle_scheduler import on_user_activity
+
+        # Track user activity for idle scheduler
+        on_user_activity()
 
         # Handle autocomplete navigation
         if not self._autocomplete_visible:
@@ -367,13 +434,20 @@ class AutocompleteMixin:
             event.stop()
 
     def _load_schema_cache(self: AppProtocol) -> None:
-        """Load database schema for autocomplete asynchronously."""
+        """Load database schema for autocomplete using idle scheduler."""
+        from ...idle_scheduler import get_idle_scheduler, Priority
+
         if not self.current_connection or not self.current_config or not self.current_adapter:
             return
 
         # Cancel any existing schema worker
         if hasattr(self, "_schema_worker") and self._schema_worker is not None:
             self._schema_worker.cancel()
+
+        # Cancel any pending idle jobs for schema loading
+        scheduler = get_idle_scheduler()
+        if scheduler:
+            scheduler.cancel_all(name="schema-load")
 
         # Initialize empty cache immediately
         self._schema_cache = {
@@ -383,16 +457,230 @@ class AutocompleteMixin:
             "procedures": [],
         }
         self._table_metadata = {}
+        self._columns_loading = set()  # Clear any in-progress column loads
+        self._db_object_cache = {}  # Clear shared object cache
 
         # Start schema indexing spinner
         self._start_schema_spinner()
 
-        # Run schema loading in background thread
-        self._schema_worker = self.run_worker(
-            self._load_schema_cache_async(),
-            name="schema_cache_loading",
-            exclusive=True,
+        # Use idle scheduler if available, otherwise fall back to worker
+        if scheduler:
+            self._load_schema_via_idle_scheduler(scheduler)
+        else:
+            # Fallback to original async worker
+            self._schema_worker = self.run_worker(
+                self._load_schema_cache_async(),
+                name="schema_cache_loading",
+                exclusive=True,
+            )
+
+    def _load_schema_via_idle_scheduler(self: AppProtocol, scheduler: Any) -> None:
+        """Load schema using idle scheduler for smoother UI."""
+        from ...idle_scheduler import Priority
+
+        adapter = self.current_adapter
+        connection = self.current_connection
+        config = self.current_config
+
+        if not adapter or not connection or not config:
+            self._stop_schema_spinner()
+            return
+
+        # Track pending database loads
+        self._schema_pending_dbs: list[str | None] = []
+        self._schema_total_jobs = 0
+        self._schema_completed_jobs = 0
+
+        def get_databases_job() -> None:
+            """First job: get list of databases to index."""
+            try:
+                if adapter.supports_multiple_databases:
+                    db = config.database
+                    if db:
+                        databases = [db]
+                    else:
+                        all_dbs = adapter.get_databases(connection)
+                        system_dbs = {"master", "tempdb", "model", "msdb"}
+                        databases = [d for d in all_dbs if d.lower() not in system_dbs]
+                else:
+                    databases = [None]
+
+                self._schema_pending_dbs = databases
+                self._schema_total_jobs = len(databases) * 3  # tables, views, procedures per db
+
+                # Queue jobs for each database
+                for database in databases:
+                    scheduler.request_idle_callback(
+                        lambda db=database: self._load_tables_job(db),
+                        priority=Priority.HIGH,
+                        name="schema-load",
+                    )
+                    scheduler.request_idle_callback(
+                        lambda db=database: self._load_views_job(db),
+                        priority=Priority.NORMAL,
+                        name="schema-load",
+                    )
+                    if adapter.supports_stored_procedures:
+                        scheduler.request_idle_callback(
+                            lambda db=database: self._load_procedures_job(db),
+                            priority=Priority.LOW,
+                            name="schema-load",
+                        )
+                    else:
+                        self._schema_completed_jobs += 1  # Skip procedures
+
+            except Exception as e:
+                self.log.error(f"Error getting databases: {e}")
+                self._stop_schema_spinner()
+
+        # Queue the first job with high priority
+        scheduler.request_idle_callback(
+            get_databases_job,
+            priority=Priority.HIGH,
+            name="schema-load",
         )
+
+    def _load_tables_job(self: AppProtocol, database: str | None) -> None:
+        """Idle job: load tables for a single database."""
+        adapter = self.current_adapter
+        connection = self.current_connection
+
+        if not adapter or not connection:
+            self._schema_job_complete()
+            return
+
+        cache_key = database or "__default__"
+
+        try:
+            # Check shared cache first (may have been populated by tree expansion)
+            if cache_key in self._db_object_cache and "tables" in self._db_object_cache[cache_key]:
+                tables = self._db_object_cache[cache_key]["tables"]
+            else:
+                # Fetch from database and store in shared cache
+                tables = adapter.get_tables(connection, database)
+                if cache_key not in self._db_object_cache:
+                    self._db_object_cache[cache_key] = {}
+                self._db_object_cache[cache_key]["tables"] = tables
+
+            single_db = len(getattr(self, "_schema_pending_dbs", [None])) == 1
+
+            for schema_name, table_name in tables:
+                if single_db:
+                    self._schema_cache["tables"].append(table_name)
+                else:
+                    quoted_db = adapter.quote_identifier(database) if database else ""
+                    quoted_schema = adapter.quote_identifier(schema_name)
+                    quoted_table = adapter.quote_identifier(table_name)
+                    if database:
+                        full_name = f"{quoted_db}.{quoted_schema}.{quoted_table}"
+                    else:
+                        full_name = f"{quoted_schema}.{quoted_table}"
+                    self._schema_cache["tables"].append(full_name)
+
+                # Store metadata for column loading
+                display_name = adapter.format_table_name(schema_name, table_name)
+                self._table_metadata[display_name.lower()] = (schema_name, table_name, database)
+                self._table_metadata[table_name.lower()] = (schema_name, table_name, database)
+                if database:
+                    self._table_metadata[f"{database}.{table_name}".lower()] = (schema_name, table_name, database)
+                    if not single_db:
+                        self._table_metadata[full_name.lower()] = (schema_name, table_name, database)
+
+        except Exception as e:
+            self.log.error(f"Error loading tables for {database}: {e}")
+
+        self._schema_job_complete()
+
+    def _load_views_job(self: AppProtocol, database: str | None) -> None:
+        """Idle job: load views for a single database."""
+        adapter = self.current_adapter
+        connection = self.current_connection
+
+        if not adapter or not connection:
+            self._schema_job_complete()
+            return
+
+        cache_key = database or "__default__"
+
+        try:
+            # Check shared cache first (may have been populated by tree expansion)
+            if cache_key in self._db_object_cache and "views" in self._db_object_cache[cache_key]:
+                views = self._db_object_cache[cache_key]["views"]
+            else:
+                # Fetch from database and store in shared cache
+                views = adapter.get_views(connection, database)
+                if cache_key not in self._db_object_cache:
+                    self._db_object_cache[cache_key] = {}
+                self._db_object_cache[cache_key]["views"] = views
+
+            single_db = len(getattr(self, "_schema_pending_dbs", [None])) == 1
+
+            for schema_name, view_name in views:
+                if single_db:
+                    self._schema_cache["views"].append(view_name)
+                else:
+                    quoted_db = adapter.quote_identifier(database) if database else ""
+                    quoted_schema = adapter.quote_identifier(schema_name)
+                    quoted_view = adapter.quote_identifier(view_name)
+                    if database:
+                        full_name = f"{quoted_db}.{quoted_schema}.{quoted_view}"
+                    else:
+                        full_name = f"{quoted_schema}.{quoted_view}"
+                    self._schema_cache["views"].append(full_name)
+
+                # Store metadata for column loading
+                display_name = adapter.format_table_name(schema_name, view_name)
+                self._table_metadata[display_name.lower()] = (schema_name, view_name, database)
+                self._table_metadata[view_name.lower()] = (schema_name, view_name, database)
+                if database:
+                    self._table_metadata[f"{database}.{view_name}".lower()] = (schema_name, view_name, database)
+                    if not single_db:
+                        self._table_metadata[full_name.lower()] = (schema_name, view_name, database)
+
+        except Exception as e:
+            self.log.error(f"Error loading views for {database}: {e}")
+
+        self._schema_job_complete()
+
+    def _load_procedures_job(self: AppProtocol, database: str | None) -> None:
+        """Idle job: load procedures for a single database."""
+        adapter = self.current_adapter
+        connection = self.current_connection
+
+        if not adapter or not connection:
+            self._schema_job_complete()
+            return
+
+        cache_key = database or "__default__"
+
+        try:
+            # Check shared cache first (may have been populated by tree expansion)
+            if cache_key in self._db_object_cache and "procedures" in self._db_object_cache[cache_key]:
+                procedures = self._db_object_cache[cache_key]["procedures"]
+            else:
+                # Fetch from database and store in shared cache
+                procedures = adapter.get_procedures(connection, database)
+                if cache_key not in self._db_object_cache:
+                    self._db_object_cache[cache_key] = {}
+                self._db_object_cache[cache_key]["procedures"] = procedures
+
+            self._schema_cache["procedures"].extend(procedures)
+        except Exception as e:
+            self.log.error(f"Error loading procedures for {database}: {e}")
+
+        self._schema_job_complete()
+
+    def _schema_job_complete(self: AppProtocol) -> None:
+        """Called when a schema loading job completes."""
+        self._schema_completed_jobs = getattr(self, "_schema_completed_jobs", 0) + 1
+        total = getattr(self, "_schema_total_jobs", 1)
+
+        if self._schema_completed_jobs >= total:
+            # All jobs done - deduplicate and finalize
+            self._schema_cache["tables"] = list(dict.fromkeys(self._schema_cache["tables"]))
+            self._schema_cache["views"] = list(dict.fromkeys(self._schema_cache["views"]))
+            self._schema_cache["procedures"] = list(dict.fromkeys(self._schema_cache["procedures"]))
+            self._stop_schema_spinner()
 
     def _start_schema_spinner(self: AppProtocol) -> None:
         """Start the schema indexing spinner animation."""
@@ -461,9 +749,11 @@ class AutocompleteMixin:
             databases: list[str | None]
             if adapter.supports_multiple_databases:
                 db = config.database
-                if db and db.lower() not in ("", "master"):
+                if db:
+                    # Default database is set - only load that one
                     databases = [db]
                 else:
+                    # No default database - load all non-system databases
                     all_dbs = await run_db_call(adapter.get_databases, connection)
                     system_dbs = {"master", "tempdb", "model", "msdb"}
                     databases = [d for d in all_dbs if d.lower() not in system_dbs]

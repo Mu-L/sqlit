@@ -60,6 +60,7 @@ from .widgets import (
     TreeFilterInput,
     VimMode,
 )
+from .idle_scheduler import init_idle_scheduler, on_user_activity, IdleScheduler
 
 
 class SSMSTUI(
@@ -242,6 +243,17 @@ class SSMSTUI(
         padding: 0 1;
     }
 
+    #idle-scheduler-bar {
+        height: 1;
+        background: $primary-darken-3;
+        padding: 0 1;
+        display: none;
+    }
+
+    #idle-scheduler-bar.visible {
+        display: block;
+    }
+
     #sidebar,
     #query-area,
     #results-area {
@@ -331,6 +343,7 @@ class SSMSTUI(
         self._startup_connection = startup_connection
         self._startup_connect_config: ConnectionConfig | None = None
         self._debug_mode = os.environ.get("SQLIT_DEBUG") == "1"
+        self._debug_idle_scheduler = os.environ.get("SQLIT_DEBUG_IDLE_SCHEDULER") == "1"
         self._startup_profile = os.environ.get("SQLIT_PROFILE_STARTUP") == "1"
         self._startup_mark = self._parse_startup_mark(os.environ.get("SQLIT_STARTUP_MARK"))
         self._startup_init_time = time.perf_counter()
@@ -392,6 +405,8 @@ class SSMSTUI(
         # Omarchy theme sync state
         self._omarchy_theme_watcher: Timer | None = None
         self._omarchy_last_theme_name: str | None = None
+        # Idle scheduler for background work
+        self._idle_scheduler: IdleScheduler | None = None
 
         if mock_profile:
             self._session_factory = self._create_mock_session_factory(mock_profile)
@@ -451,6 +466,10 @@ class SSMSTUI(
     @property
     def status_bar(self) -> Static:
         return self.query_one("#status-bar", Static)
+
+    @property
+    def idle_scheduler_bar(self) -> Static:
+        return self.query_one("#idle-scheduler-bar", Static)
 
     @property
     def autocomplete_dropdown(self) -> Any:
@@ -557,6 +576,7 @@ class SSMSTUI(
                         yield ResultsFilterInput(id="results-filter")
                         yield Lazy(SqlitDataTable(id="results-table", zebra_stripes=True, show_header=False))
 
+            yield Static("", id="idle-scheduler-bar")
             yield Static("Not connected", id="status-bar")
 
         yield ContextFooter()
@@ -566,6 +586,15 @@ class SSMSTUI(
         """Initialize the app."""
         self._startup_stamp("on_mount_start")
         self._restart_argv = self._compute_restart_argv()
+
+        # Initialize and start idle scheduler
+        self._idle_scheduler = init_idle_scheduler(self)
+        self._idle_scheduler.start()
+
+        # Show idle scheduler debug bar if enabled
+        if self._debug_idle_scheduler:
+            self.idle_scheduler_bar.add_class("visible")
+            self._idle_scheduler_bar_timer = self.set_interval(0.1, self._update_idle_scheduler_bar)
 
         for theme in self._SQLIT_THEMES:
             self.register_theme(theme)

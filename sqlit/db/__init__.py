@@ -38,6 +38,7 @@ __all__ = [
     "get_all_schemas",
     "get_connection_schema",
     # Adapters (lazy via __getattr__)
+    "AzureSQLAdapter",
     "CockroachDBAdapter",
     "DuckDBAdapter",
     "FirebirdAdapter",
@@ -55,6 +56,7 @@ __all__ = [
 ]
 
 if TYPE_CHECKING:
+    from .adapters.azure_sql import AzureSQLAdapter
     from .adapters.cockroachdb import CockroachDBAdapter
     from .adapters.duckdb import DuckDBAdapter
     from .adapters.firebird import FirebirdAdapter
@@ -88,6 +90,7 @@ _LAZY_ATTRS: dict[str, tuple[str, str]] = {
     "SchemaField": ("sqlit.db.schema", "SchemaField"),
     "SelectOption": ("sqlit.db.schema", "SelectOption"),
     # Adapters (through sqlit.db.adapters, which itself lazy-loads)
+    "AzureSQLAdapter": ("sqlit.db.adapters", "AzureSQLAdapter"),
     "CockroachDBAdapter": ("sqlit.db.adapters", "CockroachDBAdapter"),
     "DuckDBAdapter": ("sqlit.db.adapters", "DuckDBAdapter"),
     "FirebirdAdapter": ("sqlit.db.adapters", "FirebirdAdapter"),

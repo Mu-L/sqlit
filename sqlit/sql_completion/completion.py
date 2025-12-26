@@ -25,6 +25,9 @@ from .core import (
     remove_comments,
     remove_string_literals,
 )
+
+# Special keywords for SELECT clause (before FROM)
+SELECT_CLAUSE_KEYWORDS = ["*", "DISTINCT", "TOP", "ALL"]
 from .alter_table import get_alter_table_completions, get_alter_table_context
 from .create_index import get_create_index_completions
 from .create_table import get_create_table_completions, get_create_table_context
@@ -320,12 +323,19 @@ def get_completions(
             results.extend(cte_names)
 
         elif suggestion.type == SuggestionType.COLUMN:
+            # Check if we're in SELECT clause (before FROM) to add special keywords
+            clause = find_current_clause(clean_before)
+            if clause == "select":
+                results.extend(SELECT_CLAUSE_KEYWORDS)
+
             for ref in table_refs:
                 table_key = ref.name.lower()
                 if table_key in columns:
                     results.extend(columns[table_key])
 
-            results.extend(tables)
+            # Only add table names if NOT in SELECT clause (tables go after FROM, not SELECT)
+            if clause != "select":
+                results.extend(tables)
 
             if include_functions:
                 results.extend(get_all_functions())

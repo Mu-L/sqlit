@@ -327,8 +327,8 @@ class AutocompleteDropdown(VerticalScroll):
     AutocompleteDropdown {
         layer: autocomplete;
         width: auto;
-        min-width: 20;
-        max-width: 50;
+        min-width: 25;
+        max-width: 80;
         height: auto;
         max-height: 12;
         background: $surface;
@@ -336,6 +336,7 @@ class AutocompleteDropdown(VerticalScroll):
         padding: 0;
         display: none;
         scrollbar-size: 1 1;
+        constrain: inside inside;
     }
 
     AutocompleteDropdown.visible {

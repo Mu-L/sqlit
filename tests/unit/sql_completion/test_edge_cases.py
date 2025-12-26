@@ -22,13 +22,16 @@ class TestSelectDistinct:
         }
 
     def test_select_distinct_suggests_columns(self, schema):
-        """SELECT DISTINCT should suggest columns and tables."""
+        """SELECT DISTINCT should suggest special keywords and functions."""
         sql = "SELECT DISTINCT "
         completions = get_completions(
             sql, len(sql), schema["tables"], schema["columns"], schema["procedures"]
         )
-        # Should suggest tables (to select from) and functions
-        assert "users" in completions or "id" in completions
+        # Should suggest * and functions (not tables - those go after FROM)
+        assert "*" in completions
+        # Check for any aggregate function (they're all present but order varies)
+        has_function = any(f in completions for f in ["COUNT", "SUM", "AVG", "MIN", "MAX"])
+        assert has_function
 
     def test_select_distinct_from_table(self, schema):
         """SELECT DISTINCT with FROM should suggest columns."""
