@@ -434,25 +434,19 @@ class AutocompleteMixin:
                 event.prevent_default()
                 event.stop()
         elif event.key == "escape":
-            self._hide_autocomplete()
+            # Hide autocomplete AND exit insert mode (go to normal mode)
+            self.action_exit_insert_mode()
             event.prevent_default()
             event.stop()
 
     def _load_schema_cache(self: AppProtocol) -> None:
-        """Load database schema for autocomplete using idle scheduler."""
-        from ...idle_scheduler import get_idle_scheduler, Priority
-
+        """Load database schema for autocomplete using threaded workers."""
         if not self.current_connection or not self.current_config or not self.current_adapter:
             return
 
         # Cancel any existing schema worker
         if hasattr(self, "_schema_worker") and self._schema_worker is not None:
             self._schema_worker.cancel()
-
-        # Cancel any pending idle jobs for schema loading
-        scheduler = get_idle_scheduler()
-        if scheduler:
-            scheduler.cancel_all(name="schema-load")
 
         # Initialize empty cache immediately
         self._schema_cache = {
@@ -468,16 +462,45 @@ class AutocompleteMixin:
         # Start schema indexing spinner
         self._start_schema_spinner()
 
-        # Use idle scheduler if available, otherwise fall back to worker
-        if scheduler:
-            self._load_schema_via_idle_scheduler(scheduler)
+        # Load schema directly using threaded workers (no idle scheduler needed)
+        self._load_schema_directly()
+
+    def _load_schema_directly(self: AppProtocol) -> None:
+        """Load schema using threaded workers - runs immediately without idle scheduler."""
+        adapter = self.current_adapter
+        connection = self.current_connection
+        config = self.current_config
+
+        if not adapter or not connection or not config:
+            self._stop_schema_spinner()
+            return
+
+        # Track pending database loads
+        self._schema_pending_dbs: list[str | None] = []
+        self._schema_total_jobs = 0
+        self._schema_completed_jobs = 0
+
+        if adapter.supports_multiple_databases:
+            # Use active database (user preference) if set, otherwise fall back to config
+            db = getattr(self, "_active_database", None) or config.database
+            if db:
+                # Single database specified - load immediately
+                self._on_databases_loaded([db])
+            else:
+                # Need to fetch database list - offload to thread
+                def work() -> None:
+                    try:
+                        all_dbs = adapter.get_databases(connection)
+                        system_dbs = {s.lower() for s in adapter.system_databases}
+                        databases = [d for d in all_dbs if d.lower() not in system_dbs]
+                        self.call_from_thread(self._on_databases_loaded, databases)
+                    except Exception as e:
+                        self.call_from_thread(self._on_databases_error, e)
+
+                self.run_worker(work, thread=True, name="get-databases")
         else:
-            # Fallback to original async worker
-            self._schema_worker = self.run_worker(
-                self._load_schema_cache_async(),
-                name="schema_cache_loading",
-                exclusive=True,
-            )
+            # No multiple databases - just proceed with None
+            self._on_databases_loaded([None])
 
     def _load_schema_via_idle_scheduler(self: AppProtocol, scheduler: Any) -> None:
         """Load schema using idle scheduler for smoother UI."""
@@ -495,49 +518,32 @@ class AutocompleteMixin:
         self._schema_pending_dbs: list[str | None] = []
         self._schema_total_jobs = 0
         self._schema_completed_jobs = 0
+        # Store scheduler reference for use in callbacks
+        self._schema_scheduler = scheduler
 
         def get_databases_job() -> None:
-            """First job: get list of databases to index."""
-            try:
-                if adapter.supports_multiple_databases:
-                    # Use active database (user preference) if set, otherwise fall back to config
-                    db = getattr(self, "_active_database", None) or config.database
-                    if db:
-                        databases = [db]
-                    else:
-                        all_dbs = adapter.get_databases(connection)
-                        system_dbs = {"master", "tempdb", "model", "msdb"}
-                        databases = [d for d in all_dbs if d.lower() not in system_dbs]
+            """First job: dispatch thread to get list of databases."""
+            if adapter.supports_multiple_databases:
+                # Use active database (user preference) if set, otherwise fall back to config
+                db = getattr(self, "_active_database", None) or config.database
+                if db:
+                    # Single database specified - no need for DB call
+                    self._on_databases_loaded([db])
                 else:
-                    databases = [None]
+                    # Need to fetch database list - offload to thread
+                    def work() -> None:
+                        try:
+                            all_dbs = adapter.get_databases(connection)
+                            system_dbs = {s.lower() for s in adapter.system_databases}
+                            databases = [d for d in all_dbs if d.lower() not in system_dbs]
+                            self.call_from_thread(self._on_databases_loaded, databases)
+                        except Exception as e:
+                            self.call_from_thread(self._on_databases_error, e)
 
-                self._schema_pending_dbs = databases
-                self._schema_total_jobs = len(databases) * 3  # tables, views, procedures per db
-
-                # Queue jobs for each database
-                for database in databases:
-                    scheduler.request_idle_callback(
-                        lambda db=database: self._load_tables_job(db),
-                        priority=Priority.HIGH,
-                        name="schema-load",
-                    )
-                    scheduler.request_idle_callback(
-                        lambda db=database: self._load_views_job(db),
-                        priority=Priority.NORMAL,
-                        name="schema-load",
-                    )
-                    if adapter.supports_stored_procedures:
-                        scheduler.request_idle_callback(
-                            lambda db=database: self._load_procedures_job(db),
-                            priority=Priority.LOW,
-                            name="schema-load",
-                        )
-                    else:
-                        self._schema_completed_jobs += 1  # Skip procedures
-
-            except Exception as e:
-                self.log.error(f"Error getting databases: {e}")
-                self._stop_schema_spinner()
+                    self.run_worker(work, thread=True, name="get-databases")
+            else:
+                # No multiple databases - just proceed with None
+                self._on_databases_loaded([None])
 
         # Queue the first job with high priority
         scheduler.request_idle_callback(
@@ -546,8 +552,33 @@ class AutocompleteMixin:
             name="schema-load",
         )
 
+    def _on_databases_loaded(self: AppProtocol, databases: list) -> None:
+        """Handle databases list loaded - spawn threaded workers for each database."""
+        adapter = self.current_adapter
+
+        if not adapter:
+            self._stop_schema_spinner()
+            return
+
+        self._schema_pending_dbs = databases
+        self._schema_total_jobs = len(databases) * 3  # tables, views, procedures per db
+
+        # Spawn workers directly - they're threaded so won't block
+        for database in databases:
+            self._load_tables_job(database)
+            self._load_views_job(database)
+            if adapter.supports_stored_procedures:
+                self._load_procedures_job(database)
+            else:
+                self._schema_completed_jobs += 1  # Skip procedures
+
+    def _on_databases_error(self: AppProtocol, error: Exception) -> None:
+        """Handle error getting databases list."""
+        self.log.error(f"Error getting databases: {error}")
+        self._stop_schema_spinner()
+
     def _load_tables_job(self: AppProtocol, database: str | None) -> None:
-        """Idle job: load tables for a single database."""
+        """Idle job: load tables for a single database (dispatches to thread)."""
         adapter = self.current_adapter
         connection = self.current_connection
 
@@ -557,17 +588,42 @@ class AutocompleteMixin:
 
         cache_key = database or "__default__"
 
-        try:
-            # Check shared cache first (may have been populated by tree expansion)
-            if cache_key in self._db_object_cache and "tables" in self._db_object_cache[cache_key]:
-                tables = self._db_object_cache[cache_key]["tables"]
-            else:
-                # Fetch from database and store in shared cache
-                tables = adapter.get_tables(connection, database)
-                if cache_key not in self._db_object_cache:
-                    self._db_object_cache[cache_key] = {}
-                self._db_object_cache[cache_key]["tables"] = tables
+        # Check shared cache first (may have been populated by tree expansion)
+        if cache_key in self._db_object_cache and "tables" in self._db_object_cache[cache_key]:
+            self._process_tables_result(self._db_object_cache[cache_key]["tables"], database, cache_key)
+            return
 
+        # Offload DB call to thread
+        def work() -> None:
+            try:
+                tables = adapter.get_tables(connection, database)
+                # Store in shared cache and process on main thread
+                self.call_from_thread(self._on_tables_loaded, tables, database, cache_key)
+            except Exception as e:
+                self.call_from_thread(self._on_tables_error, e, database)
+
+        self.run_worker(work, thread=True, name=f"load-tables-{cache_key}")
+
+    def _on_tables_loaded(self: AppProtocol, tables: list, database: str | None, cache_key: str) -> None:
+        """Handle tables loaded from thread."""
+        if cache_key not in self._db_object_cache:
+            self._db_object_cache[cache_key] = {}
+        self._db_object_cache[cache_key]["tables"] = tables
+        self._process_tables_result(tables, database, cache_key)
+
+    def _on_tables_error(self: AppProtocol, error: Exception, database: str | None) -> None:
+        """Handle tables load error from thread."""
+        self.log.error(f"Error loading tables for {database}: {error}")
+        self._schema_job_complete()
+
+    def _process_tables_result(self: AppProtocol, tables: list, database: str | None, cache_key: str) -> None:
+        """Process tables result on main thread."""
+        adapter = self.current_adapter
+        if not adapter:
+            self._schema_job_complete()
+            return
+
+        try:
             single_db = len(getattr(self, "_schema_pending_dbs", [None])) == 1
 
             for schema_name, table_name in tables:
@@ -593,12 +649,12 @@ class AutocompleteMixin:
                         self._table_metadata[full_name.lower()] = (schema_name, table_name, database)
 
         except Exception as e:
-            self.log.error(f"Error loading tables for {database}: {e}")
+            self.log.error(f"Error processing tables for {database}: {e}")
 
         self._schema_job_complete()
 
     def _load_views_job(self: AppProtocol, database: str | None) -> None:
-        """Idle job: load views for a single database."""
+        """Idle job: load views for a single database (dispatches to thread)."""
         adapter = self.current_adapter
         connection = self.current_connection
 
@@ -608,17 +664,41 @@ class AutocompleteMixin:
 
         cache_key = database or "__default__"
 
-        try:
-            # Check shared cache first (may have been populated by tree expansion)
-            if cache_key in self._db_object_cache and "views" in self._db_object_cache[cache_key]:
-                views = self._db_object_cache[cache_key]["views"]
-            else:
-                # Fetch from database and store in shared cache
-                views = adapter.get_views(connection, database)
-                if cache_key not in self._db_object_cache:
-                    self._db_object_cache[cache_key] = {}
-                self._db_object_cache[cache_key]["views"] = views
+        # Check shared cache first (may have been populated by tree expansion)
+        if cache_key in self._db_object_cache and "views" in self._db_object_cache[cache_key]:
+            self._process_views_result(self._db_object_cache[cache_key]["views"], database, cache_key)
+            return
 
+        # Offload DB call to thread
+        def work() -> None:
+            try:
+                views = adapter.get_views(connection, database)
+                self.call_from_thread(self._on_views_loaded, views, database, cache_key)
+            except Exception as e:
+                self.call_from_thread(self._on_views_error, e, database)
+
+        self.run_worker(work, thread=True, name=f"load-views-{cache_key}")
+
+    def _on_views_loaded(self: AppProtocol, views: list, database: str | None, cache_key: str) -> None:
+        """Handle views loaded from thread."""
+        if cache_key not in self._db_object_cache:
+            self._db_object_cache[cache_key] = {}
+        self._db_object_cache[cache_key]["views"] = views
+        self._process_views_result(views, database, cache_key)
+
+    def _on_views_error(self: AppProtocol, error: Exception, database: str | None) -> None:
+        """Handle views load error from thread."""
+        self.log.error(f"Error loading views for {database}: {error}")
+        self._schema_job_complete()
+
+    def _process_views_result(self: AppProtocol, views: list, database: str | None, cache_key: str) -> None:
+        """Process views result on main thread."""
+        adapter = self.current_adapter
+        if not adapter:
+            self._schema_job_complete()
+            return
+
+        try:
             single_db = len(getattr(self, "_schema_pending_dbs", [None])) == 1
 
             for schema_name, view_name in views:
@@ -644,12 +724,12 @@ class AutocompleteMixin:
                         self._table_metadata[full_name.lower()] = (schema_name, view_name, database)
 
         except Exception as e:
-            self.log.error(f"Error loading views for {database}: {e}")
+            self.log.error(f"Error processing views for {database}: {e}")
 
         self._schema_job_complete()
 
     def _load_procedures_job(self: AppProtocol, database: str | None) -> None:
-        """Idle job: load procedures for a single database."""
+        """Idle job: load procedures for a single database (dispatches to thread)."""
         adapter = self.current_adapter
         connection = self.current_connection
 
@@ -659,20 +739,39 @@ class AutocompleteMixin:
 
         cache_key = database or "__default__"
 
-        try:
-            # Check shared cache first (may have been populated by tree expansion)
-            if cache_key in self._db_object_cache and "procedures" in self._db_object_cache[cache_key]:
-                procedures = self._db_object_cache[cache_key]["procedures"]
-            else:
-                # Fetch from database and store in shared cache
-                procedures = adapter.get_procedures(connection, database)
-                if cache_key not in self._db_object_cache:
-                    self._db_object_cache[cache_key] = {}
-                self._db_object_cache[cache_key]["procedures"] = procedures
+        # Check shared cache first (may have been populated by tree expansion)
+        if cache_key in self._db_object_cache and "procedures" in self._db_object_cache[cache_key]:
+            self._process_procedures_result(self._db_object_cache[cache_key]["procedures"], cache_key)
+            return
 
+        # Offload DB call to thread
+        def work() -> None:
+            try:
+                procedures = adapter.get_procedures(connection, database)
+                self.call_from_thread(self._on_procedures_loaded, procedures, database, cache_key)
+            except Exception as e:
+                self.call_from_thread(self._on_procedures_error, e, database)
+
+        self.run_worker(work, thread=True, name=f"load-procedures-{cache_key}")
+
+    def _on_procedures_loaded(self: AppProtocol, procedures: list, database: str | None, cache_key: str) -> None:
+        """Handle procedures loaded from thread."""
+        if cache_key not in self._db_object_cache:
+            self._db_object_cache[cache_key] = {}
+        self._db_object_cache[cache_key]["procedures"] = procedures
+        self._process_procedures_result(procedures, cache_key)
+
+    def _on_procedures_error(self: AppProtocol, error: Exception, database: str | None) -> None:
+        """Handle procedures load error from thread."""
+        self.log.error(f"Error loading procedures for {database}: {error}")
+        self._schema_job_complete()
+
+    def _process_procedures_result(self: AppProtocol, procedures: list, cache_key: str) -> None:
+        """Process procedures result on main thread."""
+        try:
             self._schema_cache["procedures"].extend(procedures)
         except Exception as e:
-            self.log.error(f"Error loading procedures for {database}: {e}")
+            self.log.error(f"Error processing procedures: {e}")
 
         self._schema_job_complete()
 
@@ -762,7 +861,7 @@ class AutocompleteMixin:
                 else:
                     # No default database - load all non-system databases
                     all_dbs = await run_db_call(adapter.get_databases, connection)
-                    system_dbs = {"master", "tempdb", "model", "msdb"}
+                    system_dbs = {s.lower() for s in adapter.system_databases}
                     databases = [d for d in all_dbs if d.lower() not in system_dbs]
             else:
                 databases = [None]

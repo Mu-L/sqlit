@@ -47,6 +47,10 @@ class SQLServerAdapter(DatabaseAdapter):
     def supports_stored_procedures(self) -> bool:
         return True
 
+    @property
+    def system_databases(self) -> frozenset[str]:
+        return frozenset({"master", "tempdb", "model", "msdb"})
+
     def build_connection_string(self, config: ConnectionConfig) -> str:
         return self._build_connection_string(config)
 

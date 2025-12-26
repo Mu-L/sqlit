@@ -189,6 +189,15 @@ class DatabaseAdapter(ABC):
         pass
 
     @property
+    def system_databases(self) -> frozenset[str]:
+        """Set of system database names to exclude from user listings.
+
+        Override in subclasses for database-specific system databases.
+        Returns lowercase names for case-insensitive comparison.
+        """
+        return frozenset()
+
+    @property
     def default_schema(self) -> str:
         """The default schema for this database type.
 
@@ -568,6 +577,10 @@ class MySQLBaseAdapter(CursorBasedAdapter):
         return True
 
     @property
+    def system_databases(self) -> frozenset[str]:
+        return frozenset({"mysql", "information_schema", "performance_schema", "sys"})
+
+    @property
     def supports_stored_procedures(self) -> bool:
         return True
 
@@ -820,6 +833,10 @@ class PostgresBaseAdapter(CursorBasedAdapter):
     @property
     def supports_stored_procedures(self) -> bool:
         return True
+
+    @property
+    def system_databases(self) -> frozenset[str]:
+        return frozenset({"template0", "template1"})
 
     @property
     def default_schema(self) -> str:
