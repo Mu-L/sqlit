@@ -500,7 +500,8 @@ class AutocompleteMixin:
             """First job: get list of databases to index."""
             try:
                 if adapter.supports_multiple_databases:
-                    db = config.database
+                    # Use active database (user preference) if set, otherwise fall back to config
+                    db = getattr(self, "_active_database", None) or config.database
                     if db:
                         databases = [db]
                     else:
@@ -753,9 +754,10 @@ class AutocompleteMixin:
         try:
             databases: list[str | None]
             if adapter.supports_multiple_databases:
-                db = config.database
+                # Use active database (user preference) if set, otherwise fall back to config
+                db = getattr(self, "_active_database", None) or config.database
                 if db:
-                    # Default database is set - only load that one
+                    # Active/default database is set - only load that one
                     databases = [db]
                 else:
                     # No default database - load all non-system databases

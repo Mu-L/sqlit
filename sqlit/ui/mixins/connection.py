@@ -198,6 +198,8 @@ class ConnectionMixin:
             return create_session(config)
 
         def on_success(session: ConnectionSession) -> None:
+            from ...config import get_database_preference
+
             # Ignore if a newer connection attempt was started
             if attempt_id != self._connection_attempt_id:
                 session.close()
@@ -213,11 +215,17 @@ class ConnectionMixin:
             is_saved = any(c.name == config.name for c in self.connections)
             self._direct_connection_config = None if is_saved else config
 
+            # Load cached active database preference (separate from config.database)
+            self._active_database = get_database_preference(config.name)
+
             self.refresh_tree()
             self.call_after_refresh(self._select_connected_node)
             self._load_schema_cache()
             self._update_status_bar()
             self._update_section_labels()
+            # Update database labels to show star on active database
+            if hasattr(self, "_update_database_labels"):
+                self.call_after_refresh(self._update_database_labels)
             if self.current_adapter:
                 warnings = self.current_adapter.get_post_connect_warnings(config)
                 for message in warnings:
@@ -265,6 +273,7 @@ class ConnectionMixin:
         self.current_adapter = None
         self.current_ssh_tunnel = None
         self._direct_connection_config = None
+        self._active_database = None
         self.refresh_tree()
         self._update_section_labels()
 

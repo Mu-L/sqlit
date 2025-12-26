@@ -173,10 +173,10 @@ class TreeMixin:
                     dbs_node.data = FolderNode(folder_type="databases")
 
                     databases = self._run_db_call(adapter.get_databases, self.current_connection)
-                    default_db = self.current_config.database if self.current_config else None
+                    active_db = getattr(self, "_active_database", None)
                     for db_name in databases:
-                        # Show default database with star and green text
-                        if default_db and db_name.lower() == default_db.lower():
+                        # Show active database with star and green text
+                        if active_db and db_name.lower() == active_db.lower():
                             db_label = f"[#4ADE80]* {escape_markup(db_name)}[/]"
                         else:
                             db_label = escape_markup(db_name)
@@ -743,21 +743,24 @@ class TreeMixin:
             self.query_input.text = f"/*\n{definition}\n*/"
 
     def set_default_database(self: AppProtocol, db_name: str | None) -> None:
-        """Set or clear the default database for the current connection.
+        """Set or clear the active database for the current connection.
 
         This is the shared function used by both the USE query handler and
-        the explorer 'Use as default' action.
+        the explorer 'Use as default' action. Sets _active_database (not config.database)
+        so tree structure is preserved.
 
         Args:
-            db_name: The database name to set as default, or None to clear.
+            db_name: The database name to set as active, or None to clear.
         """
-        from dataclasses import replace
+        from ...config import set_database_preference
 
         if not self.current_config:
             self.notify("Not connected", severity="error")
             return
 
-        self.current_config = replace(self.current_config, database=db_name)
+        self._active_database = db_name
+        # Cache the preference so it persists across sessions
+        set_database_preference(self.current_config.name, db_name)
         if db_name:
             self.notify(f"Switched to database: {db_name}")
         else:
@@ -768,11 +771,11 @@ class TreeMixin:
         self._load_schema_cache()
 
     def _update_database_labels(self: AppProtocol) -> None:
-        """Update database node labels to show the default database with a star."""
+        """Update database node labels to show the active database with a star."""
         if not self.current_config:
             return
 
-        default_db = self.current_config.database
+        active_db = getattr(self, "_active_database", None)
 
         # Find the Databases folder and update labels
         for conn_node in self.object_tree.root.children:
@@ -790,7 +793,7 @@ class TreeMixin:
                     for db_node in child.children:
                         if self._get_node_kind(db_node) == "database":
                             db_name = db_node.data.name
-                            if default_db and db_name.lower() == default_db.lower():
+                            if active_db and db_name.lower() == active_db.lower():
                                 db_node.set_label(f"[#4ADE80]* {escape_markup(db_name)}[/]")
                             else:
                                 db_node.set_label(escape_markup(db_name))
@@ -809,10 +812,10 @@ class TreeMixin:
             return
 
         db_name = node.data.name
-        current_default = self.current_config.database
+        current_active = getattr(self, "_active_database", None)
 
-        # Toggle: if already default, clear it; otherwise set it
-        if current_default and current_default.lower() == db_name.lower():
+        # Toggle: if already active, clear it; otherwise set it
+        if current_active and current_active.lower() == db_name.lower():
             self.set_default_database(None)
         else:
             self.set_default_database(db_name)
