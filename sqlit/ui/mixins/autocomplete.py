@@ -315,6 +315,11 @@ class AutocompleteMixin:
             self._hide_autocomplete()
             return
 
+        # Suppress autocomplete after Enter dismisses dropdown (newline shouldn't re-trigger)
+        if getattr(self, "_suppress_autocomplete_on_newline", False):
+            self._suppress_autocomplete_on_newline = False
+            return
+
         if self.vim_mode != VimMode.INSERT:
             self._hide_autocomplete()
             return

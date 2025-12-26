@@ -27,17 +27,10 @@ class QueryTextArea(TextArea):
             # Check if autocomplete is visible on the app
             app = self.app
             if getattr(app, "_autocomplete_visible", False):
-                # Let the app's on_key handler deal with it
-                # Don't process Enter here - just let it bubble up
-                event.prevent_default()
-                # Call app's autocomplete handler directly
-                if hasattr(app, "_apply_autocomplete"):
-                    dropdown = getattr(app, "autocomplete_dropdown", None)
-                    if dropdown and getattr(dropdown, "filtered_items", None):
-                        app._apply_autocomplete()
-                    else:
-                        app._hide_autocomplete()
-                return
+                # Hide autocomplete and suppress re-triggering from the newline
+                if hasattr(app, "_hide_autocomplete"):
+                    app._hide_autocomplete()
+                app._suppress_autocomplete_on_newline = True
         # For all other keys, use default TextArea behavior
         super()._on_key(event)
 
