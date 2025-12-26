@@ -35,7 +35,7 @@ class ThemeScreen(ModalScreen[str | None]):
     """Modal screen for theme selection."""
 
     BINDINGS = [
-        Binding("escape", "cancel", "Cancel"),
+        Binding("escape", "cancel", "Cancel", priority=True),
         Binding("enter", "select_option", "Select"),
     ]
 
