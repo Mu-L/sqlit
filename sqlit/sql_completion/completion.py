@@ -57,6 +57,10 @@ def get_context(sql: str, cursor_pos: int) -> list[Suggestion]:
     if is_inside_string(before_cursor):
         return []
 
+    # Don't suggest anything after a statement terminator (semicolon)
+    if before_cursor.rstrip().endswith(";"):
+        return []
+
     # Check for table.column pattern (alias or table prefix)
     dot_match = re.search(r"(\w+)\.\w*$", before_cursor)
     if dot_match:

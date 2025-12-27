@@ -1060,3 +1060,44 @@ class TestCaseExpression:
         )
         # After END, common to add alias or comma
         assert "AS" in completions or len(completions) > 0
+
+
+class TestSemicolonBehavior:
+    """Tests for statement terminator (semicolon) behavior."""
+
+    @pytest.fixture
+    def schema(self):
+        """Sample database schema."""
+        return {
+            "tables": ["users", "orders", "tradition_foods"],
+            "columns": {
+                "users": ["id", "name", "email"],
+                "orders": ["id", "user_id", "total"],
+                "tradition_foods": ["id", "name", "origin"],
+            },
+            "procedures": [],
+        }
+
+    def test_after_semicolon_no_suggestions(self, schema):
+        """After a semicolon, autocomplete should hide (no suggestions)."""
+        sql = "SELECT * FROM tradition_foods;"
+        completions = get_completions(
+            sql, len(sql), schema["tables"], schema["columns"], schema["procedures"]
+        )
+        assert completions == [], f"Expected no suggestions after semicolon, got {completions}"
+
+    def test_after_semicolon_with_space_no_suggestions(self, schema):
+        """After semicolon and space, autocomplete should hide (no suggestions)."""
+        sql = "SELECT * FROM users; "
+        completions = get_completions(
+            sql, len(sql), schema["tables"], schema["columns"], schema["procedures"]
+        )
+        assert completions == [], f"Expected no suggestions after semicolon, got {completions}"
+
+    def test_after_semicolon_typing_new_statement(self, schema):
+        """After semicolon, typing a new keyword should show keyword completions."""
+        sql = "SELECT * FROM users; SEL"
+        completions = get_completions(
+            sql, len(sql), schema["tables"], schema["columns"], schema["procedures"]
+        )
+        assert "SELECT" in completions, "Should suggest SELECT when typing new statement"
