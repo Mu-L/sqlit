@@ -175,11 +175,12 @@ class ThemeScreen(ModalScreen[str | None]):
     }
 
     #theme-dialog {
-        width: 40;
+        width: 52;
+        overflow-y: hidden;
     }
 
     #theme-list {
-        height: auto;
+        height: 16;
         max-height: 16;
         border: none;
     }
@@ -240,7 +241,7 @@ class ThemeScreen(ModalScreen[str | None]):
         return custom, light, dark
 
     def compose(self) -> ComposeResult:
-        shortcuts = [("New", "n"), ("Edit", "e"), ("Select", "<enter>"), ("Cancel", "<esc>")]
+        shortcuts = [("New", "n"), ("Select", "<enter>")]
         with Dialog(id="theme-dialog", title="Select Theme", shortcuts=shortcuts):
             options: list[Option] = []
             custom_themes, light_themes, dark_themes = self._build_theme_list()
@@ -273,6 +274,7 @@ class ThemeScreen(ModalScreen[str | None]):
         option_list.focus()
         # Highlight current theme
         self._highlight_current_theme(option_list)
+        self._update_shortcuts()
 
     def _highlight_current_theme(self, option_list: OptionList) -> None:
         try:
@@ -305,6 +307,38 @@ class ThemeScreen(ModalScreen[str | None]):
 
         option_list.set_options(options)
         self._highlight_current_theme(option_list)
+        self._update_shortcuts()
+
+    def _update_shortcuts(self, theme_id: str | None = None) -> None:
+        dialog = self.query_one("#theme-dialog", Dialog)
+        if theme_id is None:
+            option_list = self.query_one("#theme-list", OptionList)
+            if option_list.highlighted is not None:
+                try:
+                    option = option_list.get_option_at_index(option_list.highlighted)
+                    theme_id = option.id
+                except Exception:
+                    theme_id = None
+
+        show_edit = False
+        if theme_id:
+            try:
+                show_edit = theme_id in self.app.get_custom_theme_names()
+            except Exception:
+                show_edit = False
+
+        shortcuts = [("New", "n"), ("Select", "<enter>")]
+        if show_edit:
+            shortcuts.insert(1, ("Edit", "e"))
+
+        def format_key(key: str) -> str:
+            if key.startswith("<") and key.endswith(">"):
+                return key
+            return f"<{key}>"
+
+        dialog.border_subtitle = "\u00a0·\u00a0".join(
+            f"{action}: [bold]{format_key(key)}[/]" for action, key in shortcuts
+        )
 
     def on_option_list_option_highlighted(
         self, event: OptionList.OptionHighlighted
@@ -316,6 +350,7 @@ class ThemeScreen(ModalScreen[str | None]):
                 self.app.theme = theme_id
             except Exception:
                 pass  # Ignore errors during preview
+        self._update_shortcuts(theme_id)
 
     def on_option_list_option_selected(self, event: OptionList.OptionSelected) -> None:
         self.dismiss(event.option.id)
