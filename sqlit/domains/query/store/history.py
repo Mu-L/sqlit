@@ -161,22 +161,3 @@ class HistoryStore(JSONFileStore):
         if deleted > 0:
             self._write_json(all_entries)
         return deleted
-
-
-# Module-level convenience functions for backward compatibility
-_store = HistoryStore()
-
-
-def load_query_history(connection_name: str) -> list[QueryHistoryEntry]:
-    """Load query history for a specific connection, sorted by most recent first."""
-    return _store.load_for_connection(connection_name)
-
-
-def save_query_to_history(connection_name: str, query: str) -> None:
-    """Save a query to history for a connection."""
-    _store.save_query(connection_name, query)
-
-
-def delete_query_from_history(connection_name: str, timestamp: str) -> bool:
-    """Delete a specific query from history by connection name and timestamp."""
-    return _store.delete_entry(connection_name, timestamp)

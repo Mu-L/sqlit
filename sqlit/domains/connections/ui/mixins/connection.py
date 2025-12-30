@@ -330,7 +330,7 @@ class ConnectionMixin:
 
     def handle_connection_result(self: AppProtocol, result: tuple | None) -> None:
         from sqlit.domains.connections.store.connections import save_connections
-        from sqlit.domains.shell.store.settings import load_settings, save_settings
+        from sqlit.domains.shell.store.settings import SettingsStore
         from sqlit.domains.connections.app.credentials import (
             ALLOW_PLAINTEXT_CREDENTIALS_SETTING,
             is_keyring_usable,
@@ -361,7 +361,8 @@ class ConnectionMixin:
 
             needs_password_persist = bool(getattr(config, "password", "") or getattr(config, "ssh_password", ""))
             if not getattr(self, "_mock_profile", None) and needs_password_persist and not is_keyring_usable():
-                settings = load_settings()
+                store = SettingsStore.get_instance()
+                settings = store.load_all()
                 allow_plaintext = settings.get(ALLOW_PLAINTEXT_CREDENTIALS_SETTING)
 
                 if allow_plaintext is True:
@@ -377,17 +378,17 @@ class ConnectionMixin:
                     return
 
                 def on_confirm(confirmed: bool | None) -> None:
-                    settings2 = load_settings()
+                    settings2 = store.load_all()
                     if confirmed is True:
                         settings2[ALLOW_PLAINTEXT_CREDENTIALS_SETTING] = True
-                        save_settings(settings2)
+                        store.save_all(settings2)
                         reset_credentials_service()
                         do_save(config, original_name)
                         self.notify("Saved passwords as plaintext in ~/.sqlit/ (0600)", severity="warning")
                         return
 
                     settings2[ALLOW_PLAINTEXT_CREDENTIALS_SETTING] = False
-                    save_settings(settings2)
+                    store.save_all(settings2)
                     config.password = ""
                     config.ssh_password = ""
                     do_save(config, original_name)

@@ -373,7 +373,7 @@ class UINavigationMixin:
 
         Args:
             message: The notification message.
-            title: Ignored (for API compatibility).
+            title: Unused.
             severity: One of "information", "warning", "error".
             timeout: Seconds before auto-clearing (default 3s, errors stay 5s).
         """

@@ -23,6 +23,7 @@ class SettingsStore(JSONFileStore):
     """
 
     _instance: SettingsStore | None = None
+    _instance_path: Path | None = None
 
     def __init__(self, file_path: Path | None = None) -> None:
         super().__init__(file_path or _resolve_settings_path())
@@ -30,7 +31,11 @@ class SettingsStore(JSONFileStore):
     @classmethod
     def get_instance(cls) -> SettingsStore:
         """Get the singleton instance."""
-        return _get_store()
+        path = _resolve_settings_path()
+        if cls._instance is None or cls._instance_path != path:
+            cls._instance = cls(file_path=path)
+            cls._instance_path = path
+        return cls._instance
 
     def load_all(self) -> dict[str, Any]:
         """Load all settings.
@@ -87,27 +92,3 @@ class SettingsStore(JSONFileStore):
             self.save_all(settings)
             return True
         return False
-
-
-# Module-level convenience functions for backward compatibility
-_store: SettingsStore | None = None
-_store_path: Path | None = None
-
-
-def _get_store() -> SettingsStore:
-    global _store, _store_path
-    path = _resolve_settings_path()
-    if _store is None or _store_path != path:
-        _store = SettingsStore(file_path=path)
-        _store_path = path
-    return _store
-
-
-def load_settings() -> dict:
-    """Load app settings from config file."""
-    return _get_store().load_all()
-
-
-def save_settings(settings: dict) -> None:
-    """Save app settings to config file."""
-    _get_store().save_all(settings)

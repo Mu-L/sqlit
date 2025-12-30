@@ -43,7 +43,7 @@ DARK_THEMES = {
     "osaka-jade": "Osaka Jade",
 }
 
-# Combined for backwards compatibility and building the full list
+# Combined theme list for selection and previews.
 THEME_LABELS = {**LIGHT_THEMES, **DARK_THEMES}
 
 

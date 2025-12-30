@@ -246,64 +246,53 @@ class AWSProvider:
                 account_tenant=account.tenant if account else None,
             )
 
-        # Build flat lists for backward compatibility
-        all_rds_instances: list[AWSRDSInstance] = []
-        all_redshift_clusters: list[AWSRedshiftCluster] = []
-
-        for region_resources in regions_with_resources:
-            all_rds_instances.extend(region_resources.rds_instances)
-            all_redshift_clusters.extend(region_resources.redshift_clusters)
-
         # Build resources
         resources: list[CloudResource] = []
 
-        for instance in all_rds_instances:
-            resources.append(
-                CloudResource(
-                    id=f"rds_{instance.region}_{instance.identifier}",
-                    name=instance.identifier,
-                    resource_type="rds_instance",
-                    provider="aws",
-                    metadata={
-                        "engine": instance.engine,
-                        "endpoint": instance.endpoint,
-                        "port": instance.port,
-                        "status": instance.status,
-                        "master_username": instance.master_username,
-                        "db_name": instance.db_name,
-                        "region": instance.region,
-                    },
+        for region_resources in regions_with_resources:
+            for instance in region_resources.rds_instances:
+                resources.append(
+                    CloudResource(
+                        id=f"rds_{instance.region}_{instance.identifier}",
+                        name=instance.identifier,
+                        resource_type="rds_instance",
+                        provider="aws",
+                        metadata={
+                            "engine": instance.engine,
+                            "endpoint": instance.endpoint,
+                            "port": instance.port,
+                            "status": instance.status,
+                            "master_username": instance.master_username,
+                            "db_name": instance.db_name,
+                            "region": instance.region,
+                        },
+                    )
                 )
-            )
 
-        for cluster in all_redshift_clusters:
-            resources.append(
-                CloudResource(
-                    id=f"redshift_{cluster.region}_{cluster.identifier}",
-                    name=cluster.identifier,
-                    resource_type="redshift_cluster",
-                    provider="aws",
-                    metadata={
-                        "endpoint": cluster.endpoint,
-                        "port": cluster.port,
-                        "status": cluster.status,
-                        "master_username": cluster.master_username,
-                        "db_name": cluster.db_name,
-                        "region": cluster.region,
-                    },
+            for cluster in region_resources.redshift_clusters:
+                resources.append(
+                    CloudResource(
+                        id=f"redshift_{cluster.region}_{cluster.identifier}",
+                        name=cluster.identifier,
+                        resource_type="redshift_cluster",
+                        provider="aws",
+                        metadata={
+                            "endpoint": cluster.endpoint,
+                            "port": cluster.port,
+                            "status": cluster.status,
+                            "master_username": cluster.master_username,
+                            "db_name": cluster.db_name,
+                            "region": cluster.region,
+                        },
+                    )
                 )
-            )
 
         return ProviderState(
             status=ProviderStatus.AVAILABLE,
             account=account,
             loading=False,
             resources=resources,
-            extra={
-                "regions_with_resources": regions_with_resources,
-                "rds_instances": all_rds_instances,
-                "redshift_clusters": all_redshift_clusters,
-            },
+            extra={"regions_with_resources": regions_with_resources},
         )
 
     def _discover_all_regions(self) -> list[RegionResources]:
@@ -610,19 +599,10 @@ class AWSProvider:
         # RDS instance selection (format: aws:rds:region:identifier)
         if option_id.startswith(self.RDS_PREFIX):
             rest = option_id.replace(self.RDS_PREFIX, "")
-            if ":" in rest:
-                region, identifier = rest.split(":", 1)
-            else:
-                # Backward compatibility
-                identifier = rest
-                region = None
-
-            rds_instances = state.extra.get("rds_instances", [])
-            instance = next(
-                (i for i in rds_instances
-                 if i.identifier == identifier and (region is None or i.region == region)),
-                None
-            )
+            if ":" not in rest:
+                return SelectionResult(action="none")
+            region, identifier = rest.split(":", 1)
+            instance = self._find_rds_instance(state, region, identifier)
 
             if instance:
                 config = self._rds_to_config(instance)
@@ -635,19 +615,10 @@ class AWSProvider:
         # Redshift cluster selection (format: aws:redshift:region:identifier)
         if option_id.startswith(self.REDSHIFT_PREFIX):
             rest = option_id.replace(self.REDSHIFT_PREFIX, "")
-            if ":" in rest:
-                region, identifier = rest.split(":", 1)
-            else:
-                # Backward compatibility
-                identifier = rest
-                region = None
-
-            clusters = state.extra.get("redshift_clusters", [])
-            cluster = next(
-                (c for c in clusters
-                 if c.identifier == identifier and (region is None or c.region == region)),
-                None
-            )
+            if ":" not in rest:
+                return SelectionResult(action="none")
+            region, identifier = rest.split(":", 1)
+            cluster = self._find_redshift_cluster(state, region, identifier)
 
             if cluster:
                 config = self._redshift_to_config(cluster)
@@ -700,6 +671,36 @@ class AWSProvider:
                 return True
         return False
 
+    def _find_rds_instance(
+        self,
+        state: ProviderState,
+        region: str,
+        identifier: str,
+    ) -> AWSRDSInstance | None:
+        regions_with_resources: list[RegionResources] = state.extra.get("regions_with_resources", [])
+        for region_resources in regions_with_resources:
+            if region_resources.region != region:
+                continue
+            for instance in region_resources.rds_instances:
+                if instance.identifier == identifier:
+                    return instance
+        return None
+
+    def _find_redshift_cluster(
+        self,
+        state: ProviderState,
+        region: str,
+        identifier: str,
+    ) -> AWSRedshiftCluster | None:
+        regions_with_resources: list[RegionResources] = state.extra.get("regions_with_resources", [])
+        for region_resources in regions_with_resources:
+            if region_resources.region != region:
+                continue
+            for cluster in region_resources.redshift_clusters:
+                if cluster.identifier == identifier:
+                    return cluster
+        return None
+
     def _is_redshift_saved(
         self,
         cluster: AWSRedshiftCluster,
@@ -712,7 +713,6 @@ class AWSProvider:
             if conn.server == cluster.endpoint:
                 return True
         return False
-
 
     def _rds_to_config(self, instance: AWSRDSInstance) -> ConnectionConfig:
         """Convert an RDS instance to a connection config."""

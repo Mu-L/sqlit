@@ -28,8 +28,10 @@ class TestConnectAction:
 
         with (
             patch("sqlit.domains.shell.app.main.load_connections", mock_connections.load_all),
-            patch("sqlit.domains.shell.app.theme_manager.load_settings", mock_settings.load_all),
-            patch("sqlit.domains.shell.app.theme_manager.save_settings", mock_settings.save_all),
+            patch(
+                "sqlit.domains.shell.app.theme_manager.SettingsStore.get_instance",
+                return_value=mock_settings,
+            ),
         ):
             app = SSMSTUI()
 
@@ -61,8 +63,10 @@ class TestConnectAction:
 
         with (
             patch("sqlit.domains.shell.app.main.load_connections", mock_connections.load_all),
-            patch("sqlit.domains.shell.app.theme_manager.load_settings", mock_settings.load_all),
-            patch("sqlit.domains.shell.app.theme_manager.save_settings", mock_settings.save_all),
+            patch(
+                "sqlit.domains.shell.app.theme_manager.SettingsStore.get_instance",
+                return_value=mock_settings,
+            ),
         ):
             app = SSMSTUI()
 
@@ -131,8 +135,10 @@ class TestDockerContainerPicker:
 
         with (
             patch("sqlit.domains.shell.app.main.load_connections", mock_connections.load_all),
-            patch("sqlit.domains.shell.app.theme_manager.load_settings", mock_settings.load_all),
-            patch("sqlit.domains.shell.app.theme_manager.save_settings", mock_settings.save_all),
+            patch(
+                "sqlit.domains.shell.app.theme_manager.SettingsStore.get_instance",
+                return_value=mock_settings,
+            ),
             patch(
                 "sqlit.domains.connections.discovery.docker_detector.detect_database_containers",
                 mock_detect,
@@ -185,8 +191,10 @@ class TestDockerContainerPicker:
 
         with (
             patch("sqlit.domains.shell.app.main.load_connections", mock_connections.load_all),
-            patch("sqlit.domains.shell.app.theme_manager.load_settings", mock_settings.load_all),
-            patch("sqlit.domains.shell.app.theme_manager.save_settings", mock_settings.save_all),
+            patch(
+                "sqlit.domains.shell.app.theme_manager.SettingsStore.get_instance",
+                return_value=mock_settings,
+            ),
             patch(
                 "sqlit.domains.connections.discovery.docker_detector.detect_database_containers",
                 mock_detect,
@@ -248,8 +256,10 @@ class TestDockerContainerPicker:
 
         with (
             patch("sqlit.domains.shell.app.main.load_connections", mock_connections.load_all),
-            patch("sqlit.domains.shell.app.theme_manager.load_settings", mock_settings.load_all),
-            patch("sqlit.domains.shell.app.theme_manager.save_settings", mock_settings.save_all),
+            patch(
+                "sqlit.domains.shell.app.theme_manager.SettingsStore.get_instance",
+                return_value=mock_settings,
+            ),
             patch(
                 "sqlit.domains.connections.discovery.docker_detector.detect_database_containers",
                 mock_detect,
@@ -296,8 +306,10 @@ class TestDockerContainerPicker:
 
         with (
             patch("sqlit.domains.shell.app.main.load_connections", mock_connections.load_all),
-            patch("sqlit.domains.shell.app.theme_manager.load_settings", mock_settings.load_all),
-            patch("sqlit.domains.shell.app.theme_manager.save_settings", mock_settings.save_all),
+            patch(
+                "sqlit.domains.shell.app.theme_manager.SettingsStore.get_instance",
+                return_value=mock_settings,
+            ),
             patch(
                 "sqlit.domains.connections.discovery.docker_detector.detect_database_containers",
                 mock_detect,

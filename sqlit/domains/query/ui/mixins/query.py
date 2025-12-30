@@ -414,12 +414,14 @@ class QueryMixin:
             self.notify("Not connected", severity="warning")
             return
 
-        from sqlit.domains.query.store.history import load_query_history
-        from sqlit.domains.query.store.starred import load_starred_queries
+        from sqlit.domains.query.store.history import HistoryStore
+        from sqlit.domains.query.store.starred import StarredStore
         from ..screens import QueryHistoryScreen
 
-        history = load_query_history(self.current_config.name)
-        starred = load_starred_queries(self.current_config.name)
+        history_store = HistoryStore.get_instance()
+        starred_store = StarredStore.get_instance()
+        history = history_store.load_for_connection(self.current_config.name)
+        starred = starred_store.load_for_connection(self.current_config.name)
         self.push_screen(
             QueryHistoryScreen(history, self.current_config.name, starred),
             self._handle_history_result,
@@ -462,20 +464,20 @@ class QueryMixin:
 
     def _delete_history_entry(self: AppProtocol, timestamp: str) -> None:
         """Delete a specific history entry by timestamp."""
-        from sqlit.domains.query.store.history import delete_query_from_history
+        from sqlit.domains.query.store.history import HistoryStore
 
         if not self.current_config:
             return
-        delete_query_from_history(self.current_config.name, timestamp)
+        HistoryStore.get_instance().delete_entry(self.current_config.name, timestamp)
 
     def _toggle_star(self: AppProtocol, query: str) -> None:
         """Toggle star status for a query."""
-        from sqlit.domains.query.store.starred import toggle_query_star
+        from sqlit.domains.query.store.starred import StarredStore
 
         if not self.current_config:
             return
 
-        is_now_starred = toggle_query_star(self.current_config.name, query)
+        is_now_starred = StarredStore.get_instance().toggle_star(self.current_config.name, query)
         if is_now_starred:
             self.notify("Query starred")
         else:

@@ -32,12 +32,13 @@ def _maybe_prompt_plaintext_credentials() -> bool:
 
     Returns True if plaintext storage is allowed; False otherwise.
     """
-    from sqlit.domains.shell.store.settings import load_settings, save_settings
+    from sqlit.domains.shell.store.settings import SettingsStore
 
     if is_keyring_usable():
         return False
 
-    settings = load_settings()
+    store = SettingsStore.get_instance()
+    settings = store.load_all()
     existing = settings.get(ALLOW_PLAINTEXT_CREDENTIALS_SETTING)
     if isinstance(existing, bool):
         if existing:
@@ -50,7 +51,7 @@ def _maybe_prompt_plaintext_credentials() -> bool:
     answer = input("Keyring isn't available. Save passwords as plaintext in ~/.sqlit/? [y/N]: ").strip().lower()
     allow = answer in {"y", "yes"}
     settings[ALLOW_PLAINTEXT_CREDENTIALS_SETTING] = allow
-    save_settings(settings)
+    store.save_all(settings)
     if allow:
         reset_credentials_service()
     return allow

@@ -47,17 +47,6 @@ from .insert import get_insert_context
 from .truncate import get_truncate_completions
 from .update import get_update_context
 
-# Backwards compatibility aliases for private functions
-_is_inside_string = is_inside_string
-_get_last_token_info = None  # Internal to completion.py
-_remove_string_literals = remove_string_literals
-_remove_comments = remove_comments
-_find_context_keyword = find_context_keyword
-_find_last_keyword = find_last_keyword
-_find_current_clause = find_current_clause
-_get_current_word = get_current_word
-_build_alias_map = build_alias_map
-
 __all__ = [
     # Main API
     "get_completions",
@@ -106,13 +95,4 @@ __all__ = [
     "find_current_clause",
     "get_current_word",
     "build_alias_map",
-    # Backwards compatibility (private names)
-    "_is_inside_string",
-    "_remove_string_literals",
-    "_remove_comments",
-    "_find_context_keyword",
-    "_find_last_keyword",
-    "_find_current_clause",
-    "_get_current_word",
-    "_build_alias_map",
 ]

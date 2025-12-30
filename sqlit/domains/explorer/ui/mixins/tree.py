@@ -266,7 +266,7 @@ class TreeMixin:
 
     def _save_expanded_state(self: AppProtocol) -> None:
         """Save which nodes are expanded."""
-        from sqlit.domains.shell.store.settings import load_settings, save_settings
+        from sqlit.domains.shell.store.settings import SettingsStore
 
         expanded = []
 
@@ -281,9 +281,10 @@ class TreeMixin:
         collect_expanded(self.object_tree.root)
 
         self._expanded_paths = set(expanded)
-        settings = load_settings()
+        store = SettingsStore.get_instance()
+        settings = store.load_all()
         settings["expanded_nodes"] = expanded
-        save_settings(settings)
+        store.save_all(settings)
 
     def on_tree_node_collapsed(self: AppProtocol, event: Tree.NodeCollapsed) -> None:
         """Save state when a node is collapsed."""

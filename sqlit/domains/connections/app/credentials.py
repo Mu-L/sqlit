@@ -340,9 +340,9 @@ def get_credentials_service() -> CredentialsService:
         if is_keyring_usable():
             _credentials_service = KeyringCredentialsService()
         else:
-            from sqlit.domains.shell.store.settings import load_settings
+            from sqlit.domains.shell.store.settings import SettingsStore
 
-            settings = load_settings()
+            settings = SettingsStore.get_instance().load_all()
             allow_plaintext = bool(settings.get(ALLOW_PLAINTEXT_CREDENTIALS_SETTING))
             _credentials_service = PlaintextFileCredentialsService() if allow_plaintext else PlaintextCredentialsService()
     return _credentials_service

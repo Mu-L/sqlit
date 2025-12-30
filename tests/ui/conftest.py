@@ -100,8 +100,10 @@ def patch_stores(mock_connection_store, mock_settings_store):
     with (
         patch("sqlit.domains.connections.store.connections.load_connections", mock_connection_store.load_all),
         patch("sqlit.domains.connections.store.connections.save_connections", mock_connection_store.save_all),
-        patch("sqlit.domains.shell.store.settings.load_settings", mock_settings_store.load_all),
-        patch("sqlit.domains.shell.store.settings.save_settings", mock_settings_store.save_all),
+        patch(
+            "sqlit.domains.shell.store.settings.SettingsStore.get_instance",
+            return_value=mock_settings_store,
+        ),
     ):
         yield {
             "connections": mock_connection_store,
@@ -115,8 +117,10 @@ def patch_stores_with_data(mock_connection_store_with_data, mock_settings_store)
     with (
         patch("sqlit.domains.connections.store.connections.load_connections", mock_connection_store_with_data.load_all),
         patch("sqlit.domains.connections.store.connections.save_connections", mock_connection_store_with_data.save_all),
-        patch("sqlit.domains.shell.store.settings.load_settings", mock_settings_store.load_all),
-        patch("sqlit.domains.shell.store.settings.save_settings", mock_settings_store.save_all),
+        patch(
+            "sqlit.domains.shell.store.settings.SettingsStore.get_instance",
+            return_value=mock_settings_store,
+        ),
     ):
         yield {
             "connections": mock_connection_store_with_data,

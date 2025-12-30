@@ -23,8 +23,10 @@ class TestQueryHistoryCursorMemory:
 
         with (
             patch("sqlit.domains.shell.app.main.load_connections", mock_connections.load_all),
-            patch("sqlit.domains.shell.app.theme_manager.load_settings", mock_settings.load_all),
-            patch("sqlit.domains.shell.app.theme_manager.save_settings", mock_settings.save_all),
+            patch(
+                "sqlit.domains.shell.app.theme_manager.SettingsStore.get_instance",
+                return_value=mock_settings,
+            ),
         ):
             app = SSMSTUI()
 
@@ -73,8 +75,10 @@ class TestQueryHistoryCursorMemory:
 
         with (
             patch("sqlit.domains.shell.app.main.load_connections", mock_connections.load_all),
-            patch("sqlit.domains.shell.app.theme_manager.load_settings", mock_settings.load_all),
-            patch("sqlit.domains.shell.app.theme_manager.save_settings", mock_settings.save_all),
+            patch(
+                "sqlit.domains.shell.app.theme_manager.SettingsStore.get_instance",
+                return_value=mock_settings,
+            ),
         ):
             app = SSMSTUI()
 
@@ -101,8 +105,10 @@ class TestQueryHistoryCursorMemory:
 
         with (
             patch("sqlit.domains.shell.app.main.load_connections", mock_connections.load_all),
-            patch("sqlit.domains.shell.app.theme_manager.load_settings", mock_settings.load_all),
-            patch("sqlit.domains.shell.app.theme_manager.save_settings", mock_settings.save_all),
+            patch(
+                "sqlit.domains.shell.app.theme_manager.SettingsStore.get_instance",
+                return_value=mock_settings,
+            ),
         ):
             app = SSMSTUI()
 
@@ -137,8 +143,10 @@ class TestQueryHistoryCursorMemory:
 
         with (
             patch("sqlit.domains.shell.app.main.load_connections", mock_connections.load_all),
-            patch("sqlit.domains.shell.app.theme_manager.load_settings", mock_settings.load_all),
-            patch("sqlit.domains.shell.app.theme_manager.save_settings", mock_settings.save_all),
+            patch(
+                "sqlit.domains.shell.app.theme_manager.SettingsStore.get_instance",
+                return_value=mock_settings,
+            ),
         ):
             app = SSMSTUI()
 

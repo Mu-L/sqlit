@@ -144,19 +144,3 @@ class StarredStore(JSONFileStore):
         del all_starred[connection_name]
         self._write_json(all_starred)
         return count
-
-
-# Module-level convenience functions
-def load_starred_queries(connection_name: str) -> set[str]:
-    """Load starred queries for a specific connection."""
-    return StarredStore.get_instance().load_for_connection(connection_name)
-
-
-def is_query_starred(connection_name: str, query: str) -> bool:
-    """Check if a query is starred."""
-    return StarredStore.get_instance().is_starred(connection_name, query)
-
-
-def toggle_query_star(connection_name: str, query: str) -> bool:
-    """Toggle star status. Returns True if now starred."""
-    return StarredStore.get_instance().toggle_star(connection_name, query)
