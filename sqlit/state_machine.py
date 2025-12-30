@@ -899,7 +899,8 @@ class ResultsFocusedState(State):
     help_category = "Results"
 
     def _setup_actions(self) -> None:
-        self.allows("view_cell", key="v", label="View cell", help="View selected cell")
+        self.allows("view_cell", key="v", label="View cell", help="Preview cell (tooltip)")
+        self.allows("view_cell_full", key="V", label="View full", help="View full cell value")
         self.allows("edit_cell", key="u", label="Update cell", help="Update cell (generate UPDATE)")
         self.allows("copy_context", key="y", label="Copy cell", help="Copy selected cell")
         self.allows("copy_row", key="Y", label="Copy row", help="Copy selected row")
@@ -921,7 +922,8 @@ class ResultsFocusedState(State):
             left.append(DisplayBinding(key="v", label="View error", action="view_cell"))
             left.append(DisplayBinding(key="y", label="Copy error", action="copy_context"))
         else:
-            left.append(DisplayBinding(key="v", label="View cell", action="view_cell"))
+            left.append(DisplayBinding(key="v", label="Preview", action="view_cell"))
+            left.append(DisplayBinding(key="V", label="View", action="view_cell_full"))
             left.append(DisplayBinding(key="u", label="Update", action="edit_cell"))
             left.append(DisplayBinding(key="y", label="Copy cell", action="copy_context"))
             left.append(DisplayBinding(key="Y", label="Copy row", action="copy_row"))
@@ -929,7 +931,7 @@ class ResultsFocusedState(State):
         left.append(DisplayBinding(key="x", label="Clear", action="clear_results"))
         left.append(DisplayBinding(key="/", label="Filter", action="results_filter"))
 
-        seen.update(["view_cell", "copy_context", "copy_row", "copy_results", "clear_results", "results_filter"])
+        seen.update(["view_cell", "view_cell_full", "copy_context", "copy_row", "copy_results", "clear_results", "results_filter"])
 
         right: list[DisplayBinding] = []
         if self.parent:

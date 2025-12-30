@@ -36,7 +36,18 @@ class QueryTextArea(TextArea):
 
 
 class SqlitDataTable(FastDataTable):
-    """FastDataTable with correct header behavior when show_header is False."""
+    """FastDataTable with correct header behavior when show_header is False.
+
+    Disables hover tooltips - use 'v' key to preview cell values instead.
+    """
+
+    # Track if a manual tooltip is being shown (via 'v' key)
+    _manual_tooltip_active: bool = False
+
+    def _set_tooltip_from_cell_at(self, coordinate: Any) -> None:
+        """Override to disable hover tooltips entirely."""
+        # Don't set tooltip on hover - we handle this manually via 'v' key
+        pass
 
     def action_copy_selection(self) -> None:
         """Copy selection to clipboard, guarding against empty tables."""

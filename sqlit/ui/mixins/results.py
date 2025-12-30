@@ -74,6 +74,64 @@ class ResultsMixin:
         return "\n".join(lines)
 
     def action_view_cell(self: AppProtocol) -> None:
+        """Show/hide tooltip preview of the selected cell at the cell position."""
+        from textual.geometry import Offset
+        from textual.widgets._tooltip import Tooltip
+
+        table = self.results_table
+        if table.row_count <= 0:
+            self.notify("No results", severity="warning")
+            return
+        try:
+            # Get the tooltip widget from the screen
+            screen = self.screen
+            try:
+                tooltip_widget = screen.get_child_by_type(Tooltip)
+            except Exception:
+                return
+
+            current_coord = table.cursor_coordinate
+
+            # Check if tooltip is already showing for this cell - toggle it off
+            tooltip_coord = getattr(self, "_tooltip_cell_coord", None)
+            tooltip_showing = getattr(self, "_tooltip_showing", False)
+            if tooltip_showing and tooltip_coord == current_coord:
+                tooltip_widget.display = False
+                self._tooltip_cell_coord = None
+                self._tooltip_showing = False
+                return
+
+            # Get cell value directly (always show, regardless of truncation)
+            value = table.get_cell_at(current_coord)
+            if value is None:
+                value = "NULL"
+            tooltip_content = str(value)
+
+            # Position at bottom-right of table content area
+            scrollbar_h = table.scrollbar_size_horizontal
+            scrollbar_v = table.scrollbar_size_vertical
+            screen_x = table.region.x + table.region.width - scrollbar_v
+            screen_y = table.region.y + table.region.height - scrollbar_h - 1
+
+            # Update and position the tooltip
+            tooltip_widget.display = True
+            tooltip_widget.absolute_offset = Offset(screen_x, screen_y)
+            tooltip_widget.update(tooltip_content)
+
+            # Apply CSS offsets to make tooltip expand left and up from anchor
+            tooltip_widget.styles.offset = ("-100%", "-100%")
+
+            # Track which cell the tooltip is showing for
+            self._tooltip_cell_coord = current_coord
+            self._tooltip_showing = True
+
+            # Clear _tooltip_widget so mouse movement won't clear this tooltip
+            # (the _maybe_clear_tooltip check compares current widget to _tooltip_widget)
+            screen._tooltip_widget = None
+        except Exception:
+            pass
+
+    def action_view_cell_full(self: AppProtocol) -> None:
         """View the full value of the selected cell inline."""
         from ...widgets import InlineValueView
 

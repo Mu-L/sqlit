@@ -126,6 +126,7 @@ class DefaultKeymapProvider(KeymapProvider):
             ActionKeyDef("y", "copy_context", "query_normal"),
             # Results
             ActionKeyDef("v", "view_cell", "results"),
+            ActionKeyDef("V", "view_cell_full", "results"),
             ActionKeyDef("y", "copy_context", "results"),
             ActionKeyDef("Y", "copy_row", "results"),
             ActionKeyDef("a", "copy_results", "results"),
