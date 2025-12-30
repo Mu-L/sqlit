@@ -374,6 +374,9 @@ class TestConnectionStoreWithCredentials:
             server="localhost",
             username="user",
             password="secret_password",
+            ssh_enabled=True,
+            ssh_host="bastion",
+            ssh_username="ssh_user",
             ssh_password="ssh_secret",
         )
 
@@ -383,10 +386,12 @@ class TestConnectionStoreWithCredentials:
         json_path = Path(self.tmpdir) / "connections.json"
         with open(json_path) as f:
             saved_data = json.load(f)
+        if isinstance(saved_data, dict):
+            saved_data = saved_data.get("connections", [])
 
         # Passwords should be null in JSON (indicating "load from credentials service")
-        assert saved_data[0]["password"] is None
-        assert saved_data[0]["ssh_password"] is None
+        assert saved_data[0]["endpoint"]["password"] is None
+        assert saved_data[0]["tunnel"]["password"] is None
 
         # But should be in the credentials service
         assert self.creds_service.get_password("test_db") == "secret_password"
@@ -415,10 +420,10 @@ class TestConnectionStoreWithCredentials:
                         "auth_type": "sql",
                         "trusted_connection": False,
                         "file_path": "",
-                        "ssh_enabled": False,
-                        "ssh_host": "",
+                        "ssh_enabled": True,
+                        "ssh_host": "bastion",
                         "ssh_port": "22",
-                        "ssh_username": "",
+                        "ssh_username": "ssh_user",
                         "ssh_auth_type": "key",
                         "ssh_key_path": "",
                         "supabase_region": "",
@@ -432,8 +437,9 @@ class TestConnectionStoreWithCredentials:
         loaded = store.load_all()
 
         assert len(loaded) == 1
-        assert loaded[0].password == "secret_password"
-        assert loaded[0].ssh_password == "ssh_secret"
+        assert loaded[0].tcp_endpoint.password == "secret_password"
+        assert loaded[0].tunnel is not None
+        assert loaded[0].tunnel.password == "ssh_secret"
 
     def test_delete_removes_credentials(self) -> None:
         """Test that deleting a connection removes credentials."""
@@ -443,7 +449,11 @@ class TestConnectionStoreWithCredentials:
             name="test_db",
             db_type="postgresql",
             server="localhost",
+            username="user",
             password="secret",
+            ssh_enabled=True,
+            ssh_host="bastion",
+            ssh_username="ssh_user",
             ssh_password="ssh_secret",
         )
 
@@ -482,7 +492,7 @@ class TestConnectionStoreWithCredentials:
 
         # Load and verify password is still empty
         loaded = store.load_all()
-        assert loaded[0].password == ""
+        assert loaded[0].tcp_endpoint.password == ""
 
         # Credentials service should have empty string stored
         assert self.creds_service.get_password("test_db") == ""
@@ -504,7 +514,7 @@ class TestConnectionStoreWithCredentials:
 
         # Load and verify password is still None
         loaded = store.load_all()
-        assert loaded[0].password is None
+        assert loaded[0].tcp_endpoint.password is None
 
         # Credentials service should not have a password
         assert self.creds_service.get_password("test_db") is None
@@ -545,8 +555,9 @@ class TestConnectionStoreWithCredentials:
         loaded = store.load_all()
 
         # Legacy passwords from JSON should be loaded
-        assert loaded[0].password == "legacy_password"
-        assert loaded[0].ssh_password == "legacy_ssh"
+        assert loaded[0].tcp_endpoint.password == "legacy_password"
+        assert loaded[0].tunnel is not None
+        assert loaded[0].tunnel.password == "legacy_ssh"
 
         # Re-save to migrate to keyring
         store.save_all(loaded)
@@ -558,5 +569,7 @@ class TestConnectionStoreWithCredentials:
         # And JSON should be clean (null indicates load from credentials service)
         with open(json_path) as f:
             saved_data = json.load(f)
-        assert saved_data[0]["password"] is None
-        assert saved_data[0]["ssh_password"] is None
+        if isinstance(saved_data, dict):
+            saved_data = saved_data.get("connections", [])
+        assert saved_data[0]["endpoint"]["password"] is None
+        assert saved_data[0]["tunnel"]["password"] is None

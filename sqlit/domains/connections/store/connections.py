@@ -14,9 +14,13 @@ if TYPE_CHECKING:
 class ConnectionStore(JSONFileStore):
     """Store for managing saved database connections.
 
-    Connections are stored as a JSON array in ~/.sqlit/connections.json.
+    Connections are stored as a JSON object (versioned) in ~/.sqlit/connections.json.
     Passwords are stored separately in the OS keyring via CredentialsService.
     """
+
+    _CURRENT_VERSION = 2
+    _CONNECTIONS_KEY = "connections"
+    _VERSION_KEY = "version"
 
     _instance: ConnectionStore | None = None
 
@@ -59,20 +63,51 @@ class ConnectionStore(JSONFileStore):
         data = self._read_json()
         if data is None:
             return []
+        version, raw_connections, needs_migration = self._unpack_connections_payload(data)
         try:
             from sqlit.domains.connections.providers.config_service import normalize_connection_config
 
             configs = []
-            for conn in data:
+            for conn in raw_connections:
+                if not isinstance(conn, dict):
+                    continue
                 config = ConnectionConfig.from_dict(conn)
                 config = normalize_connection_config(config)
                 if load_credentials:
                     # Retrieve passwords from credentials service
                     self._load_credentials(config)
                 configs.append(config)
+            if needs_migration:
+                self._migrate_connections_payload(raw_connections, version)
             return configs
         except (TypeError, KeyError):
             return []
+
+    def _unpack_connections_payload(self, data: object) -> tuple[int, list[dict], bool]:
+        if isinstance(data, list):
+            return 1, data, True
+        if isinstance(data, dict):
+            raw_version = data.get(self._VERSION_KEY)
+            raw_connections = data.get(self._CONNECTIONS_KEY)
+            if isinstance(raw_connections, list):
+                version = raw_version if isinstance(raw_version, int) else 1
+                return version, raw_connections, version != self._CURRENT_VERSION
+        return 0, [], False
+
+    def _wrap_connections_payload(self, connections: list[dict]) -> dict:
+        return {
+            self._VERSION_KEY: self._CURRENT_VERSION,
+            self._CONNECTIONS_KEY: connections,
+        }
+
+    def _migrate_connections_payload(self, connections: list[dict], version: int) -> None:
+        if version == self._CURRENT_VERSION:
+            return
+        try:
+            self._write_json(self._wrap_connections_payload(connections))
+        except Exception:
+            # Best-effort migration; loading should still succeed.
+            pass
 
     def _load_credentials(self, config: ConnectionConfig) -> None:
         """Load credentials from the credentials service into config.
@@ -135,7 +170,8 @@ class ConnectionStore(JSONFileStore):
         for config in connections:
             self._save_credentials(config)
 
-        self._write_json([self._config_to_dict_without_passwords(c) for c in connections])
+        payload = [self._config_to_dict_without_passwords(c) for c in connections]
+        self._write_json(self._wrap_connections_payload(payload))
 
     def get_by_name(self, name: str) -> ConnectionConfig | None:
         """Get a connection by name.
