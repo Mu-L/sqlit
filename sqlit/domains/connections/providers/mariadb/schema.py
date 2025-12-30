@@ -1,5 +1,26 @@
-"""Connection schema for provider."""
+"""Connection schema for MariaDB."""
 
-from sqlit.domains.connections.providers.schema_catalog import MARIADB_SCHEMA
+from sqlit.domains.connections.providers.schema_catalog import (
+    ConnectionSchema,
+    SSH_FIELDS,
+    _database_field,
+    _password_field,
+    _port_field,
+    _server_field,
+    _username_field,
+)
 
-SCHEMA = MARIADB_SCHEMA
+
+SCHEMA = ConnectionSchema(
+    db_type="mariadb",
+    display_name="MariaDB",
+    fields=(
+        _server_field(),
+        _port_field("3306"),
+        _database_field(),
+        _username_field(),
+        _password_field(),
+    )
+    + SSH_FIELDS,
+    default_port="3306",
+)

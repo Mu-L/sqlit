@@ -1,5 +1,38 @@
-"""Connection schema for provider."""
+"""Connection schema for Supabase."""
 
-from sqlit.domains.connections.providers.schema_catalog import SUPABASE_SCHEMA
+from sqlit.domains.connections.providers.schema_catalog import (
+    ConnectionSchema,
+    FieldType,
+    SchemaField,
+    _get_aws_region_options,
+)
 
-SCHEMA = SUPABASE_SCHEMA
+
+SCHEMA = ConnectionSchema(
+    db_type="supabase",
+    display_name="Supabase",
+    fields=(
+        SchemaField(
+            name="supabase_region",
+            label="Region",
+            field_type=FieldType.DROPDOWN,
+            options=_get_aws_region_options(),
+            required=True,
+            default="us-east-1",
+        ),
+        SchemaField(
+            name="supabase_project_id",
+            label="Project ID",
+            placeholder="abcdefghijklmnop",
+            required=True,
+        ),
+        SchemaField(
+            name="password",
+            label="Password",
+            field_type=FieldType.PASSWORD,
+            required=True,
+            placeholder="database password",
+        ),
+    ),
+    supports_ssh=False,
+)

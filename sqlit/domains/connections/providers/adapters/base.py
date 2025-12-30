@@ -76,7 +76,7 @@ class DatabaseAdapter(ABC):
     """Abstract base class for database adapters.
 
     Adapters handle database connectivity and introspection.
-    Connection schema/metadata is defined separately in schema_catalog.
+    Connection schema/metadata is defined in provider schema modules.
     """
 
     @property

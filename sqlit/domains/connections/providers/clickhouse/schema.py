@@ -1,5 +1,27 @@
-"""Connection schema for provider."""
+"""Connection schema for ClickHouse."""
 
-from sqlit.domains.connections.providers.schema_catalog import CLICKHOUSE_SCHEMA
+from sqlit.domains.connections.providers.schema_catalog import (
+    ConnectionSchema,
+    SSH_FIELDS,
+    _database_field,
+    _password_field,
+    _port_field,
+    _server_field,
+    _username_field,
+)
 
-SCHEMA = CLICKHOUSE_SCHEMA
+
+SCHEMA = ConnectionSchema(
+    db_type="clickhouse",
+    display_name="ClickHouse",
+    fields=(
+        _server_field(),
+        _port_field("8123"),
+        _database_field(placeholder="default"),
+        _username_field(required=False),
+        _password_field(),
+    )
+    + SSH_FIELDS,
+    default_port="8123",
+    requires_auth=False,
+)

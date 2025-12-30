@@ -1,8 +1,8 @@
 """Field definitions for database connection forms.
 
 This module provides UI-specific field definitions used by Textual forms.
-Pure connection metadata is defined in schema_catalog; this module transforms
-that metadata into UI widgets.
+Pure connection metadata is defined in provider schema modules; this module
+transforms that metadata into UI widgets.
 """
 
 from __future__ import annotations
@@ -105,7 +105,7 @@ def schema_field_to_definition(schema_field: SchemaField) -> FieldDefinition:
     """Convert a SchemaField (pure metadata) to a FieldDefinition (UI-specific).
 
     Args:
-        schema_field: Pure connection field metadata from schema_catalog
+        schema_field: Pure connection field metadata from provider schemas
 
     Returns:
         UI-specific FieldDefinition for Textual forms
@@ -142,7 +142,7 @@ def schema_to_field_definitions(schema: ConnectionSchema) -> list[FieldDefinitio
     """Convert a ConnectionSchema to a list of FieldDefinitions.
 
     Args:
-        schema: Connection schema from schema_catalog
+        schema: Connection schema from provider schemas
 
     Returns:
         List of UI-specific FieldDefinitions for Textual forms

@@ -1,5 +1,12 @@
-"""Connection schema for provider."""
+"""Connection schema for SQLite."""
 
-from sqlit.domains.connections.providers.schema_catalog import SQLITE_SCHEMA
+from sqlit.domains.connections.providers.schema_catalog import ConnectionSchema, _file_path_field
 
-SCHEMA = SQLITE_SCHEMA
+
+SCHEMA = ConnectionSchema(
+    db_type="sqlite",
+    display_name="SQLite",
+    fields=(_file_path_field("/path/to/database.db"),),
+    supports_ssh=False,
+    is_file_based=True,
+)

@@ -1,5 +1,12 @@
-"""Connection schema for provider."""
+"""Connection schema for DuckDB."""
 
-from sqlit.domains.connections.providers.schema_catalog import DUCKDB_SCHEMA
+from sqlit.domains.connections.providers.schema_catalog import ConnectionSchema, _file_path_field
 
-SCHEMA = DUCKDB_SCHEMA
+
+SCHEMA = ConnectionSchema(
+    db_type="duckdb",
+    display_name="DuckDB",
+    fields=(_file_path_field("/path/to/database.duckdb"),),
+    supports_ssh=False,
+    is_file_based=True,
+)

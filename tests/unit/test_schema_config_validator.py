@@ -1,7 +1,8 @@
 from __future__ import annotations
 
 from sqlit.domains.connections.domain.config import ConnectionConfig, TcpEndpoint
-from sqlit.domains.connections.providers.schema_catalog import MYSQL_SCHEMA, SUPABASE_SCHEMA
+from sqlit.domains.connections.providers.mysql.schema import SCHEMA as MYSQL_SCHEMA
+from sqlit.domains.connections.providers.supabase.schema import SCHEMA as SUPABASE_SCHEMA
 from sqlit.domains.connections.providers.validation import SchemaConfigValidator
 
 

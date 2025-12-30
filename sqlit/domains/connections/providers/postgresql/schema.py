@@ -1,5 +1,26 @@
-"""Connection schema for provider."""
+"""Connection schema for PostgreSQL."""
 
-from sqlit.domains.connections.providers.schema_catalog import POSTGRESQL_SCHEMA
+from sqlit.domains.connections.providers.schema_catalog import (
+    ConnectionSchema,
+    SSH_FIELDS,
+    _database_field,
+    _password_field,
+    _port_field,
+    _server_field,
+    _username_field,
+)
 
-SCHEMA = POSTGRESQL_SCHEMA
+
+SCHEMA = ConnectionSchema(
+    db_type="postgresql",
+    display_name="PostgreSQL",
+    fields=(
+        _server_field(),
+        _port_field("5432"),
+        _database_field(),
+        _username_field(),
+        _password_field(),
+    )
+    + SSH_FIELDS,
+    default_port="5432",
+)
