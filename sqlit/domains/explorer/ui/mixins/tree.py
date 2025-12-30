@@ -7,9 +7,10 @@ from typing import TYPE_CHECKING, Any
 from rich.markup import escape as escape_markup
 from textual.widgets import Tree
 
-from sqlit.shared.ui.protocols import AppProtocol
+from sqlit.shared.ui.protocols import TreeMixinHost
 from sqlit.shared.ui.spinner import SPINNER_FRAMES
-from sqlit.domains.connections.providers.registry import get_badge_label, get_connection_display_info
+from sqlit.domains.connections.providers.metadata import get_badge_label, get_connection_display_info
+from sqlit.domains.connections.providers.model import IndexInspector, ProcedureInspector, SequenceInspector, TriggerInspector
 from sqlit.domains.explorer.domain.tree_nodes import (
     ColumnNode,
     ConnectionNode,
@@ -28,7 +29,7 @@ from sqlit.domains.explorer.domain.tree_nodes import (
 if TYPE_CHECKING:
     from sqlit.domains.connections.app.session import ConnectionSession
     from sqlit.domains.connections.domain.config import ConnectionConfig
-    from sqlit.domains.connections.providers.adapters.base import DatabaseAdapter
+    from sqlit.domains.connections.providers.model import DatabaseProvider
 
 
 class TreeMixin:
@@ -38,11 +39,11 @@ class TreeMixin:
     connections: list[ConnectionConfig]
     current_config: ConnectionConfig | None = None
     current_connection: Any | None = None
-    current_adapter: DatabaseAdapter | None = None
+    current_provider: DatabaseProvider | None = None
     _session: ConnectionSession | None = None
     _last_query_table: dict[str, Any] | None = None
 
-    def _run_db_call(self: AppProtocol, fn: Any, *args: Any, **kwargs: Any) -> Any:
+    def _run_db_call(self: TreeMixinHost, fn: Any, *args: Any, **kwargs: Any) -> Any:
         session = getattr(self, "_session", None)
         if session is not None:
             return session.executor.submit(fn, *args, **kwargs).result()
@@ -86,7 +87,7 @@ class TreeMixin:
             return str(getter())
         return ""
 
-    def _update_connecting_indicator(self: AppProtocol) -> None:
+    def _update_connecting_indicator(self: TreeMixinHost) -> None:
         connecting_config = getattr(self, "_connecting_config", None)
         if not connecting_config:
             return
@@ -104,7 +105,7 @@ class TreeMixin:
                 node.allow_expand = False
                 break
 
-    def refresh_tree(self: AppProtocol) -> None:
+    def refresh_tree(self: TreeMixinHost) -> None:
         """Refresh the explorer tree."""
         self.object_tree.clear()
         self.object_tree.root.expand()
@@ -146,12 +147,12 @@ class TreeMixin:
         if self.current_connection and self.current_config:
             self.populate_connected_tree()
 
-    def populate_connected_tree(self: AppProtocol) -> None:
+    def populate_connected_tree(self: TreeMixinHost) -> None:
         """Populate tree with database objects when connected."""
-        if not self.current_connection or not self.current_config or not self.current_adapter:
+        if not self.current_connection or not self.current_config or not self.current_provider:
             return
 
-        adapter = self.current_adapter
+        provider = self.current_provider
 
         def get_conn_label(config: Any, connected: Any = False) -> str:
             display_info = escape_markup(get_connection_display_info(config))
@@ -182,8 +183,9 @@ class TreeMixin:
         active_node.remove_children()
 
         try:
-            if adapter.supports_multiple_databases:
-                specific_db = self.current_config.database
+            if provider.capabilities.supports_multiple_databases:
+                endpoint = self.current_config.tcp_endpoint
+                specific_db = endpoint.database if endpoint else ""
                 # Show a single database view when a specific database was configured.
                 # Otherwise, show the Databases folder to browse all databases.
                 show_single_db = specific_db and specific_db.lower() not in ("", "master")
@@ -194,7 +196,10 @@ class TreeMixin:
                     dbs_node = active_node.add("Databases")
                     dbs_node.data = FolderNode(folder_type="databases")
 
-                    databases = self._run_db_call(adapter.get_databases, self.current_connection)
+                    databases = self._run_db_call(
+                        provider.schema_inspector.get_databases,
+                        self.current_connection,
+                    )
                     active_db = None
                     if hasattr(self, "_get_effective_database"):
                         active_db = self._get_effective_database()
@@ -220,46 +225,21 @@ class TreeMixin:
         except Exception as e:
             self.notify(f"Error loading objects: {e}", severity="error")
 
-    def _add_database_object_nodes(self: AppProtocol, parent_node: Any, database: str | None) -> None:
+    def _add_database_object_nodes(self: TreeMixinHost, parent_node: Any, database: str | None) -> None:
         """Add Tables, Views, Indexes, Triggers, Sequences, and Stored Procedures nodes."""
-        tables_node = parent_node.add("Tables")
-        tables_node.data = FolderNode(folder_type="tables", database=database)
-        tables_node.allow_expand = True
+        if not self.current_provider:
+            return
 
-        views_node = parent_node.add("Views")
-        views_node.data = FolderNode(folder_type="views", database=database)
-        views_node.allow_expand = True
+        caps = self.current_provider.capabilities
+        node_provider = self.current_provider.explorer_nodes
 
-        def add_optional_folder(
-            label: str, folder_type: str, supported: bool | None
-        ) -> None:
-            if supported:
-                folder_node = parent_node.add(label)
-                folder_node.data = FolderNode(folder_type=folder_type, database=database)
+        for folder in node_provider.get_root_folders(caps):
+            if folder.requires(caps):
+                folder_node = parent_node.add(folder.label)
+                folder_node.data = FolderNode(folder_type=folder.kind, database=database)
                 folder_node.allow_expand = True
             else:
-                parent_node.add_leaf(f"[dim]{label} (Not available)[/]")
-
-        add_optional_folder(
-            "Indexes",
-            "indexes",
-            self.current_adapter.supports_indexes if self.current_adapter else None,
-        )
-        add_optional_folder(
-            "Triggers",
-            "triggers",
-            self.current_adapter.supports_triggers if self.current_adapter else None,
-        )
-        add_optional_folder(
-            "Sequences",
-            "sequences",
-            self.current_adapter.supports_sequences if self.current_adapter else None,
-        )
-        add_optional_folder(
-            "Stored Procedures",
-            "procedures",
-            self.current_adapter.supports_stored_procedures if self.current_adapter else None,
-        )
+                parent_node.add_leaf(f"[dim]{folder.label} (Not available)[/]")
 
     def _get_node_path(self, node: Any) -> str:
         """Get a unique path string for a tree node."""
@@ -274,7 +254,7 @@ class TreeMixin:
             current = current.parent
         return "/".join(reversed(parts))
 
-    def _restore_subtree_expansion(self: AppProtocol, node: Any) -> None:
+    def _restore_subtree_expansion(self: TreeMixinHost, node: Any) -> None:
         """Recursively expand nodes that should be expanded."""
         for child in node.children:
             if child.data:
@@ -283,7 +263,7 @@ class TreeMixin:
                     child.expand()
             self._restore_subtree_expansion(child)
 
-    def _save_expanded_state(self: AppProtocol) -> None:
+    def _save_expanded_state(self: TreeMixinHost) -> None:
         """Save which nodes are expanded."""
         from sqlit.domains.shell.store.settings import SettingsStore
 
@@ -305,17 +285,17 @@ class TreeMixin:
         settings["expanded_nodes"] = expanded
         store.save_all(settings)
 
-    def on_tree_node_collapsed(self: AppProtocol, event: Tree.NodeCollapsed) -> None:
+    def on_tree_node_collapsed(self: TreeMixinHost, event: Tree.NodeCollapsed) -> None:
         """Save state when a node is collapsed."""
         self.call_later(self._save_expanded_state)
 
-    def on_tree_node_expanded(self: AppProtocol, event: Tree.NodeExpanded) -> None:
+    def on_tree_node_expanded(self: TreeMixinHost, event: Tree.NodeExpanded) -> None:
         """Load child objects when a node is expanded."""
         node = event.node
 
         self.call_later(self._save_expanded_state)
 
-        if not node.data or not self.current_connection or not self.current_adapter:
+        if not node.data or not self.current_connection or not self.current_provider:
             return
 
         data = node.data
@@ -366,7 +346,7 @@ class TreeMixin:
             self._load_folder_async(node, data)
             return
 
-    def _load_columns_async(self: AppProtocol, node: Any, data: TableNode | ViewNode) -> None:
+    def _load_columns_async(self: TreeMixinHost, node: Any, data: TableNode | ViewNode) -> None:
         """Spawn worker to load columns for a table/view."""
         db_name = data.database
         schema_name = data.schema
@@ -378,12 +358,19 @@ class TreeMixin:
                 if not self._session:
                     columns = []
                 else:
-                    adapter = self._session.adapter
+                    provider = self._session.provider
+                    inspector = provider.schema_inspector
                     conn = self._session.connection
                     db_arg = db_name
                     if hasattr(self, "_get_metadata_db_arg"):
                         db_arg = self._get_metadata_db_arg(db_name)
-                    columns = self._run_db_call(adapter.get_columns, conn, obj_name, db_arg, schema_name)
+                    columns = self._run_db_call(
+                        inspector.get_columns,
+                        conn,
+                        obj_name,
+                        db_arg,
+                        schema_name,
+                    )
 
                 # Update UI from worker thread
                 self.call_from_thread(self._on_columns_loaded, node, db_name, schema_name, obj_name, columns)
@@ -393,7 +380,7 @@ class TreeMixin:
         self.run_worker(work, name=f"load-columns-{obj_name}", thread=True, exclusive=False)
 
     def _on_columns_loaded(
-        self: AppProtocol, node: Any, db_name: str | None, schema_name: str, obj_name: str, columns: list
+        self: TreeMixinHost, node: Any, db_name: str | None, schema_name: str, obj_name: str, columns: list
     ) -> None:
         """Handle column load completion on main thread."""
         node_path = self._get_node_path(node)
@@ -414,7 +401,7 @@ class TreeMixin:
             child = node.add_leaf(f"[dim]{col_name}[/] [italic dim]{col_type}[/]")
             child.data = ColumnNode(database=db_name, schema=schema_name, table=obj_name, name=col.name)
 
-    def _load_folder_async(self: AppProtocol, node: Any, data: FolderNode) -> None:
+    def _load_folder_async(self: TreeMixinHost, node: Any, data: FolderNode) -> None:
         """Spawn worker to load folder contents (tables/views/indexes/triggers/sequences/procedures)."""
         folder_type = data.folder_type
         db_name = data.database
@@ -426,7 +413,9 @@ class TreeMixin:
                 if not self._session:
                     items = []
                 else:
-                    adapter = self._session.adapter
+                    provider = self._session.provider
+                    inspector = provider.schema_inspector
+                    caps = provider.capabilities
                     conn = self._session.connection
                     db_arg = db_name
                     if hasattr(self, "_get_metadata_db_arg"):
@@ -439,7 +428,7 @@ class TreeMixin:
                         if cache_key in obj_cache and "tables" in obj_cache[cache_key]:
                             raw_data = obj_cache[cache_key]["tables"]
                         else:
-                            raw_data = self._run_db_call(adapter.get_tables, conn, db_arg)
+                            raw_data = self._run_db_call(inspector.get_tables, conn, db_arg)
                             # Store in shared cache
                             if cache_key not in obj_cache:
                                 obj_cache[cache_key] = {}
@@ -450,7 +439,7 @@ class TreeMixin:
                         if cache_key in obj_cache and "views" in obj_cache[cache_key]:
                             raw_data = obj_cache[cache_key]["views"]
                         else:
-                            raw_data = self._run_db_call(adapter.get_views, conn, db_arg)
+                            raw_data = self._run_db_call(inspector.get_views, conn, db_arg)
                             # Store in shared cache
                             if cache_key not in obj_cache:
                                 obj_cache[cache_key] = {}
@@ -458,35 +447,35 @@ class TreeMixin:
                             self._db_object_cache = obj_cache
                         items = [("view", s, v) for s, v in raw_data]
                     elif folder_type == "indexes":
-                        if adapter.supports_indexes:
+                        if caps.supports_indexes and isinstance(inspector, IndexInspector):
                             items = [
                                 ("index", i.name, i.table_name)
-                                for i in self._run_db_call(adapter.get_indexes, conn, db_arg)
+                                for i in self._run_db_call(inspector.get_indexes, conn, db_arg)
                             ]
                         else:
                             items = []
                     elif folder_type == "triggers":
-                        if adapter.supports_triggers:
+                        if caps.supports_triggers and isinstance(inspector, TriggerInspector):
                             items = [
                                 ("trigger", t.name, t.table_name)
-                                for t in self._run_db_call(adapter.get_triggers, conn, db_arg)
+                                for t in self._run_db_call(inspector.get_triggers, conn, db_arg)
                             ]
                         else:
                             items = []
                     elif folder_type == "sequences":
-                        if adapter.supports_sequences:
+                        if caps.supports_sequences and isinstance(inspector, SequenceInspector):
                             items = [
                                 ("sequence", s.name, "")
-                                for s in self._run_db_call(adapter.get_sequences, conn, db_arg)
+                                for s in self._run_db_call(inspector.get_sequences, conn, db_arg)
                             ]
                         else:
                             items = []
                     elif folder_type == "procedures":
-                        if adapter.supports_stored_procedures:
+                        if caps.supports_stored_procedures and isinstance(inspector, ProcedureInspector):
                             if cache_key in obj_cache and "procedures" in obj_cache[cache_key]:
                                 raw_data = obj_cache[cache_key]["procedures"]
                             else:
-                                raw_data = self._run_db_call(adapter.get_procedures, conn, db_arg)
+                                raw_data = self._run_db_call(inspector.get_procedures, conn, db_arg)
                                 # Store in shared cache
                                 if cache_key not in obj_cache:
                                     obj_cache[cache_key] = {}
@@ -509,7 +498,7 @@ class TreeMixin:
 
         self.run_worker(work, name=f"load-folder-{folder_type}", thread=True, exclusive=False)
 
-    def _on_folder_loaded(self: AppProtocol, node: Any, db_name: str | None, folder_type: str, items: list) -> None:
+    def _on_folder_loaded(self: TreeMixinHost, node: Any, db_name: str | None, folder_type: str, items: list) -> None:
         """Handle folder load completion on main thread."""
         node_path = self._get_node_path(node)
         self._loading_nodes.discard(node_path)
@@ -521,14 +510,20 @@ class TreeMixin:
         if not self._session:
             return
 
-        adapter = self._session.adapter
+        provider = self._session.provider
         if not items:
             empty_child = node.add_leaf("[dim](Empty)[/]")
             empty_child.data = LoadingNode()
             return
 
         if folder_type in ("tables", "views"):
-            self._add_schema_grouped_items(node, db_name, folder_type, items, adapter.default_schema)
+            self._add_schema_grouped_items(
+                node,
+                db_name,
+                folder_type,
+                items,
+                provider.capabilities.default_schema,
+            )
         else:
             for item in items:
                 if item[0] == "procedure":
@@ -600,7 +595,7 @@ class TreeMixin:
                     child.data = ViewNode(database=db_name, schema=schema_name, name=obj_name)
                 child.allow_expand = True
 
-    def _on_tree_load_error(self: AppProtocol, node: Any, error_message: str) -> None:
+    def _on_tree_load_error(self: TreeMixinHost, node: Any, error_message: str) -> None:
         """Handle tree load error on main thread."""
         node_path = self._get_node_path(node)
         self._loading_nodes.discard(node_path)
@@ -612,7 +607,7 @@ class TreeMixin:
         self.notify(escape_markup(error_message), severity="error")
 
     def _fallback_reconnect_and_retry(
-        self: AppProtocol, node: Any, data: FolderNode, db_name: str, original_error: Exception
+        self: TreeMixinHost, node: Any, data: FolderNode, db_name: str, original_error: Exception
     ) -> None:
         """Try reconnecting to database and retry loading. Show original error if this also fails."""
         node_path = self._get_node_path(node)
@@ -637,7 +632,7 @@ class TreeMixin:
         loading_node.data = LoadingNode()
         self._load_folder_async(node, data)
 
-    def on_tree_node_selected(self: AppProtocol, event: Tree.NodeSelected) -> None:
+    def on_tree_node_selected(self: TreeMixinHost, event: Tree.NodeSelected) -> None:
         """Handle tree node selection (double-click/enter)."""
         # Ignore selection events when tree filter is active - the filter captures
         # printable characters, but Textual's Tree type-ahead may fire NodeSelected
@@ -658,11 +653,11 @@ class TreeMixin:
             # _disconnect_silent handles refresh_tree internally
             self.connect_to_server(config)
 
-    def on_tree_node_highlighted(self: AppProtocol, event: Tree.NodeHighlighted) -> None:
+    def on_tree_node_highlighted(self: TreeMixinHost, event: Tree.NodeHighlighted) -> None:
         """Update footer when tree selection changes."""
         self._update_footer_bindings()
 
-    def action_refresh_tree(self: AppProtocol) -> None:
+    def action_refresh_tree(self: TreeMixinHost) -> None:
         """Refresh the explorer."""
         # Clear shared object cache so fresh data is fetched
         self._db_object_cache = {}
@@ -672,7 +667,7 @@ class TreeMixin:
         self.refresh_tree()
         self.notify("Refreshed")
 
-    def action_collapse_tree(self: AppProtocol) -> None:
+    def action_collapse_tree(self: TreeMixinHost) -> None:
         """Collapse all nodes in the explorer."""
 
         def collapse_all(node: Any) -> None:
@@ -684,19 +679,19 @@ class TreeMixin:
         self._expanded_paths.clear()
         self._save_expanded_state()
 
-    def action_tree_cursor_down(self: AppProtocol) -> None:
+    def action_tree_cursor_down(self: TreeMixinHost) -> None:
         """Move tree cursor down (vim j)."""
         if self.object_tree.has_focus:
             self.object_tree.action_cursor_down()
 
-    def action_tree_cursor_up(self: AppProtocol) -> None:
+    def action_tree_cursor_up(self: TreeMixinHost) -> None:
         """Move tree cursor up (vim k)."""
         if self.object_tree.has_focus:
             self.object_tree.action_cursor_up()
 
-    def action_select_table(self: AppProtocol) -> None:
+    def action_select_table(self: TreeMixinHost) -> None:
         """Generate and execute SELECT query for selected table/view, or show info for indexes/triggers/sequences."""
-        if not self.current_adapter or not self._session:
+        if not self.current_provider or not self._session:
             return
 
         node = self.object_tree.cursor_node
@@ -713,8 +708,11 @@ class TreeMixin:
                 db_arg = data.database
                 if hasattr(self, "_get_metadata_db_arg"):
                     db_arg = self._get_metadata_db_arg(data.database)
-                columns = self._session.adapter.get_columns(
-                    self._session.connection, data.name, db_arg, data.schema
+                columns = self._session.provider.schema_inspector.get_columns(
+                    self._session.connection,
+                    data.name,
+                    db_arg,
+                    data.schema,
                 )
                 self._last_query_table = {
                     "database": data.database,
@@ -725,7 +723,12 @@ class TreeMixin:
             except Exception:
                 self._last_query_table = None
 
-            self.query_input.text = self.current_adapter.build_select_query(data.name, 100, data.database, data.schema)
+            self.query_input.text = self.current_provider.dialect.build_select_query(
+                data.name,
+                100,
+                data.database,
+                data.schema,
+            )
             # Set target database for query execution (needed for Azure SQL)
             self._query_target_database = data.database
             self.action_execute_query()
@@ -746,55 +749,75 @@ class TreeMixin:
             self._show_sequence_info(data)
             return
 
-    def _show_index_info(self: AppProtocol, data: IndexNode) -> None:
+    def _show_index_info(self: TreeMixinHost, data: IndexNode) -> None:
         """Show index definition in the results panel."""
         if not self._session:
             return
 
         try:
+            inspector = self._session.provider.schema_inspector
+            if not isinstance(inspector, IndexInspector):
+                self.notify("Indexes not supported for this database.", severity="warning")
+                return
             db_arg = data.database
             if hasattr(self, "_get_metadata_db_arg"):
                 db_arg = self._get_metadata_db_arg(data.database)
-            info = self._session.adapter.get_index_definition(
-                self._session.connection, data.name, data.table_name, db_arg
+            info = inspector.get_index_definition(
+                self._session.connection,
+                data.name,
+                data.table_name,
+                db_arg,
             )
             self._display_object_info("Index", info)
         except Exception as e:
             self.notify(f"Error getting index info: {e}", severity="error")
 
-    def _show_trigger_info(self: AppProtocol, data: TriggerNode) -> None:
+    def _show_trigger_info(self: TreeMixinHost, data: TriggerNode) -> None:
         """Show trigger definition in the results panel."""
         if not self._session:
             return
 
         try:
+            inspector = self._session.provider.schema_inspector
+            if not isinstance(inspector, TriggerInspector):
+                self.notify("Triggers not supported for this database.", severity="warning")
+                return
             db_arg = data.database
             if hasattr(self, "_get_metadata_db_arg"):
                 db_arg = self._get_metadata_db_arg(data.database)
-            info = self._session.adapter.get_trigger_definition(
-                self._session.connection, data.name, data.table_name, db_arg
+            info = inspector.get_trigger_definition(
+                self._session.connection,
+                data.name,
+                data.table_name,
+                db_arg,
             )
             self._display_object_info("Trigger", info)
         except Exception as e:
             self.notify(f"Error getting trigger info: {e}", severity="error")
 
-    def _show_sequence_info(self: AppProtocol, data: SequenceNode) -> None:
+    def _show_sequence_info(self: TreeMixinHost, data: SequenceNode) -> None:
         """Show sequence information in the results panel."""
         if not self._session:
             return
 
         try:
+            inspector = self._session.provider.schema_inspector
+            if not isinstance(inspector, SequenceInspector):
+                self.notify("Sequences not supported for this database.", severity="warning")
+                return
             db_arg = data.database
             if hasattr(self, "_get_metadata_db_arg"):
                 db_arg = self._get_metadata_db_arg(data.database)
-            info = self._session.adapter.get_sequence_definition(
-                self._session.connection, data.name, db_arg
+            info = inspector.get_sequence_definition(
+                self._session.connection,
+                data.name,
+                db_arg,
             )
             self._display_object_info("Sequence", info)
         except Exception as e:
             self.notify(f"Error getting sequence info: {e}", severity="error")
 
-    def _display_object_info(self: AppProtocol, object_type: str, info: dict) -> None:
+    def _display_object_info(self: TreeMixinHost, object_type: str, info: dict) -> None:
         """Display object info in the results table as a Property/Value view."""
         # Build rows for display
         rows: list[tuple[str, str]] = []
@@ -827,7 +850,7 @@ class TreeMixin:
         if definition:
             self.query_input.text = f"/*\n{definition}\n*/"
 
-    def _ensure_database_connection(self: AppProtocol, target_db: str) -> bool:
+    def _ensure_database_connection(self: TreeMixinHost, target_db: str) -> bool:
         """Ensure we're connected to the target database, switching if needed.
 
         For adapters that don't support cross-database queries (PostgreSQL, etc.),
@@ -841,13 +864,13 @@ class TreeMixin:
             True if we're connected to the target database (or adapter supports
             cross-db queries), False if switch failed.
         """
-        if not self.current_adapter or not self.current_config:
+        if not self.current_provider or not self.current_config:
             return False
 
         # For cross-db adapters, try USE approach first (no reconnection needed).
         # Note: While MSSQL generally supports cross-database queries, some variants
         # like Azure SQL have restrictions. If USE fails, we fall back to reconnection.
-        if self.current_adapter.supports_cross_database_queries:
+        if self.current_provider.capabilities.supports_cross_database_queries:
             current_active = getattr(self, "_active_database", None)
             if not current_active or current_active.lower() != target_db.lower():
                 try:
@@ -858,7 +881,8 @@ class TreeMixin:
             return True
 
         # For non-cross-db adapters, check if already connected to target database
-        current_db = self.current_config.database
+        endpoint = self.current_config.tcp_endpoint
+        current_db = endpoint.database if endpoint else ""
         if current_db and current_db.lower() == target_db.lower():
             return True
 
@@ -866,12 +890,10 @@ class TreeMixin:
         self.set_default_database(target_db)
 
         # Verify switch succeeded
-        return (
-            self.current_config.database is not None
-            and self.current_config.database.lower() == target_db.lower()
-        )
+        endpoint = self.current_config.tcp_endpoint
+        return bool(endpoint and endpoint.database and endpoint.database.lower() == target_db.lower())
 
-    def _reconnect_to_database(self: AppProtocol, db_name: str) -> None:
+    def _reconnect_to_database(self: TreeMixinHost, db_name: str) -> None:
         """Reconnect to a different database without re-rendering the tree.
 
         Used for PostgreSQL and other databases that don't support cross-database
@@ -903,7 +925,7 @@ class TreeMixin:
         except Exception as e:
             self.notify(f"Failed to connect to {db_name}: {e}", severity="error")
 
-    def set_default_database(self: AppProtocol, db_name: str | None) -> None:
+    def set_default_database(self: TreeMixinHost, db_name: str | None) -> None:
         """Set or clear the active database for the current connection.
 
         This is the shared function used by both the USE query handler and
@@ -919,7 +941,7 @@ class TreeMixin:
         Args:
             db_name: The database name to set as active, or None to clear.
         """
-        if not self.current_config or not self.current_adapter:
+        if not self.current_config or not self.current_provider:
             self.notify("Not connected", severity="error")
             return
 
@@ -927,10 +949,11 @@ class TreeMixin:
             self._clear_query_target_database()
 
         # Check if adapter supports cross-database queries
-        if not self.current_adapter.supports_cross_database_queries and db_name:
+        if not self.current_provider.capabilities.supports_cross_database_queries and db_name:
             # For PostgreSQL, CockroachDB, etc. - need to reconnect to the new database
             # Check if we're already connected to this database
-            current_db = self.current_config.database
+            endpoint = self.current_config.tcp_endpoint
+            current_db = endpoint.database if endpoint else ""
             if current_db and current_db.lower() == db_name.lower():
                 # Already connected to this database, just update UI
                 self._active_database = db_name
@@ -953,9 +976,9 @@ class TreeMixin:
         # Reload schema cache for autocomplete with new database context
         self._load_schema_cache()
 
-    def _update_database_labels(self: AppProtocol) -> None:
+    def _update_database_labels(self: TreeMixinHost) -> None:
         """Update database node labels to show the active database with a star."""
-        if not self.current_config or not self.current_adapter:
+        if not self.current_config or not self.current_provider:
             return
 
         active_db = None
@@ -993,7 +1016,7 @@ class TreeMixin:
                     break
             break
 
-    def action_use_database(self: AppProtocol) -> None:
+    def action_use_database(self: TreeMixinHost) -> None:
         """Toggle the selected database as the default for the current connection."""
         node = self.object_tree.cursor_node
 

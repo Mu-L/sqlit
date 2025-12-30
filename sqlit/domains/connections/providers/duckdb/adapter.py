@@ -11,9 +11,9 @@ from sqlit.domains.connections.providers.adapters.base import (
     SequenceInfo,
     TableInfo,
     TriggerInfo,
-    import_driver_module,
     resolve_file_path,
 )
+from sqlit.domains.connections.providers.driver import import_driver_module
 
 if TYPE_CHECKING:
     from sqlit.domains.connections.domain.config import ConnectionConfig
@@ -21,14 +21,6 @@ if TYPE_CHECKING:
 
 class DuckDBAdapter(DatabaseAdapter):
     """Adapter for DuckDB embedded database."""
-
-    @classmethod
-    def badge_label(cls) -> str:
-        return "DuckDB"
-
-    @classmethod
-    def url_schemes(cls) -> tuple[str, ...]:
-        return ("duckdb",)
 
     @property
     def name(self) -> str:
@@ -53,10 +45,6 @@ class DuckDBAdapter(DatabaseAdapter):
     @property
     def supports_stored_procedures(self) -> bool:
         return False
-
-    def get_display_info(self, config: ConnectionConfig) -> str:
-        file_path = str(config.get_option("file_path", ""))
-        return file_path or config.name
 
     @property
     def supports_triggers(self) -> bool:
@@ -86,7 +74,10 @@ class DuckDBAdapter(DatabaseAdapter):
             package_name=self.install_package,
         )
 
-        file_path = resolve_file_path(str(config.get_option("file_path", "")))
+        file_endpoint = config.file_endpoint
+        if file_endpoint is None:
+            raise ValueError("DuckDB connections require a file endpoint.")
+        file_path = resolve_file_path(str(file_endpoint.path))
         duckdb_any: Any = duckdb
         return duckdb_any.connect(str(file_path))
 

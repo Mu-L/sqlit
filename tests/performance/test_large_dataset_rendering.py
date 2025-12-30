@@ -19,7 +19,7 @@ except ImportError:
     Faker = None  # type: ignore
 
 from sqlit.domains.shell.app.main import SSMSTUI
-from sqlit.domains.connections.domain.config import ConnectionConfig
+from tests.helpers import ConnectionConfig
 
 from ..ui.mocks import MockConnectionStore, MockSettingsStore, create_test_connection
 

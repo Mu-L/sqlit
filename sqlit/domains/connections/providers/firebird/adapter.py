@@ -9,8 +9,8 @@ from sqlit.domains.connections.providers.adapters.base import (
     SequenceInfo,
     TableInfo,
     TriggerInfo,
-    import_driver_module,
 )
+from sqlit.domains.connections.providers.driver import import_driver_module
 
 if TYPE_CHECKING:
     from sqlit.domains.connections.domain.config import ConnectionConfig
@@ -18,30 +18,6 @@ if TYPE_CHECKING:
 
 class FirebirdAdapter(CursorBasedAdapter):
     """Adapter for Firebird using pyfirebirdsql."""
-
-    @classmethod
-    def badge_label(cls) -> str:
-        return "FB"
-
-    @classmethod
-    def url_schemes(cls) -> tuple[str, ...]:
-        return ("firebird",)
-
-    @classmethod
-    def docker_image_patterns(cls) -> tuple[str, ...]:
-        return ("firebirdsql/firebird",)
-
-    @classmethod
-    def docker_env_vars(cls) -> dict[str, tuple[str, ...]]:
-        return {
-            "user": ("FIREBIRD_USER",),
-            "password": ("FIREBIRD_PASSWORD",),
-            "database": ("FIREBIRD_DATABASE",),
-        }
-
-    @classmethod
-    def docker_default_user(cls) -> str | None:
-        return "SYSDBA"
 
     @property
     def name(self) -> str:
@@ -94,12 +70,15 @@ class FirebirdAdapter(CursorBasedAdapter):
             package_name=self.install_package,
         )
 
+        endpoint = config.tcp_endpoint
+        if endpoint is None:
+            raise ValueError("Firebird connections require a TCP-style endpoint.")
         conn = firebirdsql.connect(
-            host=config.server or "localhost",
-            port=int(config.port) if config.port else 3050,
-            database=config.database or "security.db",
-            user=config.username,
-            password=config.password,
+            host=endpoint.host or "localhost",
+            port=int(endpoint.port) if endpoint.port else 3050,
+            database=endpoint.database or "security.db",
+            user=endpoint.username,
+            password=endpoint.password,
         )
         return conn
 

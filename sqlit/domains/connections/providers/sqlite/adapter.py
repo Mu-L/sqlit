@@ -13,14 +13,6 @@ if TYPE_CHECKING:
 class SQLiteAdapter(DatabaseAdapter):
     """Adapter for SQLite using built-in sqlite3."""
 
-    @classmethod
-    def badge_label(cls) -> str:
-        return "SQLite"
-
-    @classmethod
-    def url_schemes(cls) -> tuple[str, ...]:
-        return ("sqlite",)
-
     @property
     def name(self) -> str:
         return "SQLite"
@@ -33,15 +25,14 @@ class SQLiteAdapter(DatabaseAdapter):
     def supports_stored_procedures(self) -> bool:
         return False
 
-    def get_display_info(self, config: ConnectionConfig) -> str:
-        file_path = str(config.get_option("file_path", ""))
-        return file_path or config.name
-
     def connect(self, config: ConnectionConfig) -> Any:
         """Connect to SQLite database file."""
         import sqlite3
 
-        file_path = resolve_file_path(str(config.get_option("file_path", "")))
+        file_endpoint = config.file_endpoint
+        if file_endpoint is None:
+            raise ValueError("SQLite connections require a file endpoint.")
+        file_path = resolve_file_path(str(file_endpoint.path))
         # check_same_thread=False allows connection to be used from background threads
         # (for async query execution). SQLite serializes access internally.
         conn = sqlite3.connect(file_path, check_same_thread=False)

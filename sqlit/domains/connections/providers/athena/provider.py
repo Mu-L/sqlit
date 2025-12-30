@@ -1,6 +1,7 @@
 """Provider registration."""
 
-from sqlit.domains.connections.providers.registry import ProviderSpec, register_provider
+from sqlit.domains.connections.providers.catalog import register_provider
+from sqlit.domains.connections.providers.model import ProviderSpec
 
 SPEC = ProviderSpec(
     db_type="athena",
@@ -12,6 +13,7 @@ SPEC = ProviderSpec(
     has_advanced_auth=True,
     default_port="",
     requires_auth=True,
+    badge_label="Athena",
 )
 
 register_provider(SPEC)

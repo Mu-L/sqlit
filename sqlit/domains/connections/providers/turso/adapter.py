@@ -4,7 +4,8 @@ from __future__ import annotations
 
 from typing import TYPE_CHECKING, Any
 
-from sqlit.domains.connections.providers.adapters.base import ColumnInfo, DatabaseAdapter, IndexInfo, SequenceInfo, TableInfo, TriggerInfo, import_driver_module
+from sqlit.domains.connections.providers.adapters.base import ColumnInfo, DatabaseAdapter, IndexInfo, SequenceInfo, TableInfo, TriggerInfo
+from sqlit.domains.connections.providers.driver import import_driver_module
 
 if TYPE_CHECKING:
     from sqlit.domains.connections.domain.config import ConnectionConfig
@@ -18,43 +19,19 @@ class TursoAdapter(DatabaseAdapter):
     """
 
     @classmethod
-    def badge_label(cls) -> str:
-        return "Turso"
-
-    @classmethod
-    def url_schemes(cls) -> tuple[str, ...]:
-        return ("libsql",)
-
-    @classmethod
-    def docker_image_patterns(cls) -> tuple[str, ...]:
-        return ("ghcr.io/tursodatabase/libsql-server", "tursodatabase/libsql-server")
-
-    @classmethod
-    def docker_env_vars(cls) -> dict[str, tuple[str, ...]]:
-        return {
-            "user": (),
-            "password": (),
-            "database": (),
-        }
-
-    @classmethod
-    def docker_default_user(cls) -> str | None:
-        return ""
-
-    @classmethod
     def normalize_docker_connection(cls, config: ConnectionConfig) -> ConnectionConfig:
-        if config.port and not config.server.startswith(("http://", "https://", "libsql://")):
-            config.server = f"http://{config.server}:{config.port}"
-        config.port = ""
+        endpoint = config.tcp_endpoint
+        if endpoint and endpoint.port and not endpoint.host.startswith(("http://", "https://", "libsql://")):
+            config = config.with_endpoint(host=f"http://{endpoint.host}:{endpoint.port}", port="")
         return config
 
     def normalize_config(self, config: ConnectionConfig) -> ConnectionConfig:
-        if config.port:
-            if config.server.startswith(("http://", "https://", "libsql://")):
-                config.port = ""
-            elif ":" not in config.server:
-                config.server = f"{config.server}:{config.port}"
-                config.port = ""
+        endpoint = config.tcp_endpoint
+        if endpoint and endpoint.port:
+            if endpoint.host.startswith(("http://", "https://", "libsql://")):
+                config = config.with_endpoint(port="")
+            elif ":" not in endpoint.host:
+                config = config.with_endpoint(host=f"{endpoint.host}:{endpoint.port}", port="")
         return config
 
     @property
@@ -91,7 +68,7 @@ class TursoAdapter(DatabaseAdapter):
     def connect(self, config: ConnectionConfig) -> Any:
         """Connect to Turso database.
 
-        Uses config.server for the database URL and config.password for the auth token.
+        Uses endpoint.host for the database URL and endpoint.password for the auth token.
         Accepts libsql://, https://, and http:// URLs (libsql:// is converted to https://).
         Uses direct HTTP mode for immediate read/write operations.
         """
@@ -102,14 +79,17 @@ class TursoAdapter(DatabaseAdapter):
             package_name=self.install_package,
         )
 
-        url = config.server
+        endpoint = config.tcp_endpoint
+        if endpoint is None:
+            raise ValueError("Turso connections require a TCP-style endpoint.")
+        url = endpoint.host
         # Convert URL scheme (libsql package requires http:// or https://)
         if url.startswith("libsql://"):
             url = url.replace("libsql://", "https://", 1)
         elif not url.startswith(("https://", "http://")):
             url = f"https://{url}"
 
-        auth_token = config.password if config.password else ""
+        auth_token = endpoint.password if endpoint.password else ""
         return libsql.connect(url, auth_token=auth_token)
 
     def get_databases(self, conn: Any) -> list[str]:

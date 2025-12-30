@@ -4,7 +4,8 @@ from __future__ import annotations
 
 from typing import TYPE_CHECKING, Any
 
-from sqlit.domains.connections.providers.adapters.base import ColumnInfo, DatabaseAdapter, IndexInfo, SequenceInfo, TableInfo, TriggerInfo, import_driver_module
+from sqlit.domains.connections.providers.adapters.base import ColumnInfo, DatabaseAdapter, IndexInfo, SequenceInfo, TableInfo, TriggerInfo
+from sqlit.domains.connections.providers.driver import import_driver_module
 
 if TYPE_CHECKING:
     from sqlit.domains.connections.domain.config import AuthType, ConnectionConfig
@@ -15,14 +16,6 @@ class SQLServerAdapter(DatabaseAdapter):
 
     def __init__(self) -> None:
         self._supports_cross_database_queries_override: bool | None = None
-
-    @classmethod
-    def badge_label(cls) -> str:
-        return "MSSQL"
-
-    @classmethod
-    def url_schemes(cls) -> tuple[str, ...]:
-        return ("mssql", "sqlserver")
 
     @property
     def name(self) -> str:
@@ -73,9 +66,7 @@ class SQLServerAdapter(DatabaseAdapter):
             return AuthType.SQL_SERVER
 
     def apply_database_override(self, config: ConnectionConfig, database: str) -> ConnectionConfig:
-        from dataclasses import replace
-
-        return replace(config, database=database) if database else config
+        return config.with_endpoint(database=database) if database else config
 
     @property
     def default_schema(self) -> str:
@@ -86,32 +77,6 @@ class SQLServerAdapter(DatabaseAdapter):
         """SQL Server 2012+ supports sequences."""
         return True
 
-    @property
-    def driver_setup_kind(self) -> str | None:
-        # mssql-python uses Direct Database Connectivity and does not require
-        # a separate ODBC driver manager.
-        return None
-
-    @classmethod
-    def docker_image_patterns(cls) -> tuple[str, ...]:
-        return ("mcr.microsoft.com/mssql",)
-
-    @classmethod
-    def docker_env_vars(cls) -> dict[str, tuple[str, ...]]:
-        return {
-            "user": (),
-            "password": ("SA_PASSWORD", "MSSQL_SA_PASSWORD"),
-            "database": (),
-        }
-
-    @classmethod
-    def docker_default_user(cls) -> str | None:
-        return "sa"
-
-    @classmethod
-    def docker_default_database(cls) -> str | None:
-        return "master"
-
     def normalize_config(self, config: ConnectionConfig) -> ConnectionConfig:
         auth_type = str(config.get_option("auth_type") or "sql")
         config.set_option("auth_type", auth_type)
@@ -120,7 +85,8 @@ class SQLServerAdapter(DatabaseAdapter):
         if trusted_connection is None:
             config.set_option("trusted_connection", auth_type == "windows")
 
-        if auth_type == "windows" and not config.get_option("trusted_connection") and config.username:
+        endpoint = config.tcp_endpoint
+        if auth_type == "windows" and not config.get_option("trusted_connection") and endpoint and endpoint.username:
             config.set_option("auth_type", "sql")
             config.set_option("trusted_connection", False)
 
@@ -150,13 +116,16 @@ class SQLServerAdapter(DatabaseAdapter):
         """
         from sqlit.domains.connections.domain.config import AuthType
 
-        server_with_port = config.server
-        if config.port and config.port != "1433":
-            server_with_port = f"{config.server},{config.port}"
+        endpoint = config.tcp_endpoint
+        if endpoint is None:
+            raise ValueError("SQL Server connections require a TCP-style endpoint.")
+        server_with_port = endpoint.host
+        if endpoint.port and endpoint.port != "1433":
+            server_with_port = f"{endpoint.host},{endpoint.port}"
 
         base = (
             f"SERVER={server_with_port};"
-            f"DATABASE={config.database or 'master'};"
+            f"DATABASE={endpoint.database or 'master'};"
             f"TrustServerCertificate=yes;"
         )
 
@@ -165,11 +134,11 @@ class SQLServerAdapter(DatabaseAdapter):
         if auth == AuthType.WINDOWS:
             return base + "Trusted_Connection=yes;"
         elif auth == AuthType.SQL_SERVER:
-            return base + f"Authentication=SqlPassword;" f"UID={config.username};PWD={config.password};"
+            return base + f"Authentication=SqlPassword;" f"UID={endpoint.username};PWD={endpoint.password};"
         elif auth == AuthType.AD_PASSWORD:
-            return base + f"Authentication=ActiveDirectoryPassword;" f"UID={config.username};PWD={config.password};"
+            return base + f"Authentication=ActiveDirectoryPassword;" f"UID={endpoint.username};PWD={endpoint.password};"
         elif auth == AuthType.AD_INTERACTIVE:
-            return base + f"Authentication=ActiveDirectoryInteractive;" f"UID={config.username};"
+            return base + f"Authentication=ActiveDirectoryInteractive;" f"UID={endpoint.username};"
         elif auth == AuthType.AD_INTEGRATED:
             return base + "Authentication=ActiveDirectoryIntegrated;"
         elif auth == AuthType.AD_DEFAULT:

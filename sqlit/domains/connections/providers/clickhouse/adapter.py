@@ -21,26 +21,6 @@ class ClickHouseAdapter(DatabaseAdapter):
     - System tables provide metadata (system.databases, system.tables, system.columns)
     """
 
-    @classmethod
-    def badge_label(cls) -> str:
-        return "ClickHouse"
-
-    @classmethod
-    def docker_image_patterns(cls) -> tuple[str, ...]:
-        return ("clickhouse",)
-
-    @classmethod
-    def docker_env_vars(cls) -> dict[str, tuple[str, ...]]:
-        return {
-            "user": ("CLICKHOUSE_USER",),
-            "password": ("CLICKHOUSE_PASSWORD",),
-            "database": ("CLICKHOUSE_DB",),
-        }
-
-    @classmethod
-    def docker_default_user(cls) -> str | None:
-        return "default"
-
     @property
     def name(self) -> str:
         return "ClickHouse"
@@ -104,18 +84,21 @@ class ClickHouseAdapter(DatabaseAdapter):
             raise MissingDriverError(self.name, self.install_extra, self.install_package) from e
 
         # Default to port 8123 (HTTP interface) if not specified
-        port = int(config.port) if config.port else 8123
+        endpoint = config.tcp_endpoint
+        if endpoint is None:
+            raise ValueError("ClickHouse connections require a TCP-style endpoint.")
+        port = int(endpoint.port) if endpoint.port else 8123
 
         # Determine if we should use HTTPS based on port
         # 8443 is the standard HTTPS port for ClickHouse
         secure = port == 8443
 
         client = clickhouse_connect.get_client(
-            host=config.server,
+            host=endpoint.host,
             port=port,
-            username=config.username or "default",
-            password=config.password or "",
-            database=config.database or "default",
+            username=endpoint.username or "default",
+            password=endpoint.password or "",
+            database=endpoint.database or "default",
             secure=secure,
         )
         return client

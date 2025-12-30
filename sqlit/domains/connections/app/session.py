@@ -7,12 +7,11 @@ of database connections and SSH tunnels, ensuring proper cleanup.
 from __future__ import annotations
 
 from collections.abc import Callable
-from dataclasses import replace
 from typing import TYPE_CHECKING, Any
 
 if TYPE_CHECKING:
     from sqlit.domains.connections.domain.config import ConnectionConfig
-    from sqlit.domains.connections.providers.adapters.base import DatabaseAdapter
+    from sqlit.domains.connections.providers.model import DatabaseProvider
     from .executor import DatabaseExecutor
 
 
@@ -24,7 +23,7 @@ class ConnectionSession:
 
     Usage:
         with ConnectionSession.create(config) as session:
-            result = session.adapter.execute_query(session.connection, query)
+            result = session.provider.query_executor.execute_query(session.connection, query)
 
     Or for long-lived connections (like in the TUI):
         session = ConnectionSession.create(config)
@@ -33,7 +32,7 @@ class ConnectionSession:
 
     Attributes:
         connection: The raw database connection object.
-        adapter: The database adapter for this connection.
+        provider: The database provider for this connection.
         config: The original connection configuration.
         has_tunnel: Whether this session has an active SSH tunnel.
     """
@@ -41,7 +40,7 @@ class ConnectionSession:
     def __init__(
         self,
         connection: Any,
-        adapter: DatabaseAdapter,
+        provider: DatabaseProvider,
         config: ConnectionConfig,
         tunnel: Any | None = None,
     ):
@@ -49,12 +48,12 @@ class ConnectionSession:
 
         Args:
             connection: The database connection object.
-            adapter: The database adapter instance.
+            provider: The database provider instance.
             config: The connection configuration.
             tunnel: Optional SSH tunnel object.
         """
         self._connection = connection
-        self._adapter = adapter
+        self._provider = provider
         self._config = config
         self._tunnel = tunnel
         self._closed = False
@@ -64,7 +63,7 @@ class ConnectionSession:
     def create(
         cls,
         config: ConnectionConfig,
-        adapter_factory: Callable[[str], DatabaseAdapter] | None = None,
+        provider_factory: Callable[[str], DatabaseProvider] | None = None,
         tunnel_factory: Callable[[ConnectionConfig], tuple[Any, str, int]] | None = None,
     ) -> ConnectionSession:
         """Create a new connection session.
@@ -74,8 +73,8 @@ class ConnectionSession:
 
         Args:
             config: Connection configuration.
-            adapter_factory: Optional factory for creating adapters.
-                Defaults to get_adapter from the provider registry.
+        provider_factory: Optional factory for creating providers.
+            Defaults to get_provider from the provider catalog.
             tunnel_factory: Optional factory for creating SSH tunnels.
                 Defaults to create_ssh_tunnel from the connection tunnel module.
 
@@ -88,10 +87,10 @@ class ConnectionSession:
             Any database-specific connection errors.
         """
         from sqlit.domains.connections.app.tunnel import create_ssh_tunnel
-        from sqlit.domains.connections.providers.registry import get_adapter
-        from sqlit.domains.connections.providers.registry import normalize_connection_config
+        from sqlit.domains.connections.providers.catalog import get_provider
+        from sqlit.domains.connections.providers.config_service import normalize_connection_config
 
-        get_adapter_fn = adapter_factory or get_adapter
+        get_provider_fn = provider_factory or get_provider
         create_tunnel_fn = tunnel_factory or create_ssh_tunnel
 
         config = normalize_connection_config(config)
@@ -100,19 +99,19 @@ class ConnectionSession:
 
         # Adjust config for tunnel if created
         if tunnel:
-            connect_config = replace(config, server=host, port=str(port))
+            connect_config = config.with_endpoint(host=host, port=str(port))
         else:
             connect_config = config
 
-        # Get adapter and connect
-        adapter = get_adapter_fn(config.db_type)
-        connection = adapter.connect(connect_config)
+        # Get provider and connect
+        provider = get_provider_fn(config.db_type)
+        connection = provider.connection_factory.connect(connect_config)
         try:
-            adapter.detect_capabilities(connection, config)
+            provider.post_connect(connection, config)
         except Exception:
             pass
 
-        return cls(connection, adapter, config, tunnel)
+        return cls(connection, provider, config, tunnel)
 
     @property
     def connection(self) -> Any:
@@ -120,9 +119,9 @@ class ConnectionSession:
         return self._connection
 
     @property
-    def adapter(self) -> DatabaseAdapter:
-        """Get the database adapter."""
-        return self._adapter
+    def provider(self) -> DatabaseProvider:
+        """Get the database provider."""
+        return self._provider
 
     @property
     def config(self) -> ConnectionConfig:
@@ -183,13 +182,13 @@ class ConnectionSession:
             raise RuntimeError("Cannot switch database on closed session")
 
         # Create new config with the database
-        new_config = replace(self._config, database=database)
+        new_config = self._config.with_endpoint(database=database)
 
         # Determine connection config (use tunnel if present)
         if self._tunnel:
             # Reuse tunnel - get local bind address
             local_host, local_port = self._tunnel.local_bind_address
-            connect_config = replace(new_config, server=local_host, port=str(local_port))
+            connect_config = new_config.with_endpoint(host=local_host, port=str(local_port))
         else:
             connect_config = new_config
 
@@ -203,7 +202,7 @@ class ConnectionSession:
                 pass
 
         # Open new connection
-        self._connection = self._adapter.connect(connect_config)
+        self._connection = self._provider.connection_factory.connect(connect_config)
         self._config = new_config
 
     def close(self) -> None:

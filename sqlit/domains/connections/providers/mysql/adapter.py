@@ -5,7 +5,8 @@ from __future__ import annotations
 from typing import TYPE_CHECKING, Any
 
 from sqlit.domains.connections.providers.registry import get_default_port
-from sqlit.domains.connections.providers.adapters.base import MySQLBaseAdapter, import_driver_module
+from sqlit.domains.connections.providers.adapters.base import MySQLBaseAdapter
+from sqlit.domains.connections.providers.driver import import_driver_module
 
 if TYPE_CHECKING:
     from sqlit.domains.connections.domain.config import ConnectionConfig
@@ -13,30 +14,6 @@ if TYPE_CHECKING:
 
 class MySQLAdapter(MySQLBaseAdapter):
     """Adapter for MySQL using PyMySQL."""
-
-    @classmethod
-    def badge_label(cls) -> str:
-        return "MySQL"
-
-    @classmethod
-    def url_schemes(cls) -> tuple[str, ...]:
-        return ("mysql",)
-
-    @classmethod
-    def docker_image_patterns(cls) -> tuple[str, ...]:
-        return ("mysql",)
-
-    @classmethod
-    def docker_env_vars(cls) -> dict[str, tuple[str, ...]]:
-        return {
-            "user": ("MYSQL_USER",),
-            "password": ("MYSQL_PASSWORD", "MYSQL_ROOT_PASSWORD"),
-            "database": ("MYSQL_DATABASE",),
-        }
-
-    @classmethod
-    def docker_default_user(cls) -> str | None:
-        return "root"
 
     @property
     def name(self) -> str:
@@ -63,13 +40,16 @@ class MySQLAdapter(MySQLBaseAdapter):
             package_name=self.install_package,
         )
 
-        port = int(config.port or get_default_port("mysql"))
+        endpoint = config.tcp_endpoint
+        if endpoint is None:
+            raise ValueError("MySQL connections require a TCP-style endpoint.")
+        port = int(endpoint.port or get_default_port("mysql"))
         return pymysql.connect(
-            host=config.server,
+            host=endpoint.host,
             port=port,
-            database=config.database or None,
-            user=config.username,
-            password=config.password,
+            database=endpoint.database or None,
+            user=endpoint.username,
+            password=endpoint.password,
             connect_timeout=10,
             autocommit=True,
             charset="utf8mb4",

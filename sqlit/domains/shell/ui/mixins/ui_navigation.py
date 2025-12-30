@@ -6,8 +6,8 @@ from typing import TYPE_CHECKING, Any
 
 from textual.timer import Timer
 
-from sqlit.domains.connections.providers.registry import get_connection_display_info
-from sqlit.shared.ui.protocols import AppProtocol
+from sqlit.domains.connections.providers.metadata import get_connection_display_info
+from sqlit.shared.ui.protocols import UINavigationMixinHost
 
 if TYPE_CHECKING:
     pass
@@ -20,7 +20,7 @@ class UINavigationMixin:
     _leader_timer: Timer | None = None
     _last_active_pane: str | None = None
 
-    def _set_fullscreen_mode(self: AppProtocol, mode: str) -> None:
+    def _set_fullscreen_mode(self: UINavigationMixinHost, mode: str) -> None:
         """Set fullscreen mode: none|explorer|query|results."""
         self._fullscreen_mode = mode
         self.screen.remove_class("results-fullscreen")
@@ -34,7 +34,7 @@ class UINavigationMixin:
         elif mode == "explorer":
             self.screen.add_class("explorer-fullscreen")
 
-    def _update_section_labels(self: AppProtocol) -> None:
+    def _update_section_labels(self: UINavigationMixinHost) -> None:
         """Update section labels to highlight the active pane."""
         try:
             pane_explorer = self.query_one("#sidebar")
@@ -84,7 +84,7 @@ class UINavigationMixin:
 
         self._sync_active_pane_title()
 
-    def _sync_active_pane_title(self: AppProtocol) -> None:
+    def _sync_active_pane_title(self: UINavigationMixinHost) -> None:
         """Adjust pane title color when dialogs are open.
 
         Keybinding hints [e], [q], [r] are:
@@ -130,7 +130,7 @@ class UINavigationMixin:
         set_title(pane_query, "q", "Query", active=active_pane == "query")
         set_title(pane_results, "r", "Results", active=active_pane == "results")
 
-    def action_focus_explorer(self: AppProtocol) -> None:
+    def action_focus_explorer(self: UINavigationMixinHost) -> None:
         """Focus the Explorer pane."""
         if self._fullscreen_mode != "none":
             self._set_fullscreen_mode("none")
@@ -143,7 +143,7 @@ class UINavigationMixin:
             if self.object_tree.root.children:
                 self.object_tree.cursor_line = 0
 
-    def action_focus_query(self: AppProtocol) -> None:
+    def action_focus_query(self: UINavigationMixinHost) -> None:
         """Focus the Query pane (in NORMAL mode)."""
         from sqlit.shared.ui.widgets import VimMode
 
@@ -154,7 +154,7 @@ class UINavigationMixin:
         self.query_input.focus()
         self._update_status_bar()
 
-    def action_focus_results(self: AppProtocol) -> None:
+    def action_focus_results(self: UINavigationMixinHost) -> None:
         """Focus the Results pane."""
         if self._fullscreen_mode != "none":
             self._set_fullscreen_mode("none")
@@ -164,7 +164,7 @@ class UINavigationMixin:
             # Results table may not exist yet (Lazy loading)
             pass
 
-    def action_enter_insert_mode(self: AppProtocol) -> None:
+    def action_enter_insert_mode(self: UINavigationMixinHost) -> None:
         """Enter INSERT mode for query editing."""
         from sqlit.shared.ui.widgets import VimMode
 
@@ -174,7 +174,7 @@ class UINavigationMixin:
             self._update_status_bar()
             self._update_footer_bindings()
 
-    def action_exit_insert_mode(self: AppProtocol) -> None:
+    def action_exit_insert_mode(self: UINavigationMixinHost) -> None:
         """Exit INSERT mode, return to NORMAL mode."""
         from sqlit.shared.ui.widgets import VimMode
 
@@ -185,7 +185,7 @@ class UINavigationMixin:
             self._update_status_bar()
             self._update_footer_bindings()
 
-    def _update_status_bar(self: AppProtocol) -> None:
+    def _update_status_bar(self: UINavigationMixinHost) -> None:
         """Update status bar with connection and vim mode info."""
         from sqlit.shared.ui.widgets import VimMode
         from sqlit.shared.ui.spinner import SPINNER_FRAMES
@@ -320,7 +320,7 @@ class UINavigationMixin:
         else:
             status.update(left_content)
 
-    def _update_idle_scheduler_bar(self: AppProtocol) -> None:
+    def _update_idle_scheduler_bar(self: UINavigationMixinHost) -> None:
         """Update the idle scheduler debug bar."""
         if not getattr(self, "_debug_idle_scheduler", False):
             return
@@ -362,7 +362,7 @@ class UINavigationMixin:
         )
 
     def notify(
-        self: AppProtocol,
+        self: UINavigationMixinHost,
         message: str,
         *,
         title: str = "",
@@ -402,7 +402,7 @@ class UINavigationMixin:
             self._last_notification_time = timestamp
             self._update_status_bar()
 
-    def _show_error_in_results(self: AppProtocol, message: str, timestamp: str) -> None:
+    def _show_error_in_results(self: UINavigationMixinHost, message: str, timestamp: str) -> None:
         """Display error message in the results table."""
         import re
 
@@ -419,7 +419,7 @@ class UINavigationMixin:
         self._replace_results_table(["Error"], [(error_text,)])
         self._update_footer_bindings()
 
-    def action_toggle_explorer(self: AppProtocol) -> None:
+    def action_toggle_explorer(self: UINavigationMixinHost) -> None:
         """Toggle the visibility of the explorer sidebar."""
         if self._fullscreen_mode != "none":
             self._set_fullscreen_mode("none")
@@ -435,7 +435,7 @@ class UINavigationMixin:
                 self.query_input.focus()
             self.screen.add_class("explorer-hidden")
 
-    def action_change_theme(self: AppProtocol) -> None:
+    def action_change_theme(self: UINavigationMixinHost) -> None:
         """Open the theme selection dialog."""
         from ..screens import ThemeScreen
 
@@ -445,7 +445,7 @@ class UINavigationMixin:
 
         self.push_screen(ThemeScreen(self.theme), on_theme_selected)
 
-    def action_toggle_fullscreen(self: AppProtocol) -> None:
+    def action_toggle_fullscreen(self: UINavigationMixinHost) -> None:
         """Toggle fullscreen for the currently focused pane."""
         if self.object_tree.has_focus:
             target = "explorer"
@@ -471,7 +471,7 @@ class UINavigationMixin:
         self._update_section_labels()
         self._update_footer_bindings()
 
-    def _update_footer_bindings(self: AppProtocol) -> None:
+    def _update_footer_bindings(self: UINavigationMixinHost) -> None:
         """Update footer with context-appropriate bindings from the state machine."""
         from sqlit.shared.ui.widgets import ContextFooter, KeyBinding
 
@@ -487,14 +487,14 @@ class UINavigationMixin:
 
         footer.set_bindings(left_bindings, right_bindings)
 
-    def action_show_help(self: AppProtocol) -> None:
+    def action_show_help(self: UINavigationMixinHost) -> None:
         """Show help with all keybindings."""
         from ..screens import HelpScreen
 
         help_text = self._state_machine.generate_help_text()
         self.push_screen(HelpScreen(help_text))
 
-    def action_leader_key(self: AppProtocol) -> None:
+    def action_leader_key(self: UINavigationMixinHost) -> None:
         """Handle leader key (space) press - show command menu after delay."""
         from sqlit.shared.ui.widgets import VimMode
 
@@ -516,14 +516,14 @@ class UINavigationMixin:
         # Show menu after 200ms delay
         self._leader_timer = self.set_timer(0.2, show_menu)
 
-    def _cancel_leader_pending(self: AppProtocol) -> None:
+    def _cancel_leader_pending(self: UINavigationMixinHost) -> None:
         """Cancel leader pending state and timer."""
         self._leader_pending = False
         if hasattr(self, "_leader_timer") and self._leader_timer is not None:
             self._leader_timer.stop()
             self._leader_timer = None
 
-    def _execute_leader_command(self: AppProtocol, action: str) -> None:
+    def _execute_leader_command(self: UINavigationMixinHost, action: str) -> None:
         """Execute a leader command by action name.
 
         Also clears leader pending state - this is the single place
@@ -537,7 +537,7 @@ class UINavigationMixin:
         if action_method:
             action_method()
 
-    def _show_leader_menu(self: AppProtocol) -> None:
+    def _show_leader_menu(self: UINavigationMixinHost) -> None:
         """Display the leader menu."""
         from textual.screen import ModalScreen
 
@@ -548,37 +548,37 @@ class UINavigationMixin:
 
         self.push_screen(LeaderMenuScreen(), self._handle_leader_result)
 
-    def _handle_leader_result(self: AppProtocol, result: str | None) -> None:
+    def _handle_leader_result(self: UINavigationMixinHost, result: str | None) -> None:
         """Handle result from leader menu."""
         self._update_footer_bindings()
         if result:
             self._execute_leader_command(result)
 
-    def action_leader_toggle_explorer(self: AppProtocol) -> None:
+    def action_leader_toggle_explorer(self: UINavigationMixinHost) -> None:
         self._execute_leader_command("toggle_explorer")
 
-    def action_leader_toggle_fullscreen(self: AppProtocol) -> None:
+    def action_leader_toggle_fullscreen(self: UINavigationMixinHost) -> None:
         self._execute_leader_command("toggle_fullscreen")
 
-    def action_leader_show_connection_picker(self: AppProtocol) -> None:
+    def action_leader_show_connection_picker(self: UINavigationMixinHost) -> None:
         self._execute_leader_command("show_connection_picker")
 
-    def action_leader_disconnect(self: AppProtocol) -> None:
+    def action_leader_disconnect(self: UINavigationMixinHost) -> None:
         self._execute_leader_command("disconnect")
 
-    def action_leader_cancel_operation(self: AppProtocol) -> None:
+    def action_leader_cancel_operation(self: UINavigationMixinHost) -> None:
         self._execute_leader_command("cancel_operation")
 
-    def action_leader_change_theme(self: AppProtocol) -> None:
+    def action_leader_change_theme(self: UINavigationMixinHost) -> None:
         self._execute_leader_command("change_theme")
 
-    def action_leader_show_help(self: AppProtocol) -> None:
+    def action_leader_show_help(self: UINavigationMixinHost) -> None:
         self._execute_leader_command("show_help")
 
-    def action_leader_quit(self: AppProtocol) -> None:
+    def action_leader_quit(self: UINavigationMixinHost) -> None:
         self._execute_leader_command("quit")
 
-    def on_descendant_focus(self: AppProtocol, event: Any) -> None:
+    def on_descendant_focus(self: UINavigationMixinHost, event: Any) -> None:
         """Handle focus changes to update section labels and footer."""
         from sqlit.shared.ui.widgets import VimMode
 
@@ -596,6 +596,6 @@ class UINavigationMixin:
         self._update_footer_bindings()
         self._update_status_bar()
 
-    def on_descendant_blur(self: AppProtocol, event: Any) -> None:
+    def on_descendant_blur(self: UINavigationMixinHost, event: Any) -> None:
         """Handle blur to update section labels."""
         self.call_later(self._update_section_labels)

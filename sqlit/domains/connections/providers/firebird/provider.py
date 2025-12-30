@@ -1,6 +1,8 @@
 """Provider registration."""
 
-from sqlit.domains.connections.providers.registry import ProviderSpec, register_provider
+from sqlit.domains.connections.providers.catalog import register_provider
+from sqlit.domains.connections.providers.docker import DockerDetector
+from sqlit.domains.connections.providers.model import ProviderSpec
 
 SPEC = ProviderSpec(
     db_type="firebird",
@@ -12,6 +14,17 @@ SPEC = ProviderSpec(
     has_advanced_auth=False,
     default_port="3050",
     requires_auth=True,
+    badge_label="FB",
+    url_schemes=("firebird",),
+    docker_detector=DockerDetector(
+        image_patterns=("firebirdsql/firebird",),
+        env_vars={
+            "user": ("FIREBIRD_USER",),
+            "password": ("FIREBIRD_PASSWORD",),
+            "database": ("FIREBIRD_DATABASE",),
+        },
+        default_user="SYSDBA",
+    ),
 )
 
 register_provider(SPEC)

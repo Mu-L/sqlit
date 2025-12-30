@@ -5,7 +5,8 @@ from __future__ import annotations
 from typing import TYPE_CHECKING, Any
 
 from sqlit.domains.connections.providers.registry import get_default_port
-from sqlit.domains.connections.providers.adapters.base import PostgresBaseAdapter, import_driver_module
+from sqlit.domains.connections.providers.adapters.base import PostgresBaseAdapter
+from sqlit.domains.connections.providers.driver import import_driver_module
 
 if TYPE_CHECKING:
     from sqlit.domains.connections.domain.config import ConnectionConfig
@@ -13,34 +14,6 @@ if TYPE_CHECKING:
 
 class PostgreSQLAdapter(PostgresBaseAdapter):
     """Adapter for PostgreSQL using psycopg2."""
-
-    @classmethod
-    def badge_label(cls) -> str:
-        return "PG"
-
-    @classmethod
-    def url_schemes(cls) -> tuple[str, ...]:
-        return ("postgresql", "postgres")
-
-    @classmethod
-    def docker_image_patterns(cls) -> tuple[str, ...]:
-        return ("postgres",)
-
-    @classmethod
-    def docker_env_vars(cls) -> dict[str, tuple[str, ...]]:
-        return {
-            "user": ("POSTGRES_USER",),
-            "password": ("POSTGRES_PASSWORD",),
-            "database": ("POSTGRES_DB",),
-        }
-
-    @classmethod
-    def docker_default_user(cls) -> str | None:
-        return "postgres"
-
-    @classmethod
-    def docker_default_database(cls) -> str | None:
-        return "postgres"
 
     @property
     def name(self) -> str:
@@ -67,13 +40,16 @@ class PostgreSQLAdapter(PostgresBaseAdapter):
             package_name=self.install_package,
         )
 
-        port = int(config.port or get_default_port("postgresql"))
+        endpoint = config.tcp_endpoint
+        if endpoint is None:
+            raise ValueError("PostgreSQL connections require a TCP-style endpoint.")
+        port = int(endpoint.port or get_default_port("postgresql"))
         conn = psycopg2.connect(
-            host=config.server,
+            host=endpoint.host,
             port=port,
-            database=config.database or "postgres",
-            user=config.username,
-            password=config.password,
+            database=endpoint.database or "postgres",
+            user=endpoint.username,
+            password=endpoint.password,
             connect_timeout=10,
         )
         # Enable autocommit to avoid "transaction aborted" errors on failed statements

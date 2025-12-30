@@ -27,7 +27,7 @@ def mssql_adapter():
 @pytest.fixture
 def mssql_config():
     """Get MSSQL connection config."""
-    from sqlit.domains.connections.domain.config import ConnectionConfig
+    from tests.helpers import ConnectionConfig
     return ConnectionConfig(
         name="test-mssql-dto",
         db_type="mssql",

@@ -35,7 +35,7 @@ def apply_mock_environment(settings: dict[str, Any]) -> None:
     if isinstance(drivers, dict):
         missing_all = drivers.get("missing_all")
         if missing_all is True:
-            from sqlit.domains.connections.providers.registry import get_supported_db_types
+            from sqlit.domains.connections.providers.catalog import get_supported_db_types
 
             os.environ["SQLIT_MOCK_MISSING_DRIVERS"] = ",".join(get_supported_db_types())
         else:

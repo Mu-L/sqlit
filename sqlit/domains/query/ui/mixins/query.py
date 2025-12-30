@@ -9,7 +9,7 @@ from rich.markup import escape as escape_markup
 from textual.worker import Worker
 from textual_fastdatatable import ArrowBackend
 
-from sqlit.shared.ui.protocols import AppProtocol
+from sqlit.shared.ui.protocols import QueryMixinHost
 from sqlit.shared.ui.spinner import Spinner
 from sqlit.shared.ui.widgets import SqlitDataTable
 from sqlit.shared.core.utils import format_duration_ms
@@ -31,7 +31,6 @@ class QueryMixin:
     Attributes:
         _query_service: Optional QueryService instance.
             Set this in tests to inject a mock query service.
-            Defaults to a new QueryService() when None.
     """
 
     _query_service: QueryService | None = None
@@ -44,15 +43,15 @@ class QueryMixin:
     _results_table_counter: int = 0  # Counter for unique table IDs
     _query_target_database: str | None = None
 
-    def action_execute_query(self: AppProtocol) -> None:
+    def action_execute_query(self: QueryMixinHost) -> None:
         """Execute the current query."""
         self._execute_query_common(keep_insert_mode=False)
 
-    def action_execute_query_insert(self: AppProtocol) -> None:
+    def action_execute_query_insert(self: QueryMixinHost) -> None:
         """Execute query in INSERT mode without leaving it."""
         self._execute_query_common(keep_insert_mode=True)
 
-    def action_copy_query(self: AppProtocol) -> None:
+    def action_copy_query(self: QueryMixinHost) -> None:
         """Copy the current query to clipboard."""
         from sqlit.shared.ui.widgets import flash_widget
 
@@ -63,7 +62,7 @@ class QueryMixin:
         self._copy_text(query)
         flash_widget(self.query_input)
 
-    def action_copy_context(self: AppProtocol) -> None:
+    def action_copy_context(self: QueryMixinHost) -> None:
         """Copy based on current focus (query or results)."""
         if self.query_input.has_focus:
             self.action_copy_query()
@@ -73,9 +72,9 @@ class QueryMixin:
             return
         self.notify("Nothing to copy", severity="warning")
 
-    def _execute_query_common(self: AppProtocol, keep_insert_mode: bool) -> None:
+    def _execute_query_common(self: QueryMixinHost, keep_insert_mode: bool) -> None:
         """Common query execution logic."""
-        if not self.current_connection or not self.current_adapter:
+        if not self.current_connection or not self.current_provider:
             self.notify("Connect to a server to execute queries", severity="warning")
             return
 
@@ -96,7 +95,7 @@ class QueryMixin:
             exclusive=True,
         )
 
-    def _start_query_spinner(self: AppProtocol) -> None:
+    def _start_query_spinner(self: QueryMixinHost) -> None:
         """Start the query execution spinner animation."""
         import time
 
@@ -107,7 +106,7 @@ class QueryMixin:
         self._query_spinner = Spinner(self, on_tick=lambda _: self._update_status_bar(), fps=30)
         self._query_spinner.start()
 
-    def _stop_query_spinner(self: AppProtocol) -> None:
+    def _stop_query_spinner(self: QueryMixinHost) -> None:
         """Stop the query execution spinner animation."""
         self._query_executing = False
         if self._query_spinner is not None:
@@ -115,7 +114,7 @@ class QueryMixin:
             self._query_spinner = None
         self._update_status_bar()
 
-    async def _run_query_async(self: AppProtocol, query: str, keep_insert_mode: bool) -> None:
+    async def _run_query_async(self: QueryMixinHost, query: str, keep_insert_mode: bool) -> None:
         """Run query asynchronously using a cancellable dedicated connection."""
         import asyncio
         import time
@@ -124,10 +123,10 @@ class QueryMixin:
         from sqlit.domains.query.app.query_service import QueryResult, QueryService
         from sqlit.domains.query.app.query_service import parse_use_statement
 
-        adapter = self.current_adapter
+        provider = self.current_provider
         config = self.current_config
 
-        if not adapter or not config:
+        if not provider or not config:
             self._display_query_error("Not connected")
             self._stop_query_spinner()
             return
@@ -135,8 +134,10 @@ class QueryMixin:
         # If we have a target database from clicking a table in the tree,
         # use that database for the query execution (needed for Azure SQL)
         target_db = getattr(self, "_query_target_database", None)
-        if target_db and target_db != config.database:
-            config = adapter.apply_database_override(config, target_db)
+        endpoint = config.tcp_endpoint
+        current_db = endpoint.database if endpoint else ""
+        if target_db and target_db != current_db:
+            config = provider.apply_database_override(config, target_db)
         # Clear target database after use - it's only for the auto-generated query
         self._query_target_database = None
 
@@ -144,8 +145,10 @@ class QueryMixin:
         active_db = None
         if hasattr(self, "_get_effective_database"):
             active_db = self._get_effective_database()
-        if active_db and active_db != config.database and not target_db:
-            config = adapter.apply_database_override(config, active_db)
+        endpoint = config.tcp_endpoint
+        current_db = endpoint.database if endpoint else ""
+        if active_db and active_db != current_db and not target_db:
+            config = provider.apply_database_override(config, active_db)
 
         # Handle USE database statements
         db_name = parse_use_statement(query)
@@ -161,12 +164,16 @@ class QueryMixin:
         cancellable = CancellableQuery(
             sql=query,
             config=config,
-            adapter=adapter,
+            provider=provider,
             tunnel=self.current_ssh_tunnel,
         )
         self._cancellable_query = cancellable
 
-        service = self._query_service or QueryService()
+        if self._query_service is None:
+            from sqlit.domains.query.store.history import HistoryStore
+
+            self._query_service = QueryService(HistoryStore.get_instance())
+        service = self._query_service
 
         try:
             start_time = time.perf_counter()
@@ -198,7 +205,7 @@ class QueryMixin:
             self._cancellable_query = None
             self._stop_query_spinner()
 
-    def _replace_results_table(self: AppProtocol, columns: list[str], rows: list[tuple]) -> None:
+    def _replace_results_table(self: QueryMixinHost, columns: list[str], rows: list[tuple]) -> None:
         """Update the results table with new data.
 
         Creates a new FastDataTable with ArrowBackend.
@@ -259,7 +266,7 @@ class QueryMixin:
         container.mount(new_table, after=old_table)
         old_table.remove()
 
-    def _replace_results_table_raw(self: AppProtocol, columns: list[str], rows: list[tuple]) -> None:
+    def _replace_results_table_raw(self: QueryMixinHost, columns: list[str], rows: list[tuple]) -> None:
         """Update the results table with pre-formatted data (no escaping).
 
         Use this when the data is already escaped/formatted (e.g., with highlighting).
@@ -311,7 +318,7 @@ class QueryMixin:
         old_table.remove()
 
     def _display_query_results(
-        self: AppProtocol, columns: list[str], rows: list[tuple], row_count: int, truncated: bool, elapsed_ms: float
+        self: QueryMixinHost, columns: list[str], rows: list[tuple], row_count: int, truncated: bool, elapsed_ms: float
     ) -> None:
         """Display query results in the results table (called on main thread)."""
         self._last_result_columns = columns
@@ -326,7 +333,7 @@ class QueryMixin:
         else:
             self.notify(f"Query returned {row_count} rows in {time_str}")
 
-    def _display_non_query_result(self: AppProtocol, affected: int, elapsed_ms: float) -> None:
+    def _display_non_query_result(self: QueryMixinHost, affected: int, elapsed_ms: float) -> None:
         """Display non-query result (called on main thread)."""
         self._last_result_columns = ["Result"]
         self._last_result_rows = [(f"{affected} row(s) affected",)]
@@ -336,12 +343,12 @@ class QueryMixin:
         time_str = format_duration_ms(elapsed_ms)
         self.notify(f"Query executed: {affected} row(s) affected in {time_str}")
 
-    def _display_query_error(self: AppProtocol, error_message: str) -> None:
+    def _display_query_error(self: QueryMixinHost, error_message: str) -> None:
         """Display query error (called on main thread)."""
         # notify(severity="error") handles displaying the error in results via _show_error_in_results
         self.notify(f"Query error: {error_message}", severity="error")
 
-    def _restore_insert_mode(self: AppProtocol) -> None:
+    def _restore_insert_mode(self: QueryMixinHost) -> None:
         """Restore INSERT mode after query execution (called on main thread)."""
         from sqlit.shared.ui.widgets import VimMode
 
@@ -351,7 +358,7 @@ class QueryMixin:
         self._update_footer_bindings()
         self._update_status_bar()
 
-    def action_cancel_query(self: AppProtocol) -> None:
+    def action_cancel_query(self: QueryMixinHost) -> None:
         """Cancel the currently running query."""
         if not getattr(self, "_query_executing", False):
             self.notify("No query running")
@@ -370,7 +377,7 @@ class QueryMixin:
 
         self.notify("Query cancelled", severity="warning")
 
-    def action_cancel_operation(self: AppProtocol) -> None:
+    def action_cancel_operation(self: QueryMixinHost) -> None:
         """Cancel any running operation (query or schema indexing)."""
         cancelled = False
 
@@ -402,16 +409,16 @@ class QueryMixin:
         else:
             self.notify("No operation running")
 
-    def action_clear_query(self: AppProtocol) -> None:
+    def action_clear_query(self: QueryMixinHost) -> None:
         """Clear the query input."""
         self.query_input.text = ""
 
-    def action_new_query(self: AppProtocol) -> None:
+    def action_new_query(self: QueryMixinHost) -> None:
         """Start a new query (clear input and results)."""
         self.query_input.text = ""
         self._replace_results_table([], [])
 
-    def action_show_history(self: AppProtocol) -> None:
+    def action_show_history(self: QueryMixinHost) -> None:
         """Show query history for the current connection."""
         if not self.current_config:
             self.notify("Not connected", severity="warning")
@@ -430,7 +437,7 @@ class QueryMixin:
             self._handle_history_result,
         )
 
-    def _handle_history_result(self: AppProtocol, result: Any) -> None:
+    def _handle_history_result(self: QueryMixinHost, result: Any) -> None:
         """Handle the result from the history screen."""
         if result is None:
             return
@@ -465,7 +472,7 @@ class QueryMixin:
             self._toggle_star(data)
             self.action_show_history()
 
-    def _delete_history_entry(self: AppProtocol, timestamp: str) -> None:
+    def _delete_history_entry(self: QueryMixinHost, timestamp: str) -> None:
         """Delete a specific history entry by timestamp."""
         from sqlit.domains.query.store.history import HistoryStore
 
@@ -473,7 +480,7 @@ class QueryMixin:
             return
         HistoryStore.get_instance().delete_entry(self.current_config.name, timestamp)
 
-    def _toggle_star(self: AppProtocol, query: str) -> None:
+    def _toggle_star(self: QueryMixinHost, query: str) -> None:
         """Toggle star status for a query."""
         from sqlit.domains.query.store.starred import StarredStore
 

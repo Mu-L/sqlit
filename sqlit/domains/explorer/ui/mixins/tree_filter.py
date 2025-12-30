@@ -7,7 +7,7 @@ from typing import TYPE_CHECKING, Any
 from rich.markup import escape as escape_markup
 
 from sqlit.shared.core.utils import fuzzy_match, highlight_matches
-from sqlit.shared.ui.protocols import AppProtocol
+from sqlit.shared.ui.protocols import TreeFilterMixinHost
 
 if TYPE_CHECKING:
     pass
@@ -25,7 +25,7 @@ class TreeFilterMixin:
     _tree_filter_match_index: int = 0
     _tree_original_labels: dict[int, str] = {}
 
-    def action_tree_filter(self: AppProtocol) -> None:
+    def action_tree_filter(self: TreeFilterMixinHost) -> None:
         """Open the tree filter."""
         if not self.object_tree.has_focus:
             self.object_tree.focus()
@@ -43,7 +43,7 @@ class TreeFilterMixin:
         self._update_tree_filter()
         self._update_footer_bindings()
 
-    def action_tree_filter_close(self: AppProtocol) -> None:
+    def action_tree_filter_close(self: TreeFilterMixinHost) -> None:
         """Close the tree filter and restore tree."""
         self._tree_filter_visible = False
         self._tree_filter_text = ""
@@ -55,13 +55,13 @@ class TreeFilterMixin:
         self._show_all_tree_nodes()
         self._update_footer_bindings()
 
-    def action_tree_filter_accept(self: AppProtocol) -> None:
+    def action_tree_filter_accept(self: TreeFilterMixinHost) -> None:
         """Accept current filter selection and switch to navigation mode."""
         self._tree_filter_typing = False
         self.tree_filter_input.hide()
         self._update_footer_bindings()
 
-    def action_tree_filter_next(self: AppProtocol) -> None:
+    def action_tree_filter_next(self: TreeFilterMixinHost) -> None:
         """Move to next filter match."""
         if not self._tree_filter_matches:
             return
@@ -70,7 +70,7 @@ class TreeFilterMixin:
         )
         self._jump_to_current_match()
 
-    def action_tree_filter_prev(self: AppProtocol) -> None:
+    def action_tree_filter_prev(self: TreeFilterMixinHost) -> None:
         """Move to previous filter match."""
         if not self._tree_filter_matches:
             return
@@ -79,7 +79,7 @@ class TreeFilterMixin:
         )
         self._jump_to_current_match()
 
-    def _jump_to_current_match(self: AppProtocol) -> None:
+    def _jump_to_current_match(self: TreeFilterMixinHost) -> None:
         """Jump to the current match in the tree."""
         if not self._tree_filter_matches:
             return
@@ -89,7 +89,7 @@ class TreeFilterMixin:
         # Select the node
         self.object_tree.select_node(node)
 
-    def _expand_ancestors(self: AppProtocol, node: Any) -> None:
+    def _expand_ancestors(self: TreeFilterMixinHost, node: Any) -> None:
         """Expand all ancestor nodes to make a node visible."""
         ancestors = []
         current = node.parent
@@ -100,7 +100,7 @@ class TreeFilterMixin:
         for ancestor in reversed(ancestors):
             ancestor.expand()
 
-    def on_key(self: AppProtocol, event: Any) -> None:
+    def on_key(self: TreeFilterMixinHost, event: Any) -> None:
         """Handle key events when tree filter is active."""
         if not self._tree_filter_visible:
             # Pass to next mixin in chain (e.g., AutocompleteMixin)
@@ -167,7 +167,7 @@ class TreeFilterMixin:
         # Pass unhandled keys to next mixin
         super().on_key(event)  # type: ignore[misc]
 
-    def _update_tree_filter(self: AppProtocol) -> None:
+    def _update_tree_filter(self: TreeFilterMixinHost) -> None:
         """Update the tree based on current filter text."""
         self._restore_tree_labels()
         total = self._count_all_nodes()
@@ -201,7 +201,7 @@ class TreeFilterMixin:
             self._jump_to_current_match()
 
     def _find_matching_nodes(
-        self: AppProtocol, node: Any, matches: list
+        self: TreeFilterMixinHost, node: Any, matches: list
     ) -> bool:
         """Recursively find nodes matching the filter.
 
@@ -260,7 +260,7 @@ class TreeFilterMixin:
             return highlighted_text
         return highlighted_text
 
-    def _apply_filter_to_tree(self: AppProtocol) -> None:
+    def _apply_filter_to_tree(self: TreeFilterMixinHost) -> None:
         """Hide nodes that don't match and aren't ancestors of matches."""
         match_ids = {id(n) for n in self._tree_filter_matches}
         ancestor_ids = set()
@@ -278,7 +278,7 @@ class TreeFilterMixin:
         )
 
     def _set_node_visibility(
-        self: AppProtocol,
+        self: TreeFilterMixinHost,
         node: Any,
         match_ids: set,
         ancestor_ids: set,
@@ -303,12 +303,12 @@ class TreeFilterMixin:
 
             self._set_node_visibility(child, match_ids, ancestor_ids, should_show)
 
-    def _show_all_tree_nodes(self: AppProtocol) -> None:
+    def _show_all_tree_nodes(self: TreeFilterMixinHost) -> None:
         """Show all tree nodes (remove filter dimming)."""
         # Labels are restored by _restore_tree_labels
         pass
 
-    def _restore_tree_labels(self: AppProtocol) -> None:
+    def _restore_tree_labels(self: TreeFilterMixinHost) -> None:
         """Restore original labels for all modified nodes."""
         def restore_node(node: Any) -> None:
             node_id = id(node)
@@ -320,7 +320,7 @@ class TreeFilterMixin:
         restore_node(self.object_tree.root)
         self._tree_original_labels = {}
 
-    def _count_all_nodes(self: AppProtocol) -> int:
+    def _count_all_nodes(self: TreeFilterMixinHost) -> int:
         """Count all searchable nodes in the tree."""
         count = 0
 

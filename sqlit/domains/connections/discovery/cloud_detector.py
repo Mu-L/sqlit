@@ -796,27 +796,21 @@ def azure_server_to_connection_config(
         "azure_subscription_id": server.subscription_id,
     }
 
-    if use_sql_auth:
-        return ConnectionConfig(
-            name=f"{server.name}/{database}" if database else server.name,
-            db_type="mssql",
-            server=server.fqdn,
-            port="1433",
-            database=database or (server.databases[0] if server.databases else "master"),
-            username=server.admin_login or "",  # Pre-fill admin login if available
-            password=None,  # Will prompt for password
-            source="azure",
-            options={"auth_type": "sql", **azure_options},
-        )
-    else:
-        return ConnectionConfig(
-            name=f"{server.name}/{database}" if database else server.name,
-            db_type="mssql",
-            server=server.fqdn,
-            port="1433",
-            database=database or (server.databases[0] if server.databases else "master"),
-            username="",  # Not needed for AD_DEFAULT
-            password=None,  # Not needed for AD_DEFAULT
-            source="azure",
-            options={"auth_type": "ad_default", **azure_options},
-        )
+    config_data = {
+        "name": f"{server.name}/{database}" if database else server.name,
+        "db_type": "mssql",
+        "endpoint": {
+            "kind": "tcp",
+            "host": server.fqdn,
+            "port": "1433",
+            "database": database or (server.databases[0] if server.databases else "master"),
+            "username": server.admin_login or "" if use_sql_auth else "",
+            "password": None,
+        },
+        "source": "azure",
+        "options": {
+            "auth_type": "sql" if use_sql_auth else "ad_default",
+            **azure_options,
+        },
+    }
+    return ConnectionConfig.from_dict(config_data)

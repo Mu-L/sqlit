@@ -11,7 +11,7 @@ from textual.screen import ModalScreen
 from textual.widgets import Input, OptionList, Static
 from textual.widgets.option_list import Option
 
-from sqlit.shared.ui.protocols import AppProtocol
+from sqlit.shared.ui.protocols import ThemeScreenAppProtocol
 from sqlit.shared.ui.widgets import Dialog
 
 # Light themes (listed first)
@@ -217,7 +217,7 @@ class ThemeScreen(ModalScreen[str | None]):
 
         # Add custom themes first
         try:
-            app = cast(AppProtocol, self.app)
+            app = cast(ThemeScreenAppProtocol, self.app)
             custom_ids = sorted(app.get_custom_theme_names())
         except Exception:
             custom_ids = []
@@ -327,7 +327,7 @@ class ThemeScreen(ModalScreen[str | None]):
         show_edit = False
         if theme_id:
             try:
-                app = cast(AppProtocol, self.app)
+                app = cast(ThemeScreenAppProtocol, self.app)
                 show_edit = theme_id in app.get_custom_theme_names()
             except Exception:
                 show_edit = False
@@ -371,7 +371,7 @@ class ThemeScreen(ModalScreen[str | None]):
             if not name:
                 return
             try:
-                app = cast(AppProtocol, self.app)
+                app = cast(ThemeScreenAppProtocol, self.app)
                 theme_name = app.add_custom_theme(name)
             except Exception as exc:
                 from sqlit.shared.ui.screens.error import ErrorScreen
@@ -400,7 +400,7 @@ class ThemeScreen(ModalScreen[str | None]):
         if not theme_id or option.disabled:
             return
         try:
-            app = cast(AppProtocol, self.app)
+            app = cast(ThemeScreenAppProtocol, self.app)
             app.open_custom_theme_in_editor(theme_id)
         except Exception as exc:
             from sqlit.shared.ui.screens.error import ErrorScreen

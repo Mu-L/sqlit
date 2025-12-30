@@ -1,6 +1,7 @@
 """Provider registration."""
 
-from sqlit.domains.connections.providers.registry import ProviderSpec, register_provider
+from sqlit.domains.connections.providers.catalog import register_provider
+from sqlit.domains.connections.providers.model import ProviderSpec
 
 SPEC = ProviderSpec(
     db_type="bigquery",
@@ -12,6 +13,8 @@ SPEC = ProviderSpec(
     has_advanced_auth=True,
     default_port="",
     requires_auth=False,
+    badge_label="BQ",
+    url_schemes=("bigquery",),
 )
 
 register_provider(SPEC)

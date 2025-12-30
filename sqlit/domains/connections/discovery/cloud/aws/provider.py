@@ -667,7 +667,8 @@ class AWSProvider:
         for conn in saved_connections:
             if conn.source != "aws":
                 continue
-            if conn.server == instance.endpoint:
+            endpoint = conn.tcp_endpoint
+            if endpoint and endpoint.host == instance.endpoint:
                 return True
         return False
 
@@ -710,7 +711,8 @@ class AWSProvider:
         for conn in saved_connections:
             if conn.source != "aws":
                 continue
-            if conn.server == cluster.endpoint:
+            endpoint = conn.tcp_endpoint
+            if endpoint and endpoint.host == cluster.endpoint:
                 return True
         return False
 
@@ -720,39 +722,49 @@ class AWSProvider:
 
         db_type = self.ENGINE_MAP.get(instance.engine, "postgresql")
 
-        return ConnectionConfig(
-            name=instance.identifier,
-            db_type=db_type,
-            server=instance.endpoint,
-            port=str(instance.port),
-            database=instance.db_name or "",
-            username=instance.master_username,
-            password=None,  # Will prompt for password
-            source="aws",
-            options={
-                "aws_rds_identifier": instance.identifier,
-                "aws_region": instance.region,
-                "aws_engine": instance.engine,
-            },
+        return ConnectionConfig.from_dict(
+            {
+                "name": instance.identifier,
+                "db_type": db_type,
+                "endpoint": {
+                    "kind": "tcp",
+                    "host": instance.endpoint,
+                    "port": str(instance.port),
+                    "database": instance.db_name or "",
+                    "username": instance.master_username,
+                    "password": None,
+                },
+                "source": "aws",
+                "options": {
+                    "aws_rds_identifier": instance.identifier,
+                    "aws_region": instance.region,
+                    "aws_engine": instance.engine,
+                },
+            }
         )
 
     def _redshift_to_config(self, cluster: AWSRedshiftCluster) -> ConnectionConfig:
         """Convert a Redshift cluster to a connection config."""
         from sqlit.domains.connections.domain.config import ConnectionConfig
 
-        return ConnectionConfig(
-            name=cluster.identifier,
-            db_type="redshift",
-            server=cluster.endpoint,
-            port=str(cluster.port),
-            database=cluster.db_name,
-            username=cluster.master_username,
-            password=None,  # Will prompt for password
-            source="aws",
-            options={
-                "aws_redshift_identifier": cluster.identifier,
-                "aws_region": cluster.region,
-            },
+        return ConnectionConfig.from_dict(
+            {
+                "name": cluster.identifier,
+                "db_type": "redshift",
+                "endpoint": {
+                    "kind": "tcp",
+                    "host": cluster.endpoint,
+                    "port": str(cluster.port),
+                    "database": cluster.db_name,
+                    "username": cluster.master_username,
+                    "password": None,
+                },
+                "source": "aws",
+                "options": {
+                    "aws_redshift_identifier": cluster.identifier,
+                    "aws_region": cluster.region,
+                },
+            }
         )
 
 

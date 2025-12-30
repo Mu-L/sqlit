@@ -13,7 +13,7 @@ from textual.widgets import OptionList, Tree
 from textual.widgets.option_list import Option
 from textual.widgets.tree import TreeNode
 
-from sqlit.domains.connections.providers.registry import get_connection_display_info
+from sqlit.domains.connections.providers.metadata import get_connection_display_info
 from sqlit.domains.connections.discovery.cloud import ProviderState, ProviderStatus, get_providers
 from sqlit.shared.core.utils import fuzzy_match, highlight_matches
 from sqlit.shared.ui.widgets import Dialog, FilterInput
@@ -311,10 +311,14 @@ class ConnectionPickerScreen(ModalScreen):
                             )
                             if result.config and result.action != "none":
                                 # Check if not already saved
+                                result_endpoint = result.config.tcp_endpoint
                                 show_save = not any(
-                                    c.name == result.config.name or (
-                                        c.server == result.config.server and
-                                        c.database == result.config.database
+                                    c.name == result.config.name
+                                    or (
+                                        result_endpoint
+                                        and c.tcp_endpoint
+                                        and c.tcp_endpoint.host == result_endpoint.host
+                                        and c.tcp_endpoint.database == result_endpoint.database
                                     )
                                     for c in self.connections
                                 )
@@ -481,15 +485,17 @@ class ConnectionPickerScreen(ModalScreen):
                 return True
 
             # Match by host:port and db_type
+            endpoint = conn.tcp_endpoint
             if (
-                conn.db_type == container.db_type
-                and conn.server in ("localhost", "127.0.0.1", container.host)
-                and conn.port == str(container.port)
+                endpoint
+                and conn.db_type == container.db_type
+                and endpoint.host in ("localhost", "127.0.0.1", container.host)
+                and endpoint.port == str(container.port)
             ):
                 # If container has a known database, require it to match too
                 # This allows multiple containers on the same port with different databases
                 if container.database:
-                    if conn.database == container.database:
+                    if endpoint.database == container.database:
                         return True
                 else:
                     # No database info on container, match by host:port only
@@ -840,7 +846,7 @@ class ConnectionPickerScreen(ModalScreen):
                         self.dismiss(
                             AzureConnectionResult(
                                 server=server,
-                                database=result.config.database,
+                                database=(result.config.tcp_endpoint.database if result.config.tcp_endpoint else ""),
                                 use_sql_auth=result.config.options.get("auth_type") == "sql",
                             )
                         )
@@ -875,7 +881,8 @@ class ConnectionPickerScreen(ModalScreen):
 
         servers = state.extra.get("servers", [])
         for server in servers:
-            if isinstance(server, AzureSqlServer) and server.fqdn == config.server:
+            endpoint = config.tcp_endpoint
+            if isinstance(server, AzureSqlServer) and endpoint and server.fqdn == endpoint.host:
                 return server
         return None
 
@@ -1430,7 +1437,8 @@ class ConnectionPickerScreen(ModalScreen):
         for conn in self.connections:
             if conn.source != "azure":
                 continue
-            if conn.server == server.fqdn and conn.database == database:
+            endpoint = conn.tcp_endpoint
+            if endpoint and endpoint.host == server.fqdn and endpoint.database == database:
                 conn_is_sql = conn.options.get("auth_type") == "sql"
                 if conn_is_sql == use_sql_auth:
                     return True
@@ -1441,7 +1449,8 @@ class ConnectionPickerScreen(ModalScreen):
         for conn in self.connections:
             if conn.source != "azure":
                 continue
-            if conn.server == server.fqdn and conn.database == database:
+            endpoint = conn.tcp_endpoint
+            if endpoint and endpoint.host == server.fqdn and endpoint.database == database:
                 return True
         return False
 
@@ -1450,7 +1459,8 @@ class ConnectionPickerScreen(ModalScreen):
         for conn in self.connections:
             if conn.source != "aws":
                 continue
-            if conn.server == instance.endpoint:
+            endpoint = conn.tcp_endpoint
+            if endpoint and endpoint.host == instance.endpoint:
                 return True
         return False
 
@@ -1459,7 +1469,8 @@ class ConnectionPickerScreen(ModalScreen):
         for conn in self.connections:
             if conn.source != "aws":
                 continue
-            if conn.server == cluster.endpoint:
+            endpoint = conn.tcp_endpoint
+            if endpoint and endpoint.host == cluster.endpoint:
                 return True
         return False
 
@@ -1470,7 +1481,8 @@ class ConnectionPickerScreen(ModalScreen):
                 continue
             if conn.options.get("gcp_connection_name") == instance.connection_name:
                 return True
-            if instance.ip_address and conn.server == instance.ip_address:
+            endpoint = conn.tcp_endpoint
+            if instance.ip_address and endpoint and endpoint.host == instance.ip_address:
                 return True
         return False
 
@@ -1542,20 +1554,25 @@ class ConnectionPickerScreen(ModalScreen):
                     # Only one auth method - use it
                     auth_type = "ad" if has_entra else "sql"
                     from sqlit.domains.connections.domain.config import ConnectionConfig
-                    config = ConnectionConfig(
-                        name=f"{server.name}/{database}",
-                        db_type="mssql",
-                        server=server.fqdn,
-                        port="1433",
-                        database=database,
-                        username=server.admin_login or "" if auth_type == "sql" else "",
-                        password=None,
-                        source="azure",
-                        options={
-                            "auth_type": auth_type,
-                            "azure_subscription_id": server.subscription_id,
-                            "azure_resource_group": server.resource_group,
-                        },
+                    config = ConnectionConfig.from_dict(
+                        {
+                            "name": f"{server.name}/{database}",
+                            "db_type": "mssql",
+                            "endpoint": {
+                                "kind": "tcp",
+                                "host": server.fqdn,
+                                "port": "1433",
+                                "database": database,
+                                "username": server.admin_login or "" if auth_type == "sql" else "",
+                                "password": None,
+                            },
+                            "source": "azure",
+                            "options": {
+                                "auth_type": auth_type,
+                                "azure_subscription_id": server.subscription_id,
+                                "azure_resource_group": server.resource_group,
+                            },
+                        }
                     )
 
         # AWS RDS instance
@@ -1767,20 +1784,25 @@ class ConnectionPickerScreen(ModalScreen):
             if use_sql_auth is not None:
                 from sqlit.domains.connections.domain.config import ConnectionConfig
                 auth_type = "sql" if use_sql_auth else "ad"
-                config = ConnectionConfig(
-                    name=f"{server.name}/{database}",
-                    db_type="mssql",
-                    server=server.fqdn,
-                    port="1433",
-                    database=database,
-                    username=server.admin_login or "" if use_sql_auth else "",
-                    password=None,
-                    source="azure",
-                    options={
-                        "auth_type": auth_type,
-                        "azure_subscription_id": server.subscription_id,
-                        "azure_resource_group": server.resource_group,
-                    },
+                config = ConnectionConfig.from_dict(
+                    {
+                        "name": f"{server.name}/{database}",
+                        "db_type": "mssql",
+                        "endpoint": {
+                            "kind": "tcp",
+                            "host": server.fqdn,
+                            "port": "1433",
+                            "database": database,
+                            "username": server.admin_login or "" if use_sql_auth else "",
+                            "password": None,
+                        },
+                        "source": "azure",
+                        "options": {
+                            "auth_type": auth_type,
+                            "azure_subscription_id": server.subscription_id,
+                            "azure_resource_group": server.resource_group,
+                        },
+                    }
                 )
                 self._save_cloud_connection_from_tree(config)
 
@@ -1957,7 +1979,7 @@ class ConnectionPickerScreen(ModalScreen):
                                 self.dismiss(
                                     AzureConnectionResult(
                                         server=server,
-                                        database=result.config.database,
+                                        database=(result.config.tcp_endpoint.database if result.config.tcp_endpoint else ""),
                                         use_sql_auth=result.config.options.get("auth_type") == "sql",
                                     )
                                 )

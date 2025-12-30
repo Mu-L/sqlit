@@ -66,15 +66,15 @@ class BaseDatabaseTests(ABC):
         if is_file_based(self.config.db_type):
             pytest.skip(f"{self.config.display_name} is file-based, no Docker container")
 
-        from sqlit.domains.connections.providers.registry import get_adapter_class
+        from sqlit.domains.connections.providers.catalog import get_provider
         from sqlit.domains.connections.discovery.docker_detector import (
             DockerStatus,
             detect_database_containers,
         )
 
         # Skip if this database type has no Docker image patterns defined
-        adapter_class = get_adapter_class(self.config.db_type)
-        if not adapter_class.docker_image_patterns():
+        provider = get_provider(self.config.db_type)
+        if provider.docker_detector is None:
             pytest.skip(f"{self.config.display_name} has no Docker image patterns")
 
         status, containers = detect_database_containers()

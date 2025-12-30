@@ -6,7 +6,8 @@ import re
 from typing import TYPE_CHECKING, Any
 
 from sqlit.domains.connections.providers.registry import get_default_port
-from sqlit.domains.connections.providers.adapters.base import ColumnInfo, IndexInfo, MySQLBaseAdapter, SequenceInfo, TableInfo, TriggerInfo, import_driver_module
+from sqlit.domains.connections.providers.adapters.base import ColumnInfo, IndexInfo, MySQLBaseAdapter, SequenceInfo, TableInfo, TriggerInfo
+from sqlit.domains.connections.providers.driver import import_driver_module
 
 if TYPE_CHECKING:
     from sqlit.domains.connections.domain.config import ConnectionConfig
@@ -18,30 +19,6 @@ class MariaDBAdapter(MySQLBaseAdapter):
     MariaDB uses ? placeholders instead of %s, so we override the
     introspection methods that use parameterized queries.
     """
-
-    @classmethod
-    def badge_label(cls) -> str:
-        return "MariaDB"
-
-    @classmethod
-    def url_schemes(cls) -> tuple[str, ...]:
-        return ("mariadb",)
-
-    @classmethod
-    def docker_image_patterns(cls) -> tuple[str, ...]:
-        return ("mariadb",)
-
-    @classmethod
-    def docker_env_vars(cls) -> dict[str, tuple[str, ...]]:
-        return {
-            "user": ("MARIADB_USER", "MYSQL_USER"),
-            "password": ("MARIADB_PASSWORD", "MARIADB_ROOT_PASSWORD", "MYSQL_PASSWORD", "MYSQL_ROOT_PASSWORD"),
-            "database": ("MARIADB_DATABASE", "MYSQL_DATABASE"),
-        }
-
-    @classmethod
-    def docker_default_user(cls) -> str | None:
-        return "root"
 
     @property
     def name(self) -> str:
@@ -81,14 +58,17 @@ class MariaDBAdapter(MySQLBaseAdapter):
             package_name=self.install_package,
         )
 
-        port = int(config.port or get_default_port("mariadb"))
+        endpoint = config.tcp_endpoint
+        if endpoint is None:
+            raise ValueError("MariaDB connections require a TCP-style endpoint.")
+        port = int(endpoint.port or get_default_port("mariadb"))
         mariadb_any: Any = mariadb
         conn = mariadb_any.connect(
-            host=config.server,
+            host=endpoint.host,
             port=port,
-            database=config.database or None,
-            user=config.username,
-            password=config.password,
+            database=endpoint.database or None,
+            user=endpoint.username,
+            password=endpoint.password,
             connect_timeout=10,
         )
         self._supports_sequences = self._detect_sequences_support(conn)

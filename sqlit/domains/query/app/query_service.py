@@ -8,11 +8,12 @@ from __future__ import annotations
 
 import re
 from dataclasses import dataclass
-from typing import TYPE_CHECKING, Any
+from enum import Enum
+from typing import TYPE_CHECKING, Any, Protocol
 
 if TYPE_CHECKING:
     from sqlit.domains.connections.domain.config import ConnectionConfig
-    from sqlit.shared.core.protocols import AdapterProtocol, HistoryStoreProtocol
+    from sqlit.shared.core.protocols import HistoryStoreProtocol, QueryExecutorProtocol
 
 # Query types that return result sets (SELECT-like queries)
 SELECT_KEYWORDS = frozenset(["SELECT", "WITH", "SHOW", "DESCRIBE", "EXPLAIN", "PRAGMA"])
@@ -54,17 +55,19 @@ def parse_use_statement(query: str) -> str | None:
     return next((g for g in match.groups() if g is not None), None)
 
 
-def is_select_query(query: str) -> bool:
-    """Determine if a query is a SELECT-type query that returns rows.
+class QueryKind(Enum):
+    RETURNS_ROWS = "returns_rows"
+    NON_QUERY = "non_query"
 
-    Args:
-        query: The SQL query string.
 
-    Returns:
-        True if the query starts with a SELECT-like keyword.
-    """
-    query_type = query.strip().upper().split()[0] if query.strip() else ""
-    return query_type in SELECT_KEYWORDS
+class QueryAnalyzer(Protocol):
+    def classify(self, query: str) -> QueryKind: ...
+
+
+class KeywordQueryAnalyzer:
+    def classify(self, query: str) -> QueryKind:
+        query_type = query.strip().upper().split()[0] if query.strip() else ""
+        return QueryKind.RETURNS_ROWS if query_type in SELECT_KEYWORDS else QueryKind.NON_QUERY
 
 
 @dataclass
@@ -91,22 +94,18 @@ class QueryService:
     handling query type detection, execution, and optional history saving.
 
     Args:
-        history_store: Optional history store for saving queries.
-            If not provided, uses the default HistoryStore singleton.
+        history_store: History store for saving queries.
+        analyzer: Query analyzer strategy for selecting execution behavior.
     """
 
-    def __init__(self, history_store: HistoryStoreProtocol | None = None):
-        """Initialize the query service.
-
-        Args:
-            history_store: Optional history store for dependency injection.
-        """
+    def __init__(self, history_store: HistoryStoreProtocol, analyzer: QueryAnalyzer | None = None):
         self._history_store = history_store
+        self._analyzer = analyzer or KeywordQueryAnalyzer()
 
     def execute(
         self,
         connection: Any,
-        adapter: AdapterProtocol,
+        executor: QueryExecutorProtocol,
         query: str,
         config: ConnectionConfig | None = None,
         max_rows: int | None = None,
@@ -116,7 +115,7 @@ class QueryService:
 
         Args:
             connection: The database connection object.
-            adapter: The database adapter to use for execution.
+            executor: The query executor to use for execution.
             query: The SQL query string to execute.
             config: Optional connection config (needed for history saving).
             max_rows: Optional maximum rows to fetch for SELECT queries.
@@ -129,8 +128,8 @@ class QueryService:
             Any exceptions raised by the underlying database driver.
         """
         result: QueryResult | NonQueryResult
-        if is_select_query(query):
-            columns, rows, truncated = adapter.execute_query(connection, query, max_rows)
+        if self._analyzer.classify(query) == QueryKind.RETURNS_ROWS:
+            columns, rows, truncated = executor.execute_query(connection, query, max_rows)
             result = QueryResult(
                 columns=columns,
                 rows=list(rows),
@@ -138,7 +137,7 @@ class QueryService:
                 truncated=truncated,
             )
         else:
-            affected = adapter.execute_non_query(connection, query)
+            affected = executor.execute_non_query(connection, query)
             result = NonQueryResult(rows_affected=affected)
 
         # Save to history if requested and config is available
@@ -154,10 +153,4 @@ class QueryService:
             connection_name: The name of the connection.
             query: The query string to save.
         """
-        if self._history_store is not None:
-            self._history_store.save_query(connection_name, query)
-        else:
-            # Use default store
-            from sqlit.domains.query.store.history import HistoryStore
-
-            HistoryStore.get_instance().save_query(connection_name, query)
+        self._history_store.save_query(connection_name, query)

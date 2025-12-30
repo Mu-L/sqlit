@@ -3,7 +3,7 @@
 from __future__ import annotations
 
 import re
-from typing import Any
+from typing import Any, cast
 
 from textual.timer import Timer
 from textual.widgets import TextArea
@@ -19,7 +19,8 @@ from sqlit.domains.query.completion import (
     get_completions,
     get_context,
 )
-from sqlit.shared.ui.protocols import AppProtocol
+from sqlit.domains.connections.providers.model import ProcedureInspector
+from sqlit.shared.ui.protocols import AutocompleteMixinHost
 from sqlit.shared.ui.spinner import Spinner
 
 SPINNER_FRAMES = ["⠋", "⠙", "⠹", "⠸", "⠼", "⠴", "⠦", "⠧", "⠇", "⠏"]
@@ -42,7 +43,7 @@ class AutocompleteMixin:
     # Structure: {db_name: {"tables": [(schema, name), ...], "views": [...], "procedures": [...]}}
     _db_object_cache: dict[str, dict[str, list[Any]]] = {}
 
-    def _run_db_call(self: AppProtocol, fn: Any, *args: Any, **kwargs: Any) -> Any:
+    def _run_db_call(self: AutocompleteMixinHost, fn: Any, *args: Any, **kwargs: Any) -> Any:
         session = getattr(self, "_session", None)
         if session is not None:
             return session.executor.submit(fn, *args, **kwargs).result()
@@ -64,7 +65,7 @@ class AutocompleteMixin:
             return match.group(1)
         return ""
 
-    def _build_alias_map(self: AppProtocol, text: str) -> dict[str, str]:
+    def _build_alias_map(self: AutocompleteMixinHost, text: str) -> dict[str, str]:
         """Build a map of alias -> table name from the SQL text."""
         table_refs = extract_table_refs(text)
         known_tables = set(t.lower() for t in self._schema_cache.get("tables", []))
@@ -76,7 +77,7 @@ class AutocompleteMixin:
                 alias_map[ref.alias.lower()] = ref.name
         return alias_map
 
-    def _get_autocomplete_suggestions(self: AppProtocol, text: str, cursor_pos: int) -> list[str]:
+    def _get_autocomplete_suggestions(self: AutocompleteMixinHost, text: str, cursor_pos: int) -> list[str]:
         """Get autocomplete suggestions using the SQL completion engine."""
         # Build schema data for get_completions
         tables = self._schema_cache.get("tables", []) + self._schema_cache.get("views", [])
@@ -126,9 +127,9 @@ class AutocompleteMixin:
 
         return results
 
-    def _load_columns_for_table(self: AppProtocol, table_name: str) -> None:
+    def _load_columns_for_table(self: AutocompleteMixinHost, table_name: str) -> None:
         """Lazy load columns for a specific table (async via worker)."""
-        if not self.current_connection or not self.current_adapter:
+        if not self.current_connection or not self.current_provider:
             return
 
         if not hasattr(self, "_columns_loading") or self._columns_loading is None:
@@ -145,9 +146,9 @@ class AutocompleteMixin:
         self._columns_loading.add(table_name)
 
         def work() -> None:
-            adapter = self.current_adapter
+            provider = self.current_provider
             connection = self.current_connection
-            if not adapter or not connection:
+            if not provider or not connection:
                 column_names = []
             else:
                 try:
@@ -155,7 +156,11 @@ class AutocompleteMixin:
                     if hasattr(self, "_get_metadata_db_arg"):
                         db_arg = self._get_metadata_db_arg(database)
                     columns = self._run_db_call(
-                        adapter.get_columns, connection, actual_table_name, db_arg, schema_name
+                        provider.schema_inspector.get_columns,
+                        connection,
+                        actual_table_name,
+                        db_arg,
+                        schema_name,
                     )
                     column_names = [c.name for c in columns]
                 except Exception:
@@ -171,7 +176,7 @@ class AutocompleteMixin:
         self.run_worker(work, name=f"load-columns-{table_name}", thread=True, exclusive=False)
 
     def _on_autocomplete_columns_loaded(
-        self: AppProtocol, table_name: str, actual_table_name: str, column_names: list[str]
+        self: AutocompleteMixinHost, table_name: str, actual_table_name: str, column_names: list[str]
     ) -> None:
         """Handle column load completion for autocomplete on main thread."""
         self._columns_loading.discard(table_name)
@@ -190,7 +195,7 @@ class AutocompleteMixin:
             else:
                 self._hide_autocomplete()
 
-    def _has_tables_needing_columns(self: AppProtocol, text: str) -> bool:
+    def _has_tables_needing_columns(self: AutocompleteMixinHost, text: str) -> bool:
         """Check if there are tables in the query that need column loading."""
         if not text.strip():
             return False
@@ -207,9 +212,9 @@ class AutocompleteMixin:
                 return True
         return False
 
-    def _preload_columns_for_query(self: AppProtocol) -> None:
+    def _preload_columns_for_query(self: AutocompleteMixinHost) -> None:
         """Preload columns for all tables found in the current query (runs during idle)."""
-        if not self.current_connection or not self.current_adapter:
+        if not self.current_connection or not self.current_provider:
             return
 
         text = self.query_input.text
@@ -232,7 +237,7 @@ class AutocompleteMixin:
             # Queue column loading
             self._load_columns_for_table(table_key)
 
-    def _show_autocomplete(self: AppProtocol, suggestions: list[str], filter_text: str) -> None:
+    def _show_autocomplete(self: AutocompleteMixinHost, suggestions: list[str], filter_text: str) -> None:
         """Show the autocomplete dropdown with suggestions."""
 
         if not suggestions:
@@ -248,7 +253,7 @@ class AutocompleteMixin:
         dropdown.show()
         self._autocomplete_visible = True
 
-    def _hide_autocomplete(self: AppProtocol) -> None:
+    def _hide_autocomplete(self: AutocompleteMixinHost) -> None:
         """Hide the autocomplete dropdown."""
         try:
             self.autocomplete_dropdown.hide()
@@ -256,7 +261,7 @@ class AutocompleteMixin:
             pass  # Widget not mounted yet
         self._autocomplete_visible = False
 
-    def _apply_autocomplete(self: AppProtocol) -> None:
+    def _apply_autocomplete(self: AutocompleteMixinHost) -> None:
         """Apply the selected autocomplete suggestion."""
         selected = self.autocomplete_dropdown.get_selected()
 
@@ -305,7 +310,7 @@ class AutocompleteMixin:
             current_offset += len(line) + 1
         return (len(lines) - 1, len(lines[-1]) if lines else 0)
 
-    def on_text_area_changed(self: AppProtocol, event: TextArea.Changed) -> None:
+    def on_text_area_changed(self: AutocompleteMixinHost, event: TextArea.Changed) -> None:
         """Handle text changes in the query editor for autocomplete."""
         from sqlit.shared.ui.widgets import VimMode
         from sqlit.domains.shell.app.idle_scheduler import on_user_activity
@@ -346,7 +351,7 @@ class AutocompleteMixin:
             0.1, lambda: self._trigger_autocomplete(event.text_area)
         )
 
-    def _trigger_autocomplete(self: AppProtocol, text_area: TextArea) -> None:
+    def _trigger_autocomplete(self: AutocompleteMixinHost, text_area: TextArea) -> None:
         """Actually trigger autocomplete after debounce delay."""
         from sqlit.domains.shell.app.idle_scheduler import get_idle_scheduler, Priority
 
@@ -379,27 +384,27 @@ class AutocompleteMixin:
                 name="preload-columns",
             )
 
-    def on_descendant_blur(self: AppProtocol, event: Any) -> None:
+    def on_descendant_blur(self: AutocompleteMixinHost, event: Any) -> None:
         """Handle blur events - don't hide autocomplete on window focus loss."""
         # Only hide if focus moves to another widget within the app (not window blur)
         # We want autocomplete to stay visible when user moves mouse to another window
         pass
 
-    def action_autocomplete_next(self: AppProtocol) -> None:
+    def action_autocomplete_next(self: AutocompleteMixinHost) -> None:
         """Move to next autocomplete suggestion."""
         if self._autocomplete_visible:
             self.autocomplete_dropdown.move_selection(1)
 
-    def action_autocomplete_prev(self: AppProtocol) -> None:
+    def action_autocomplete_prev(self: AutocompleteMixinHost) -> None:
         """Move to previous autocomplete suggestion."""
         if self._autocomplete_visible:
             self.autocomplete_dropdown.move_selection(-1)
 
-    def action_autocomplete_close(self: AppProtocol) -> None:
+    def action_autocomplete_close(self: AutocompleteMixinHost) -> None:
         """Close autocomplete dropdown without exiting insert mode."""
         self._hide_autocomplete()
 
-    def on_text_area_selection_changed(self: AppProtocol, event: Any) -> None:
+    def on_text_area_selection_changed(self: AutocompleteMixinHost, event: Any) -> None:
         """Hide autocomplete when cursor moves without text change."""
         if not self._autocomplete_visible:
             return
@@ -415,7 +420,7 @@ class AutocompleteMixin:
         # Cursor moved without text change (arrow keys, click, etc.) - hide autocomplete
         self._hide_autocomplete()
 
-    def on_key(self: AppProtocol, event: Any) -> None:
+    def on_key(self: AutocompleteMixinHost, event: Any) -> None:
         """Handle key events for autocomplete navigation."""
         from sqlit.shared.ui.widgets import VimMode
         from sqlit.domains.shell.app.idle_scheduler import on_user_activity
@@ -448,9 +453,9 @@ class AutocompleteMixin:
             event.prevent_default()
             event.stop()
 
-    def _load_schema_cache(self: AppProtocol) -> None:
+    def _load_schema_cache(self: AutocompleteMixinHost) -> None:
         """Load database schema for autocomplete using threaded workers."""
-        if not self.current_connection or not self.current_config or not self.current_adapter:
+        if not self.current_connection or not self.current_config or not self.current_provider:
             return
 
         # Cancel any existing schema worker
@@ -474,34 +479,40 @@ class AutocompleteMixin:
         # Load schema directly using threaded workers (no idle scheduler needed)
         self._load_schema_directly()
 
-    def _load_schema_directly(self: AppProtocol) -> None:
+    def _load_schema_directly(self: AutocompleteMixinHost) -> None:
         """Load schema using threaded workers - runs immediately without idle scheduler."""
-        adapter = self.current_adapter
+        provider = self.current_provider
+        inspector = provider.schema_inspector if provider else None
         connection = self.current_connection
         config = self.current_config
 
-        if not adapter or not connection or not config:
+        if not provider or not inspector or not connection or not config:
             self._stop_schema_spinner()
             return
+        caps = provider.capabilities
+        supports_procedures = caps.supports_stored_procedures and isinstance(
+            provider.schema_inspector,
+            ProcedureInspector,
+        )
 
         # Track pending database loads
         self._schema_pending_dbs = []
         self._schema_total_jobs = 0
         self._schema_completed_jobs = 0
 
-        if adapter.supports_multiple_databases:
+        if caps.supports_multiple_databases:
             db = None
             if hasattr(self, "_get_effective_database"):
                 db = self._get_effective_database()
             if db:
                 # Single database specified - load immediately
                 self._on_databases_loaded([db])
-            elif adapter.supports_cross_database_queries:
+            elif caps.supports_cross_database_queries:
                 # Need to fetch database list - offload to thread
                 def work() -> None:
                     try:
-                        all_dbs = adapter.get_databases(connection)
-                        system_dbs = {s.lower() for s in adapter.system_databases}
+                        all_dbs = inspector.get_databases(connection)
+                        system_dbs = {s.lower() for s in caps.system_databases}
                         databases = [d for d in all_dbs if d.lower() not in system_dbs]
                         self.call_from_thread(self._on_databases_loaded, databases)
                     except Exception as e:
@@ -514,17 +525,19 @@ class AutocompleteMixin:
             # No multiple databases - just proceed with None
             self._on_databases_loaded([None])
 
-    def _load_schema_via_idle_scheduler(self: AppProtocol, scheduler: Any) -> None:
+    def _load_schema_via_idle_scheduler(self: AutocompleteMixinHost, scheduler: Any) -> None:
         """Load schema using idle scheduler for smoother UI."""
         from sqlit.domains.shell.app.idle_scheduler import Priority
 
-        adapter = self.current_adapter
+        provider = self.current_provider
+        inspector = provider.schema_inspector if provider else None
         connection = self.current_connection
         config = self.current_config
 
-        if not adapter or not connection or not config:
+        if not provider or not inspector or not connection or not config:
             self._stop_schema_spinner()
             return
+        caps = provider.capabilities
 
         # Track pending database loads
         self._schema_pending_dbs = []
@@ -535,19 +548,19 @@ class AutocompleteMixin:
 
         def get_databases_job() -> None:
             """First job: dispatch thread to get list of databases."""
-            if adapter.supports_multiple_databases:
+            if caps.supports_multiple_databases:
                 db = None
                 if hasattr(self, "_get_effective_database"):
                     db = self._get_effective_database()
                 if db:
                     # Single database specified - no need for DB call
                     self._on_databases_loaded([db])
-                elif adapter.supports_cross_database_queries:
+                elif caps.supports_cross_database_queries:
                     # Need to fetch database list - offload to thread
                     def work() -> None:
                         try:
-                            all_dbs = adapter.get_databases(connection)
-                            system_dbs = {s.lower() for s in adapter.system_databases}
+                            all_dbs = inspector.get_databases(connection)
+                            system_dbs = {s.lower() for s in caps.system_databases}
                             databases = [d for d in all_dbs if d.lower() not in system_dbs]
                             self.call_from_thread(self._on_databases_loaded, databases)
                         except Exception as e:
@@ -567,39 +580,46 @@ class AutocompleteMixin:
             name="schema-load",
         )
 
-    def _on_databases_loaded(self: AppProtocol, databases: list) -> None:
+    def _on_databases_loaded(self: AutocompleteMixinHost, databases: list) -> None:
         """Handle databases list loaded - spawn threaded workers for each database."""
-        adapter = self.current_adapter
+        provider = self.current_provider
 
-        if not adapter:
+        if not provider:
             self._stop_schema_spinner()
             return
+        caps = provider.capabilities
 
         self._schema_pending_dbs = databases
         self._schema_total_jobs = len(databases) * 3  # tables, views, procedures per db
+        supports_procedures = caps.supports_stored_procedures and isinstance(provider.schema_inspector, ProcedureInspector)
 
         # Spawn workers directly - they're threaded so won't block
         for database in databases:
             self._load_tables_job(database)
             self._load_views_job(database)
-            if adapter.supports_stored_procedures:
+            if supports_procedures:
                 self._load_procedures_job(database)
             else:
                 self._schema_completed_jobs += 1  # Skip procedures
 
-    def _on_databases_error(self: AppProtocol, error: Exception) -> None:
+    def _on_databases_error(self: AutocompleteMixinHost, error: Exception) -> None:
         """Handle error getting databases list."""
         self.log.error(f"Error getting databases: {error}")
         self._stop_schema_spinner()
 
-    def _load_tables_job(self: AppProtocol, database: str | None) -> None:
+    def _load_tables_job(self: AutocompleteMixinHost, database: str | None) -> None:
         """Idle job: load tables for a single database (dispatches to thread)."""
-        adapter = self.current_adapter
+        provider = self.current_provider
         connection = self.current_connection
 
-        if not adapter or not connection:
+        if not provider or not connection:
             self._schema_job_complete()
             return
+        inspector = provider.schema_inspector
+        if not isinstance(inspector, ProcedureInspector):
+            self._schema_job_complete()
+            return
+        procedure_inspector = cast(ProcedureInspector, inspector)
 
         cache_key = database or "__default__"
 
@@ -614,7 +634,7 @@ class AutocompleteMixin:
                 db_arg = database
                 if hasattr(self, "_get_metadata_db_arg"):
                     db_arg = self._get_metadata_db_arg(database)
-                tables = adapter.get_tables(connection, db_arg)
+                tables = inspector.get_tables(connection, db_arg)
                 # Store in shared cache and process on main thread
                 self.call_from_thread(self._on_tables_loaded, tables, database, cache_key)
             except Exception as e:
@@ -622,24 +642,25 @@ class AutocompleteMixin:
 
         self.run_worker(work, thread=True, name=f"load-tables-{cache_key}")
 
-    def _on_tables_loaded(self: AppProtocol, tables: list, database: str | None, cache_key: str) -> None:
+    def _on_tables_loaded(self: AutocompleteMixinHost, tables: list, database: str | None, cache_key: str) -> None:
         """Handle tables loaded from thread."""
         if cache_key not in self._db_object_cache:
             self._db_object_cache[cache_key] = {}
         self._db_object_cache[cache_key]["tables"] = tables
         self._process_tables_result(tables, database, cache_key)
 
-    def _on_tables_error(self: AppProtocol, error: Exception, database: str | None) -> None:
+    def _on_tables_error(self: AutocompleteMixinHost, error: Exception, database: str | None) -> None:
         """Handle tables load error from thread."""
         self.log.error(f"Error loading tables for {database}: {error}")
         self._schema_job_complete()
 
-    def _process_tables_result(self: AppProtocol, tables: list, database: str | None, cache_key: str) -> None:
+    def _process_tables_result(self: AutocompleteMixinHost, tables: list, database: str | None, cache_key: str) -> None:
         """Process tables result on main thread."""
-        adapter = self.current_adapter
-        if not adapter:
+        provider = self.current_provider
+        if not provider:
             self._schema_job_complete()
             return
+        dialect = provider.dialect
 
         try:
             single_db = len(getattr(self, "_schema_pending_dbs", [None])) == 1
@@ -648,9 +669,9 @@ class AutocompleteMixin:
                 if single_db:
                     self._schema_cache["tables"].append(table_name)
                 else:
-                    quoted_db = adapter.quote_identifier(database) if database else ""
-                    quoted_schema = adapter.quote_identifier(schema_name)
-                    quoted_table = adapter.quote_identifier(table_name)
+                    quoted_db = dialect.quote_identifier(database) if database else ""
+                    quoted_schema = dialect.quote_identifier(schema_name)
+                    quoted_table = dialect.quote_identifier(table_name)
                     if database:
                         full_name = f"{quoted_db}.{quoted_schema}.{quoted_table}"
                     else:
@@ -658,7 +679,7 @@ class AutocompleteMixin:
                     self._schema_cache["tables"].append(full_name)
 
                 # Store metadata for column loading
-                display_name = adapter.format_table_name(schema_name, table_name)
+                display_name = dialect.format_table_name(schema_name, table_name)
                 self._table_metadata[display_name.lower()] = (schema_name, table_name, database)
                 self._table_metadata[table_name.lower()] = (schema_name, table_name, database)
                 if database:
@@ -671,14 +692,19 @@ class AutocompleteMixin:
 
         self._schema_job_complete()
 
-    def _load_views_job(self: AppProtocol, database: str | None) -> None:
+    def _load_views_job(self: AutocompleteMixinHost, database: str | None) -> None:
         """Idle job: load views for a single database (dispatches to thread)."""
-        adapter = self.current_adapter
+        provider = self.current_provider
         connection = self.current_connection
 
-        if not adapter or not connection:
+        if not provider or not connection:
             self._schema_job_complete()
             return
+        inspector = provider.schema_inspector
+        if not isinstance(inspector, ProcedureInspector):
+            self._schema_job_complete()
+            return
+        procedure_inspector = cast(ProcedureInspector, inspector)
 
         cache_key = database or "__default__"
 
@@ -693,31 +719,32 @@ class AutocompleteMixin:
                 db_arg = database
                 if hasattr(self, "_get_metadata_db_arg"):
                     db_arg = self._get_metadata_db_arg(database)
-                views = adapter.get_views(connection, db_arg)
+                views = inspector.get_views(connection, db_arg)
                 self.call_from_thread(self._on_views_loaded, views, database, cache_key)
             except Exception as e:
                 self.call_from_thread(self._on_views_error, e, database)
 
         self.run_worker(work, thread=True, name=f"load-views-{cache_key}")
 
-    def _on_views_loaded(self: AppProtocol, views: list, database: str | None, cache_key: str) -> None:
+    def _on_views_loaded(self: AutocompleteMixinHost, views: list, database: str | None, cache_key: str) -> None:
         """Handle views loaded from thread."""
         if cache_key not in self._db_object_cache:
             self._db_object_cache[cache_key] = {}
         self._db_object_cache[cache_key]["views"] = views
         self._process_views_result(views, database, cache_key)
 
-    def _on_views_error(self: AppProtocol, error: Exception, database: str | None) -> None:
+    def _on_views_error(self: AutocompleteMixinHost, error: Exception, database: str | None) -> None:
         """Handle views load error from thread."""
         self.log.error(f"Error loading views for {database}: {error}")
         self._schema_job_complete()
 
-    def _process_views_result(self: AppProtocol, views: list, database: str | None, cache_key: str) -> None:
+    def _process_views_result(self: AutocompleteMixinHost, views: list, database: str | None, cache_key: str) -> None:
         """Process views result on main thread."""
-        adapter = self.current_adapter
-        if not adapter:
+        provider = self.current_provider
+        if not provider:
             self._schema_job_complete()
             return
+        dialect = provider.dialect
 
         try:
             single_db = len(getattr(self, "_schema_pending_dbs", [None])) == 1
@@ -726,9 +753,9 @@ class AutocompleteMixin:
                 if single_db:
                     self._schema_cache["views"].append(view_name)
                 else:
-                    quoted_db = adapter.quote_identifier(database) if database else ""
-                    quoted_schema = adapter.quote_identifier(schema_name)
-                    quoted_view = adapter.quote_identifier(view_name)
+                    quoted_db = dialect.quote_identifier(database) if database else ""
+                    quoted_schema = dialect.quote_identifier(schema_name)
+                    quoted_view = dialect.quote_identifier(view_name)
                     if database:
                         full_name = f"{quoted_db}.{quoted_schema}.{quoted_view}"
                     else:
@@ -736,7 +763,7 @@ class AutocompleteMixin:
                     self._schema_cache["views"].append(full_name)
 
                 # Store metadata for column loading
-                display_name = adapter.format_table_name(schema_name, view_name)
+                display_name = dialect.format_table_name(schema_name, view_name)
                 self._table_metadata[display_name.lower()] = (schema_name, view_name, database)
                 self._table_metadata[view_name.lower()] = (schema_name, view_name, database)
                 if database:
@@ -749,14 +776,19 @@ class AutocompleteMixin:
 
         self._schema_job_complete()
 
-    def _load_procedures_job(self: AppProtocol, database: str | None) -> None:
+    def _load_procedures_job(self: AutocompleteMixinHost, database: str | None) -> None:
         """Idle job: load procedures for a single database (dispatches to thread)."""
-        adapter = self.current_adapter
+        provider = self.current_provider
         connection = self.current_connection
 
-        if not adapter or not connection:
+        if not provider or not connection:
             self._schema_job_complete()
             return
+        inspector = provider.schema_inspector
+        if not isinstance(inspector, ProcedureInspector):
+            self._schema_job_complete()
+            return
+        procedure_inspector = cast(ProcedureInspector, inspector)
 
         cache_key = database or "__default__"
 
@@ -771,26 +803,26 @@ class AutocompleteMixin:
                 db_arg = database
                 if hasattr(self, "_get_metadata_db_arg"):
                     db_arg = self._get_metadata_db_arg(database)
-                procedures = adapter.get_procedures(connection, db_arg)
+                procedures = procedure_inspector.get_procedures(connection, db_arg)
                 self.call_from_thread(self._on_procedures_loaded, procedures, database, cache_key)
             except Exception as e:
                 self.call_from_thread(self._on_procedures_error, e, database)
 
         self.run_worker(work, thread=True, name=f"load-procedures-{cache_key}")
 
-    def _on_procedures_loaded(self: AppProtocol, procedures: list, database: str | None, cache_key: str) -> None:
+    def _on_procedures_loaded(self: AutocompleteMixinHost, procedures: list, database: str | None, cache_key: str) -> None:
         """Handle procedures loaded from thread."""
         if cache_key not in self._db_object_cache:
             self._db_object_cache[cache_key] = {}
         self._db_object_cache[cache_key]["procedures"] = procedures
         self._process_procedures_result(procedures, cache_key)
 
-    def _on_procedures_error(self: AppProtocol, error: Exception, database: str | None) -> None:
+    def _on_procedures_error(self: AutocompleteMixinHost, error: Exception, database: str | None) -> None:
         """Handle procedures load error from thread."""
         self.log.error(f"Error loading procedures for {database}: {error}")
         self._schema_job_complete()
 
-    def _process_procedures_result(self: AppProtocol, procedures: list, cache_key: str) -> None:
+    def _process_procedures_result(self: AutocompleteMixinHost, procedures: list, cache_key: str) -> None:
         """Process procedures result on main thread."""
         try:
             self._schema_cache["procedures"].extend(procedures)
@@ -799,7 +831,7 @@ class AutocompleteMixin:
 
         self._schema_job_complete()
 
-    def _schema_job_complete(self: AppProtocol) -> None:
+    def _schema_job_complete(self: AutocompleteMixinHost) -> None:
         """Called when a schema loading job completes."""
         self._schema_completed_jobs = getattr(self, "_schema_completed_jobs", 0) + 1
         total = getattr(self, "_schema_total_jobs", 1)
@@ -811,7 +843,7 @@ class AutocompleteMixin:
             self._schema_cache["procedures"] = list(dict.fromkeys(self._schema_cache["procedures"]))
             self._stop_schema_spinner()
 
-    def _start_schema_spinner(self: AppProtocol) -> None:
+    def _start_schema_spinner(self: AutocompleteMixinHost) -> None:
         """Start the schema indexing spinner animation."""
         self._schema_indexing = True
         if self._schema_spinner is not None:
@@ -819,7 +851,7 @@ class AutocompleteMixin:
         self._schema_spinner = Spinner(self, on_tick=lambda _: self._update_status_bar(), fps=10)
         self._schema_spinner.start()
 
-    def _stop_schema_spinner(self: AppProtocol) -> None:
+    def _stop_schema_spinner(self: AutocompleteMixinHost) -> None:
         """Stop the schema indexing spinner animation."""
         self._schema_indexing = False
         if self._schema_spinner is not None:
@@ -827,7 +859,7 @@ class AutocompleteMixin:
             self._schema_spinner = None
         self._update_status_bar()
 
-    def action_cancel_schema_indexing(self: AppProtocol) -> None:
+    def action_cancel_schema_indexing(self: AutocompleteMixinHost) -> None:
         """Cancel ongoing schema indexing."""
         if hasattr(self, "_schema_worker") and self._schema_worker is not None:
             self._schema_worker.cancel()
@@ -835,7 +867,7 @@ class AutocompleteMixin:
         self._stop_schema_spinner()
         self.notify("Schema indexing cancelled")
 
-    async def _load_schema_cache_async(self: AppProtocol) -> None:
+    async def _load_schema_cache_async(self: AutocompleteMixinHost) -> None:
         """Load database schema asynchronously.
 
         Only loads tables, views, and procedures.
@@ -843,13 +875,16 @@ class AutocompleteMixin:
         """
         import asyncio
 
-        adapter = self.current_adapter
+        provider = self.current_provider
         connection = self.current_connection
         config = self.current_config
 
-        if not adapter or not connection or not config:
+        if not provider or not connection or not config:
             self._stop_schema_spinner()
             return
+        inspector = provider.schema_inspector
+        dialect = provider.dialect
+        caps = provider.capabilities
 
         schema_cache: dict = {
             "tables": [],
@@ -867,17 +902,17 @@ class AutocompleteMixin:
 
         try:
             databases: list[str | None]
-            if adapter.supports_multiple_databases:
+            if caps.supports_multiple_databases:
                 db = None
                 if hasattr(self, "_get_effective_database"):
                     db = self._get_effective_database()
                 if db:
                     # Active/default database is set - only load that one
                     databases = [db]
-                elif adapter.supports_cross_database_queries:
+                elif caps.supports_cross_database_queries:
                     # No default database - load all non-system databases
-                    all_dbs = await run_db_call(adapter.get_databases, connection)
-                    system_dbs = {s.lower() for s in adapter.system_databases}
+                    all_dbs = await run_db_call(inspector.get_databases, connection)
+                    system_dbs = {s.lower() for s in caps.system_databases}
                     databases = [d for d in all_dbs if d.lower() not in system_dbs]
                 else:
                     databases = []
@@ -890,7 +925,7 @@ class AutocompleteMixin:
                     db_arg = database
                     if hasattr(self, "_get_metadata_db_arg"):
                         db_arg = self._get_metadata_db_arg(database)
-                    tables = await run_db_call(adapter.get_tables, connection, db_arg)
+                    tables = await run_db_call(inspector.get_tables, connection, db_arg)
                     for schema_name, table_name in tables:
                         # Use simple name if we have a default database, full qualifier otherwise
                         if len(databases) == 1:
@@ -898,16 +933,16 @@ class AutocompleteMixin:
                             schema_cache["tables"].append(table_name)
                         else:
                             # Multiple databases - use full qualifier [db].[schema].[table]
-                            quoted_db = adapter.quote_identifier(database) if database else ""
-                            quoted_schema = adapter.quote_identifier(schema_name)
-                            quoted_table = adapter.quote_identifier(table_name)
+                            quoted_db = dialect.quote_identifier(database) if database else ""
+                            quoted_schema = dialect.quote_identifier(schema_name)
+                            quoted_table = dialect.quote_identifier(table_name)
                             if database:
                                 full_name = f"{quoted_db}.{quoted_schema}.{quoted_table}"
                             else:
                                 full_name = f"{quoted_schema}.{quoted_table}"
                             schema_cache["tables"].append(full_name)
                         # Keep metadata for column loading (multiple keys for flexible lookup)
-                        display_name = adapter.format_table_name(schema_name, table_name)
+                        display_name = dialect.format_table_name(schema_name, table_name)
                         table_metadata[display_name.lower()] = (schema_name, table_name, database)
                         table_metadata[table_name.lower()] = (schema_name, table_name, database)
                         if database:
@@ -917,7 +952,7 @@ class AutocompleteMixin:
                                 table_metadata[full_name.lower()] = (schema_name, table_name, database)
 
                     # Get views
-                    views = await run_db_call(adapter.get_views, connection, db_arg)
+                    views = await run_db_call(inspector.get_views, connection, db_arg)
                     for schema_name, view_name in views:
                         # Use simple name if we have a default database, full qualifier otherwise
                         if len(databases) == 1:
@@ -925,16 +960,16 @@ class AutocompleteMixin:
                             schema_cache["views"].append(view_name)
                         else:
                             # Multiple databases - use full qualifier [db].[schema].[view]
-                            quoted_db = adapter.quote_identifier(database) if database else ""
-                            quoted_schema = adapter.quote_identifier(schema_name)
-                            quoted_view = adapter.quote_identifier(view_name)
+                            quoted_db = dialect.quote_identifier(database) if database else ""
+                            quoted_schema = dialect.quote_identifier(schema_name)
+                            quoted_view = dialect.quote_identifier(view_name)
                             if database:
                                 full_name = f"{quoted_db}.{quoted_schema}.{quoted_view}"
                             else:
                                 full_name = f"{quoted_schema}.{quoted_view}"
                             schema_cache["views"].append(full_name)
                         # Keep metadata for column loading (multiple keys for flexible lookup)
-                        display_name = adapter.format_table_name(schema_name, view_name)
+                        display_name = dialect.format_table_name(schema_name, view_name)
                         table_metadata[display_name.lower()] = (schema_name, view_name, database)
                         table_metadata[view_name.lower()] = (schema_name, view_name, database)
                         if database:
@@ -944,8 +979,8 @@ class AutocompleteMixin:
                                 table_metadata[full_name.lower()] = (schema_name, view_name, database)
 
                     # Get procedures
-                    if adapter.supports_stored_procedures:
-                        procedures = await run_db_call(adapter.get_procedures, connection, db_arg)
+                    if caps.supports_stored_procedures and isinstance(inspector, ProcedureInspector):
+                        procedures = await run_db_call(inspector.get_procedures, connection, db_arg)
                         schema_cache["procedures"].extend(procedures)
 
                 except Exception:
@@ -964,7 +999,7 @@ class AutocompleteMixin:
         finally:
             self._stop_schema_spinner()
 
-    def _update_schema_cache(self: AppProtocol, schema_cache: dict, table_metadata: dict | None = None) -> None:
+    def _update_schema_cache(self: AutocompleteMixinHost, schema_cache: dict, table_metadata: dict | None = None) -> None:
         """Update the schema cache (called on main thread)."""
         self._schema_cache = schema_cache
         if table_metadata is not None:

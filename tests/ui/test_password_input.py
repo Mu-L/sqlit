@@ -7,7 +7,7 @@ from unittest.mock import AsyncMock, MagicMock, patch
 import pytest
 from textual.widgets import Input
 
-from sqlit.domains.connections.domain.config import ConnectionConfig
+from tests.helpers import ConnectionConfig
 from sqlit.domains.connections.ui.screens.password_input import PasswordInputScreen
 
 

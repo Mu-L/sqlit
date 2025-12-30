@@ -8,13 +8,12 @@ from sqlit.domains.connections.providers.registry import get_default_port
 from sqlit.domains.connections.providers.adapters.base import (
     ColumnInfo,
     DatabaseAdapter,
-    DockerCredentials,
     IndexInfo,
     SequenceInfo,
     TableInfo,
     TriggerInfo,
-    import_driver_module,
 )
+from sqlit.domains.connections.providers.driver import import_driver_module
 
 if TYPE_CHECKING:
     from sqlit.domains.connections.domain.config import ConnectionConfig
@@ -26,52 +25,6 @@ class OracleAdapter(DatabaseAdapter):
     Note: Oracle uses schemas extensively, but user_tables/user_views return
     only objects owned by the current user (which acts as the default schema).
     """
-
-    @classmethod
-    def badge_label(cls) -> str:
-        return "Oracle"
-
-    @classmethod
-    def url_schemes(cls) -> tuple[str, ...]:
-        return ("oracle",)
-
-    @classmethod
-    def docker_image_patterns(cls) -> tuple[str, ...]:
-        return ("gvenzl/oracle-free", "oracle/database")
-
-    @classmethod
-    def docker_env_vars(cls) -> dict[str, tuple[str, ...]]:
-        return {
-            "user": ("APP_USER",),
-            "password": ("APP_USER_PASSWORD", "ORACLE_PASSWORD"),
-            "database": ("ORACLE_DATABASE",),
-        }
-
-    @classmethod
-    def docker_default_user(cls) -> str | None:
-        return "SYSTEM"
-
-    @classmethod
-    def docker_default_database(cls) -> str | None:
-        return "FREEPDB1"
-
-    @classmethod
-    def get_docker_credentials(cls, env_vars: dict[str, str]) -> "DockerCredentials":
-        creds = super().get_docker_credentials(env_vars)
-        user = creds.user
-        password = creds.password
-        database = creds.database
-
-        app_user = env_vars.get("APP_USER")
-        app_password = env_vars.get("APP_USER_PASSWORD")
-        if app_user and not app_password:
-            user = cls.docker_default_user()
-            password = env_vars.get("ORACLE_PASSWORD")
-
-        if isinstance(database, str) and "," in database:
-            database = database.split(",", 1)[0]
-
-        return DockerCredentials(user=user, password=password, database=database)
 
     @property
     def name(self) -> str:
@@ -116,9 +69,12 @@ class OracleAdapter(DatabaseAdapter):
             package_name=self.install_package,
         )
 
-        port = int(config.port or get_default_port("oracle"))
+        endpoint = config.tcp_endpoint
+        if endpoint is None:
+            raise ValueError("Oracle connections require a TCP-style endpoint.")
+        port = int(endpoint.port or get_default_port("oracle"))
         # Use Easy Connect string format: host:port/service_name
-        dsn = f"{config.server}:{port}/{config.database}"
+        dsn = f"{endpoint.host}:{port}/{endpoint.database}"
 
         # Determine connection mode based on oracle_role
         oracle_role = config.get_option("oracle_role", "normal")
@@ -129,8 +85,8 @@ class OracleAdapter(DatabaseAdapter):
             mode = oracledb.AUTH_MODE_SYSOPER
 
         connect_kwargs: dict[str, Any] = {
-            "user": config.username,
-            "password": config.password,
+            "user": endpoint.username,
+            "password": endpoint.password,
             "dsn": dsn,
         }
         if mode is not None:

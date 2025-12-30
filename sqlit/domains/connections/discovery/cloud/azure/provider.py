@@ -488,9 +488,10 @@ class AzureProvider:
         for conn in saved_connections:
             if conn.source != "azure":
                 continue
-            if conn.server != server.fqdn:
+            endpoint = conn.tcp_endpoint
+            if not endpoint or endpoint.host != server.fqdn:
                 continue
-            if conn.database != database:
+            if endpoint.database != database:
                 continue
             conn_auth = conn.get_option("auth_type")
             if conn_auth == auth_type:
@@ -520,30 +521,25 @@ class AzureProvider:
             "azure_subscription_id": server.subscription_id,
         }
 
-        if use_sql_auth:
-            return ConnectionConfig(
-                name=f"{server.name}/{database}" if database else server.name,
-                db_type="mssql",
-                server=server.fqdn,
-                port="1433",
-                database=database or "master",
-                username=server.admin_login or "",
-                password=None,
-                source="azure",
-                options={"auth_type": "sql", **azure_options},
-            )
-        else:
-            return ConnectionConfig(
-                name=f"{server.name}/{database}" if database else server.name,
-                db_type="mssql",
-                server=server.fqdn,
-                port="1433",
-                database=database or "master",
-                username="",
-                password=None,
-                source="azure",
-                options={"auth_type": "ad_default", **azure_options},
-            )
+        return ConnectionConfig.from_dict(
+            {
+                "name": f"{server.name}/{database}" if database else server.name,
+                "db_type": "mssql",
+                "endpoint": {
+                    "kind": "tcp",
+                    "host": server.fqdn,
+                    "port": "1433",
+                    "database": database or "master",
+                    "username": server.admin_login or "" if use_sql_auth else "",
+                    "password": None,
+                },
+                "source": "azure",
+                "options": {
+                    "auth_type": "sql" if use_sql_auth else "ad_default",
+                    **azure_options,
+                },
+            }
+        )
 
 
 # Register the provider

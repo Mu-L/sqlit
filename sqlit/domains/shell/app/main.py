@@ -26,7 +26,7 @@ from sqlit.domains.connections.app.mock_settings import (
 )
 from sqlit.domains.connections.app.mocks import MockProfile
 from sqlit.domains.connections.domain.config import ConnectionConfig
-from sqlit.domains.connections.providers.adapters.base import DatabaseAdapter
+from sqlit.domains.connections.providers.model import DatabaseProvider
 from sqlit.domains.connections.store.connections import load_connections
 from sqlit.domains.explorer.ui.mixins.tree import TreeMixin
 from sqlit.domains.explorer.ui.mixins.tree_filter import TreeFilterMixin
@@ -334,7 +334,7 @@ class SSMSTUI(
         self.connections: list[ConnectionConfig] = []
         self.current_connection: Any | None = None
         self.current_config: ConnectionConfig | None = None
-        self.current_adapter: DatabaseAdapter | None = None
+        self.current_provider: DatabaseProvider | None = None
         self.current_ssh_tunnel: Any | None = None
         self.vim_mode: VimMode = VimMode.NORMAL
         self._expanded_paths: set[str] = set()
@@ -395,18 +395,21 @@ class SSMSTUI(
         """Create a session factory that uses mock adapters."""
         from sqlit.domains.connections.app.session import ConnectionSession
 
-        def mock_adapter_factory(db_type: str) -> Any:
-            """Return mock adapter for the given db type."""
-            return profile.get_adapter(db_type)
+        def mock_provider_factory(db_type: str) -> Any:
+            """Return mock provider for the given db type."""
+            return profile.get_provider(db_type)
 
         def mock_tunnel_factory(config: Any) -> Any:
             """Return no tunnel for mock connections."""
-            return None, config.server, int(config.port or "0")
+            endpoint = getattr(config, "tcp_endpoint", None)
+            host = endpoint.host if endpoint else ""
+            port = int(endpoint.port or "0") if endpoint else 0
+            return None, host, port
 
         def factory(config: Any) -> Any:
             return ConnectionSession.create(
                 config,
-                adapter_factory=mock_adapter_factory,
+                provider_factory=mock_provider_factory,
                 tunnel_factory=mock_tunnel_factory,
             )
 

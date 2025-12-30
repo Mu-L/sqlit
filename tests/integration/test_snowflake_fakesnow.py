@@ -2,12 +2,14 @@
 
 from __future__ import annotations
 
+from unittest.mock import MagicMock, patch
+
 import pytest
-import fakesnow
-from unittest.mock import patch, MagicMock
+
+fakesnow = pytest.importorskip("fakesnow")
 
 from sqlit.domains.connections.providers.snowflake.adapter import SnowflakeAdapter
-from sqlit.domains.connections.domain.config import ConnectionConfig
+from sqlit.domains.connections.domain.config import ConnectionConfig, TcpEndpoint
 
 class TestSnowflakeFakeSnow:
     """Integration tests using fakesnow to simulate Snowflake locally."""
@@ -21,10 +23,12 @@ class TestSnowflakeFakeSnow:
         return ConnectionConfig(
             name="test-snowflake",
             db_type="snowflake",
-            server="xy12345.us-east-1",
-            database="TEST_DB",
-            username="testuser",
-            password="testpass",
+            endpoint=TcpEndpoint(
+                host="xy12345.us-east-1",
+                database="TEST_DB",
+                username="testuser",
+                password="testpass",
+            ),
             options={"schema": "PUBLIC", "warehouse": "COMPUTE_WH"}
         )
 

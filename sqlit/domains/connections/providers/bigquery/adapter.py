@@ -11,8 +11,8 @@ from sqlit.domains.connections.providers.adapters.base import (
     SequenceInfo,
     TableInfo,
     TriggerInfo,
-    import_driver_module,
 )
+from sqlit.domains.connections.providers.driver import import_driver_module
 
 if TYPE_CHECKING:
     from sqlit.domains.connections.domain.config import ConnectionConfig
@@ -20,14 +20,6 @@ if TYPE_CHECKING:
 
 class BigQueryAdapter(CursorBasedAdapter):
     """Adapter for Google BigQuery."""
-
-    @classmethod
-    def badge_label(cls) -> str:
-        return "BQ"
-
-    @classmethod
-    def url_schemes(cls) -> tuple[str, ...]:
-        return ("bigquery",)
 
     @property
     def name(self) -> str:
@@ -93,7 +85,8 @@ class BigQueryAdapter(CursorBasedAdapter):
             package_name=self.install_package,
         )
 
-        project_id = config.server or config.options.get("bigquery_project")
+        endpoint = config.tcp_endpoint
+        project_id = (endpoint.host if endpoint else "") or config.options.get("bigquery_project")
         location = config.options.get("bigquery_location", "US")
 
         # Build connection URL

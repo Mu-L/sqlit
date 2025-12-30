@@ -6,7 +6,8 @@ import os
 from dataclasses import dataclass
 from typing import TYPE_CHECKING, Any, cast
 
-from sqlit.domains.connections.providers.adapters.base import ColumnInfo, DatabaseAdapter, IndexInfo, SequenceInfo, TableInfo, TriggerInfo, import_driver_module
+from sqlit.domains.connections.providers.adapters.base import ColumnInfo, DatabaseAdapter, IndexInfo, SequenceInfo, TableInfo, TriggerInfo
+from sqlit.domains.connections.providers.driver import import_driver_module
 
 if TYPE_CHECKING:
     import requests  # pyright: ignore[reportMissingModuleSource]
@@ -25,10 +26,6 @@ class D1Connection:
 
 class D1Adapter(DatabaseAdapter):
     """Adapter for Cloudflare D1."""
-
-    @classmethod
-    def badge_label(cls) -> str:
-        return "D1"
 
     @property
     def driver_import_names(self) -> tuple[str, ...]:
@@ -75,15 +72,18 @@ class D1Adapter(DatabaseAdapter):
         )
 
         session = requests.Session()
-        session.headers.update({"Authorization": f"Bearer {config.password}"})
-        account_id = config.server
+        endpoint = config.tcp_endpoint
+        if endpoint is None:
+            raise ValueError("D1 connections require a TCP-style endpoint.")
+        session.headers.update({"Authorization": f"Bearer {endpoint.password or ''}"})
+        account_id = endpoint.host
 
-        if not config.database:
+        if not endpoint.database:
             raise ValueError("Database name is required for Cloudflare D1 connection.")
 
-        database_id = self._find_database_id_by_name(session, account_id, config.database)
+        database_id = self._find_database_id_by_name(session, account_id, endpoint.database)
         if not database_id:
-            raise ConnectionError(f"Cloudflare D1 database '{config.database}' not found.")
+            raise ConnectionError(f"Cloudflare D1 database '{endpoint.database}' not found.")
 
         return D1Connection(session=session, account_id=account_id, database_id=database_id)
 

@@ -1,60 +1,69 @@
-"""Database provider registry and base adapter types."""
+"""Database provider interfaces and catalog."""
 
-from .adapters.base import ColumnInfo, DatabaseAdapter, TableInfo
-from .exceptions import MissingDriverError
-from .registry import (
-    ProviderSpec,
-    get_adapter,
-    get_adapter_class,
+from sqlit.domains.connections.providers.adapters.base import ColumnInfo, DatabaseAdapter, TableInfo
+from sqlit.domains.connections.providers.catalog import (
     get_all_schemas,
-    get_badge_label,
-    get_connection_display_info,
-    get_connection_schema,
     get_db_type_for_scheme,
-    get_default_port,
-    get_display_name,
+    get_provider,
+    get_provider_schema,
+    get_provider_spec,
     get_supported_db_types,
     get_supported_url_schemes,
     get_url_scheme_map,
+    iter_provider_schemas,
+    register_provider,
+)
+from sqlit.domains.connections.providers.driver import (
+    DriverDescriptor,
+    ensure_driver_available,
+    ensure_provider_driver_available,
+    import_driver_module,
+)
+from sqlit.domains.connections.providers.docker import DockerCredentials, DockerDetector
+from sqlit.domains.connections.providers.metadata import (
+    get_badge_label,
+    get_connection_display_info,
+    get_default_port,
+    get_display_name,
     has_advanced_auth,
     is_file_based,
-    normalize_connection_config,
-    register_provider,
     requires_auth,
-    requires_database_selection,
     supports_ssh,
-    validate_database_required,
 )
-from .schema_catalog import ConnectionSchema, FieldType, SchemaField, SelectOption
+from sqlit.domains.connections.providers.model import ProviderSpec
+from sqlit.domains.connections.providers.schema_catalog import ConnectionSchema, FieldType, SchemaField, SelectOption
 
 __all__ = [
     "ColumnInfo",
     "DatabaseAdapter",
     "TableInfo",
-    "MissingDriverError",
+    "DriverDescriptor",
+    "ensure_driver_available",
+    "ensure_provider_driver_available",
+    "import_driver_module",
+    "DockerCredentials",
+    "DockerDetector",
     "ProviderSpec",
     "ConnectionSchema",
     "FieldType",
     "SchemaField",
     "SelectOption",
-    "get_adapter",
-    "get_adapter_class",
+    "get_provider",
+    "get_provider_spec",
+    "get_provider_schema",
+    "iter_provider_schemas",
+    "register_provider",
     "get_all_schemas",
-    "get_badge_label",
-    "get_connection_display_info",
-    "get_connection_schema",
     "get_db_type_for_scheme",
     "get_default_port",
     "get_display_name",
+    "get_badge_label",
+    "get_connection_display_info",
     "get_supported_db_types",
     "get_supported_url_schemes",
     "get_url_scheme_map",
     "has_advanced_auth",
     "is_file_based",
-    "normalize_connection_config",
-    "register_provider",
     "requires_auth",
-    "requires_database_selection",
     "supports_ssh",
-    "validate_database_required",
 ]

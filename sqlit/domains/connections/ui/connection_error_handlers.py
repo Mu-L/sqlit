@@ -5,10 +5,16 @@ from __future__ import annotations
 from dataclasses import dataclass
 from typing import Protocol, TYPE_CHECKING, cast
 
-from sqlit.shared.ui.protocols import AppProtocol
+from sqlit.shared.ui.protocols import ConnectionsProtocol, TextualAppProtocol
 
 if TYPE_CHECKING:
     from sqlit.domains.connections.domain.config import ConnectionConfig
+
+
+class ConnectionErrorApp(TextualAppProtocol, ConnectionsProtocol, Protocol):
+    """Subset of App behavior required for connection error handling."""
+
+    pass
 
 
 class ConnectionErrorHandler(Protocol):
@@ -16,7 +22,7 @@ class ConnectionErrorHandler(Protocol):
         """Return True if this handler can handle the error."""
         ...
 
-    def handle(self, app: AppProtocol, error: Exception, config: ConnectionConfig) -> None:
+    def handle(self, app: ConnectionErrorApp, error: Exception, config: ConnectionConfig) -> None:
         """Handle the error."""
         ...
 
@@ -28,7 +34,7 @@ class MissingDriverHandler:
 
         return isinstance(error, MissingDriverError)
 
-    def handle(self, app: AppProtocol, error: Exception, config: ConnectionConfig) -> None:
+    def handle(self, app: ConnectionErrorApp, error: Exception, config: ConnectionConfig) -> None:
         from .screens import PackageSetupScreen
         from sqlit.domains.connections.providers.exceptions import MissingDriverError
 
@@ -45,7 +51,7 @@ class AzureFirewallHandler:
 
         return is_firewall_error(str(error))
 
-    def handle(self, app: AppProtocol, error: Exception, config: ConnectionConfig) -> None:
+    def handle(self, app: ConnectionErrorApp, error: Exception, config: ConnectionConfig) -> None:
         from sqlit.domains.connections.discovery.cloud_detector import (
             lookup_azure_sql_server,
             parse_ip_from_firewall_error,
@@ -64,7 +70,8 @@ class AzureFirewallHandler:
 
         # If metadata not available, try to look up from hostname
         if not server_name or not resource_group:
-            short_name = parse_server_name_from_hostname(config.server or "")
+            endpoint = config.tcp_endpoint
+            short_name = parse_server_name_from_hostname(endpoint.host if endpoint else "")
             if short_name:
                 azure_server = lookup_azure_sql_server(short_name)
                 if azure_server:
@@ -98,7 +105,7 @@ _DEFAULT_HANDLERS: tuple[ConnectionErrorHandler, ...] = (
 )
 
 
-def handle_connection_error(app: AppProtocol, error: Exception, config: ConnectionConfig) -> bool:
+def handle_connection_error(app: ConnectionErrorApp, error: Exception, config: ConnectionConfig) -> bool:
     for handler in _DEFAULT_HANDLERS:
         if handler.can_handle(error):
             handler.handle(app, error, config)

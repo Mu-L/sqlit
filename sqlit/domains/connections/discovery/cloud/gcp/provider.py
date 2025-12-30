@@ -516,7 +516,8 @@ class GCPProvider:
             # Check by connection name or IP
             if conn.options.get("gcp_connection_name") == instance.connection_name:
                 return True
-            if instance.ip_address and conn.server == instance.ip_address:
+            endpoint = conn.tcp_endpoint
+            if instance.ip_address and endpoint and endpoint.host == instance.ip_address:
                 return True
         return False
 
@@ -530,21 +531,26 @@ class GCPProvider:
         # Use IP address if available, otherwise connection name
         server = instance.ip_address or instance.connection_name
 
-        return ConnectionConfig(
-            name=instance.name,
-            db_type=db_type,
-            server=server,
-            port=port,
-            database="",  # User needs to specify
-            username="",  # User needs to specify
-            password=None,
-            source="gcp",
-            options={
-                "gcp_connection_name": instance.connection_name,
-                "gcp_project": instance.project,
-                "gcp_region": instance.region,
-                "gcp_database_version": instance.database_version,
-            },
+        return ConnectionConfig.from_dict(
+            {
+                "name": instance.name,
+                "db_type": db_type,
+                "endpoint": {
+                    "kind": "tcp",
+                    "host": server,
+                    "port": port,
+                    "database": "",
+                    "username": "",
+                    "password": None,
+                },
+                "source": "gcp",
+                "options": {
+                    "gcp_connection_name": instance.connection_name,
+                    "gcp_project": instance.project,
+                    "gcp_region": instance.region,
+                    "gcp_database_version": instance.database_version,
+                },
+            }
         )
 
 

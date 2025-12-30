@@ -1,6 +1,8 @@
 """Provider registration."""
 
-from sqlit.domains.connections.providers.registry import ProviderSpec, register_provider
+from sqlit.domains.connections.providers.catalog import register_provider
+from sqlit.domains.connections.providers.docker import DockerDetector
+from sqlit.domains.connections.providers.model import ProviderSpec
 
 SPEC = ProviderSpec(
     db_type="mssql",
@@ -12,6 +14,18 @@ SPEC = ProviderSpec(
     has_advanced_auth=True,
     default_port="1433",
     requires_auth=True,
+    badge_label="MSSQL",
+    url_schemes=("mssql", "sqlserver"),
+    docker_detector=DockerDetector(
+        image_patterns=("mcr.microsoft.com/mssql",),
+        env_vars={
+            "user": (),
+            "password": ("SA_PASSWORD", "MSSQL_SA_PASSWORD"),
+            "database": (),
+        },
+        default_user="sa",
+        default_database="master",
+    ),
 )
 
 register_provider(SPEC)

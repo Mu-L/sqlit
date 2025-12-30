@@ -60,7 +60,7 @@ class ConnectionStore(JSONFileStore):
         if data is None:
             return []
         try:
-            from sqlit.domains.connections.providers.registry import normalize_connection_config
+            from sqlit.domains.connections.providers.config_service import normalize_connection_config
 
             configs = []
             for conn in data:
@@ -80,15 +80,16 @@ class ConnectionStore(JSONFileStore):
         Args:
             config: ConnectionConfig to populate with credentials.
         """
-        if config.password is None:
+        endpoint = config.tcp_endpoint
+        if endpoint and endpoint.password is None:
             password = self.credentials_service.get_password(config.name)
             if password is not None:
-                config.password = password
+                endpoint.password = password
 
-        if config.ssh_password is None:
+        if config.tunnel and config.tunnel.password is None:
             ssh_password = self.credentials_service.get_ssh_password(config.name)
             if ssh_password is not None:
-                config.ssh_password = ssh_password
+                config.tunnel.password = ssh_password
 
     def _save_credentials(self, config: ConnectionConfig) -> None:
         """Save credentials from config to the credentials service.
@@ -99,13 +100,14 @@ class ConnectionStore(JSONFileStore):
         Note: Empty string "" is a valid password (e.g., CockroachDB insecure mode).
               Only None means "delete/no password stored".
         """
-        if config.password is not None:
-            self.credentials_service.set_password(config.name, config.password)
+        endpoint = config.tcp_endpoint
+        if endpoint and endpoint.password is not None:
+            self.credentials_service.set_password(config.name, endpoint.password)
         else:
             self.credentials_service.delete_password(config.name)
 
-        if config.ssh_password is not None:
-            self.credentials_service.set_ssh_password(config.name, config.ssh_password)
+        if config.tunnel and config.tunnel.password is not None:
+            self.credentials_service.set_ssh_password(config.name, config.tunnel.password)
         else:
             self.credentials_service.delete_ssh_password(config.name)
 
@@ -119,10 +121,7 @@ class ConnectionStore(JSONFileStore):
             Dict representation with password fields set to None.
             None indicates "load from credentials service on next load".
         """
-        data = vars(config).copy()
-        data["password"] = None
-        data["ssh_password"] = None
-        return data
+        return config.to_dict(include_passwords=False)
 
     def save_all(self, connections: list[ConnectionConfig]) -> None:
         """Save all connections.

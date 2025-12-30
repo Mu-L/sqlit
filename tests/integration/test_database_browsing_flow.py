@@ -26,7 +26,7 @@ from typing import Any
 import pytest
 
 from sqlit.domains.shell.app.main import SSMSTUI
-from sqlit.domains.connections.domain.config import ConnectionConfig
+from tests.helpers import ConnectionConfig
 from sqlit.domains.explorer.domain.tree_nodes import (
     ConnectionNode,
     DatabaseNode,

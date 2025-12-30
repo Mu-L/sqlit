@@ -6,7 +6,7 @@ from typing import Any
 
 from sqlit.shared.ui.widgets import SqlitDataTable
 
-from sqlit.shared.ui.protocols import AppProtocol
+from sqlit.shared.ui.protocols import ResultsMixinHost
 
 
 class ResultsMixin:
@@ -18,7 +18,7 @@ class ResultsMixin:
     _tooltip_cell_coord: tuple[int, int] | None = None
     _tooltip_showing: bool = False
 
-    def _copy_text(self: AppProtocol, text: str) -> bool:
+    def _copy_text(self: ResultsMixinHost, text: str) -> bool:
         """Copy text to clipboard if possible, otherwise store internally."""
         self._internal_clipboard = text
 
@@ -38,7 +38,7 @@ class ResultsMixin:
         except Exception:
             return False
 
-    def _flash_table_yank(self: AppProtocol, table: SqlitDataTable, scope: str) -> None:
+    def _flash_table_yank(self: ResultsMixinHost, table: SqlitDataTable, scope: str) -> None:
         """Briefly flash the yanked cell(s) to confirm a copy action."""
         from sqlit.shared.ui.widgets import flash_widget
 
@@ -81,7 +81,7 @@ class ResultsMixin:
             lines.append("\t".join(fmt(v) for v in row))
         return "\n".join(lines)
 
-    def action_view_cell(self: AppProtocol) -> None:
+    def action_view_cell(self: ResultsMixinHost) -> None:
         """Show/hide tooltip preview of the selected cell at the cell position."""
         from textual.geometry import Offset
         from textual.widgets._tooltip import Tooltip
@@ -139,7 +139,7 @@ class ResultsMixin:
         except Exception:
             pass
 
-    def action_view_cell_full(self: AppProtocol) -> None:
+    def action_view_cell_full(self: ResultsMixinHost) -> None:
         """View the full value of the selected cell inline."""
         from sqlit.shared.ui.widgets import InlineValueView
 
@@ -166,7 +166,7 @@ class ResultsMixin:
         except Exception:
             pass
 
-    def action_close_value_view(self: AppProtocol) -> None:
+    def action_close_value_view(self: ResultsMixinHost) -> None:
         """Close the inline value view and return to results table."""
         from sqlit.shared.ui.widgets import InlineValueView
 
@@ -178,7 +178,7 @@ class ResultsMixin:
         except Exception:
             pass
 
-    def action_copy_value_view(self: AppProtocol) -> None:
+    def action_copy_value_view(self: ResultsMixinHost) -> None:
         """Copy the value from the inline value view."""
         from sqlit.shared.ui.widgets import InlineValueView, flash_widget
 
@@ -190,7 +190,7 @@ class ResultsMixin:
         except Exception:
             pass
 
-    def action_copy_cell(self: AppProtocol) -> None:
+    def action_copy_cell(self: ResultsMixinHost) -> None:
         """Copy the selected cell to clipboard (or internal clipboard)."""
         table = self.results_table
         if table.row_count <= 0:
@@ -203,7 +203,7 @@ class ResultsMixin:
         self._copy_text(str(value) if value is not None else "NULL")
         self._flash_table_yank(table, "cell")
 
-    def action_copy_row(self: AppProtocol) -> None:
+    def action_copy_row(self: ResultsMixinHost) -> None:
         """Copy the selected row to clipboard (TSV)."""
         table = self.results_table
         if table.row_count <= 0:
@@ -218,7 +218,7 @@ class ResultsMixin:
         self._copy_text(text)
         self._flash_table_yank(table, "row")
 
-    def action_copy_results(self: AppProtocol) -> None:
+    def action_copy_results(self: ResultsMixinHost) -> None:
         """Copy the entire results (last query) to clipboard (TSV)."""
         if not self._last_result_columns and not self._last_result_rows:
             self.notify("No results", severity="warning")
@@ -228,34 +228,34 @@ class ResultsMixin:
         self._copy_text(text)
         self._flash_table_yank(self.results_table, "all")
 
-    def action_results_cursor_left(self: AppProtocol) -> None:
+    def action_results_cursor_left(self: ResultsMixinHost) -> None:
         """Move results cursor left (vim h)."""
         if self.results_table.has_focus:
             self.results_table.action_cursor_left()
 
-    def action_results_cursor_down(self: AppProtocol) -> None:
+    def action_results_cursor_down(self: ResultsMixinHost) -> None:
         """Move results cursor down (vim j)."""
         if self.results_table.has_focus:
             self.results_table.action_cursor_down()
 
-    def action_results_cursor_up(self: AppProtocol) -> None:
+    def action_results_cursor_up(self: ResultsMixinHost) -> None:
         """Move results cursor up (vim k)."""
         if self.results_table.has_focus:
             self.results_table.action_cursor_up()
 
-    def action_results_cursor_right(self: AppProtocol) -> None:
+    def action_results_cursor_right(self: ResultsMixinHost) -> None:
         """Move results cursor right (vim l)."""
         if self.results_table.has_focus:
             self.results_table.action_cursor_right()
 
-    def action_clear_results(self: AppProtocol) -> None:
+    def action_clear_results(self: ResultsMixinHost) -> None:
         """Clear the results table."""
         self._replace_results_table([], [])
         self._last_result_columns = []
         self._last_result_rows = []
         self._last_result_row_count = 0
 
-    def action_edit_cell(self: AppProtocol) -> None:
+    def action_edit_cell(self: ResultsMixinHost) -> None:
         """Generate an UPDATE query for the selected cell and enter insert mode."""
         table = self.results_table
         if table.row_count <= 0:

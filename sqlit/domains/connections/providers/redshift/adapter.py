@@ -11,8 +11,8 @@ from sqlit.domains.connections.providers.adapters.base import (
     SequenceInfo,
     TableInfo,
     TriggerInfo,
-    import_driver_module,
 )
+from sqlit.domains.connections.providers.driver import import_driver_module
 
 if TYPE_CHECKING:
     from sqlit.domains.connections.domain.config import ConnectionConfig
@@ -20,14 +20,6 @@ if TYPE_CHECKING:
 
 class RedshiftAdapter(CursorBasedAdapter):
     """Adapter for Amazon Redshift."""
-
-    @classmethod
-    def badge_label(cls) -> str:
-        return "RS"
-
-    @classmethod
-    def url_schemes(cls) -> tuple[str, ...]:
-        return ("redshift",)
 
     @property
     def name(self) -> str:
@@ -83,25 +75,28 @@ class RedshiftAdapter(CursorBasedAdapter):
         )
 
         auth_method = config.options.get("redshift_auth_method", "password")
+        endpoint = config.tcp_endpoint
+        if endpoint is None:
+            raise ValueError("Redshift connections require a TCP-style endpoint.")
 
         connect_args: dict[str, Any] = {
-            "host": config.server,
-            "port": int(config.port or "5439"),
-            "database": config.database or "dev",
+            "host": endpoint.host,
+            "port": int(endpoint.port or "5439"),
+            "database": endpoint.database or "dev",
         }
 
         if auth_method == "iam":
             # IAM authentication
             connect_args["iam"] = True
-            connect_args["db_user"] = config.username
+            connect_args["db_user"] = endpoint.username
             connect_args["cluster_identifier"] = config.options.get("redshift_cluster_id")
             connect_args["region"] = config.options.get("redshift_region", "us-east-1")
             if config.options.get("redshift_profile"):
                 connect_args["profile"] = config.options["redshift_profile"]
         else:
             # Standard password authentication
-            connect_args["user"] = config.username
-            connect_args["password"] = config.password
+            connect_args["user"] = endpoint.username
+            connect_args["password"] = endpoint.password
 
         conn = redshift_connector.connect(**connect_args)
         conn.autocommit = True

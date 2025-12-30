@@ -4,7 +4,8 @@ from __future__ import annotations
 
 from typing import TYPE_CHECKING, Any
 
-from sqlit.domains.connections.providers.adapters.base import CursorBasedAdapter, import_driver_module, ColumnInfo, IndexInfo, TriggerInfo, SequenceInfo, TableInfo
+from sqlit.domains.connections.providers.adapters.base import CursorBasedAdapter, ColumnInfo, IndexInfo, TriggerInfo, SequenceInfo, TableInfo
+from sqlit.domains.connections.providers.driver import import_driver_module
 
 if TYPE_CHECKING:
     from sqlit.domains.connections.domain.config import ConnectionConfig
@@ -12,10 +13,6 @@ if TYPE_CHECKING:
 
 class AthenaAdapter(CursorBasedAdapter):
     """Adapter for AWS Athena."""
-
-    @classmethod
-    def badge_label(cls) -> str:
-        return "Athena"
 
     @property
     def name(self) -> str:
@@ -73,16 +70,18 @@ class AthenaAdapter(CursorBasedAdapter):
         )
 
         auth_method = config.options.get("athena_auth_method", "profile")
+        endpoint = config.tcp_endpoint
+        schema_name = endpoint.database if endpoint and endpoint.database else "default"
 
         connect_args = {
             "region_name": config.options.get("athena_region_name", "us-east-1"),
             "s3_staging_dir": config.options.get("athena_s3_staging_dir"),
-            "schema_name": config.database or "default",
+            "schema_name": schema_name,
         }
 
         if auth_method == "keys":
-            connect_args["aws_access_key_id"] = config.username
-            connect_args["aws_secret_access_key"] = config.password
+            connect_args["aws_access_key_id"] = endpoint.username if endpoint else ""
+            connect_args["aws_secret_access_key"] = endpoint.password if endpoint else ""
         else:
             connect_args["profile_name"] = config.options.get("athena_profile_name", "default")
 

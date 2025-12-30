@@ -29,11 +29,16 @@ Long Text Testing:
 
 from __future__ import annotations
 
-from collections.abc import Callable
+from collections.abc import Callable, Iterable
 from dataclasses import dataclass, field
-from typing import Any
+from typing import Any, cast
 
 from sqlit.domains.connections.domain.config import ConnectionConfig
+from sqlit.domains.connections.providers.catalog import get_provider, get_provider_schema, get_provider_spec
+from sqlit.domains.connections.providers.explorer_nodes import DefaultExplorerNodeProvider
+from sqlit.domains.connections.providers.legacy import AdapterConfigValidator
+from sqlit.domains.connections.providers.model import DatabaseProvider, ProviderMetadata, SchemaCapabilities
+from sqlit.domains.connections.providers.schema_catalog import ConnectionSchema
 from sqlit.domains.connections.providers.adapters.base import ColumnInfo, DatabaseAdapter, IndexInfo, SequenceInfo, TriggerInfo
 
 
@@ -391,6 +396,129 @@ class MockDatabaseAdapter(DatabaseAdapter):
         return 1
 
 
+def build_mock_provider(db_type: str, adapter: MockDatabaseAdapter) -> DatabaseProvider:
+    real_provider: DatabaseProvider | None
+    try:
+        real_provider = get_provider(db_type)
+    except Exception:
+        real_provider = None
+
+    if real_provider is not None:
+        metadata = real_provider.metadata
+        schema = real_provider.schema
+        driver = real_provider.driver
+        docker_detector = real_provider.docker_detector
+        def _display_info(config: ConnectionConfig) -> str:
+            return real_provider.display_info(config)
+
+        display_info = _display_info
+    else:
+        spec = None
+        try:
+            spec = get_provider_spec(db_type)
+        except Exception:
+            spec = None
+
+        display_name = adapter.name or (spec.display_name if spec else db_type.upper())
+        badge_label = spec.badge_label if spec and spec.badge_label else display_name
+        metadata = ProviderMetadata(
+            db_type=db_type,
+            display_name=display_name,
+            badge_label=badge_label,
+            default_port=spec.default_port if spec else "",
+            supports_ssh=spec.supports_ssh if spec else True,
+            is_file_based=spec.is_file_based if spec else False,
+            has_advanced_auth=spec.has_advanced_auth if spec else False,
+            requires_auth=spec.requires_auth if spec else True,
+            url_schemes=spec.url_schemes if spec else (),
+        )
+        schema = get_provider_schema(db_type) if spec else ConnectionSchema(
+            db_type=db_type,
+            display_name=display_name,
+            fields=(),
+            supports_ssh=metadata.supports_ssh,
+            is_file_based=metadata.is_file_based,
+            has_advanced_auth=metadata.has_advanced_auth,
+            default_port=metadata.default_port,
+            requires_auth=metadata.requires_auth,
+        )
+        driver = None
+        docker_detector = None
+
+        def _display_info(config: ConnectionConfig) -> str:
+            endpoint = getattr(config, "endpoint", None)
+            if endpoint and getattr(endpoint, "kind", "") == "file":
+                return str(getattr(endpoint, "path", "")) or config.name
+            tcp_endpoint = getattr(config, "tcp_endpoint", None)
+            if tcp_endpoint is None:
+                tcp_endpoint = endpoint
+            if tcp_endpoint and getattr(tcp_endpoint, "kind", "") != "file":
+                host = str(getattr(tcp_endpoint, "host", ""))
+                port = str(getattr(tcp_endpoint, "port", ""))
+                database = str(getattr(tcp_endpoint, "database", ""))
+                db_part = f"/{database}" if database else ""
+                port_part = f":{port}" if port else ""
+                info = f"{host}{port_part}{db_part}".strip()
+                if info:
+                    return info
+            return config.name
+
+        display_info = _display_info
+
+    capabilities = SchemaCapabilities(
+        supports_multiple_databases=bool(getattr(adapter, "supports_multiple_databases", False)),
+        supports_cross_database_queries=bool(getattr(adapter, "supports_cross_database_queries", False)),
+        supports_stored_procedures=bool(getattr(adapter, "supports_stored_procedures", False)),
+        supports_indexes=bool(getattr(adapter, "supports_indexes", False)),
+        supports_triggers=bool(getattr(adapter, "supports_triggers", False)),
+        supports_sequences=bool(getattr(adapter, "supports_sequences", False)),
+        default_schema=str(getattr(adapter, "default_schema", "")),
+        system_databases=frozenset(getattr(adapter, "system_databases", frozenset())),
+    )
+
+    def apply_database_override(config: ConnectionConfig, database: str | None) -> ConnectionConfig:
+        override = getattr(adapter, "apply_database_override", None)
+        if callable(override) and database:
+            return cast(ConnectionConfig, override(config, database))
+        return config
+
+    def post_connect(conn: Any, config: ConnectionConfig) -> None:
+        hook = getattr(adapter, "detect_capabilities", None)
+        if callable(hook):
+            hook(conn, config)
+
+    def post_connect_warnings(config: ConnectionConfig) -> list[str]:
+        getter = getattr(adapter, "get_post_connect_warnings", None)
+        if callable(getter):
+            return list(cast(Iterable[str], getter(config)))
+        return []
+
+    def get_auth_type(config: ConnectionConfig) -> Any | None:
+        getter = getattr(adapter, "get_auth_type", None)
+        if callable(getter):
+            return getter(config)
+        return None
+
+    return DatabaseProvider(
+        metadata=metadata,
+        schema=schema,
+        capabilities=capabilities,
+        driver=driver,
+        connection_factory=adapter,
+        query_executor=adapter,
+        schema_inspector=adapter,
+        dialect=adapter,
+        config_validator=AdapterConfigValidator(schema=schema, adapter=adapter),
+        docker_detector=docker_detector,
+        explorer_nodes=DefaultExplorerNodeProvider(),
+        display_info=display_info,
+        apply_database_override=apply_database_override,
+        post_connect=post_connect,
+        post_connect_warnings=post_connect_warnings,
+        get_auth_type=get_auth_type,
+    )
+
+
 # =============================================================================
 # Default Mock Adapters - used when profiles don't define their own
 # =============================================================================
@@ -656,6 +784,7 @@ class MockProfile:
     connections: list[ConnectionConfig] = field(default_factory=list)
     adapters: dict[str, MockDatabaseAdapter] = field(default_factory=dict)
     use_default_adapters: bool = True  # Use default adapters when profile doesn't define one
+    _providers: dict[str, DatabaseProvider] = field(default_factory=dict, init=False, repr=False)
 
     def get_adapter(self, db_type: str) -> MockDatabaseAdapter:
         """Get adapter for a database type, falling back to defaults."""
@@ -665,14 +794,25 @@ class MockProfile:
             return get_default_mock_adapter(db_type)
         return MockDatabaseAdapter(name=f"Mock{db_type.title()}")
 
+    def get_provider(self, db_type: str) -> DatabaseProvider:
+        """Get provider for a database type, building one from mock adapters."""
+        if db_type in self._providers:
+            return self._providers[db_type]
+        adapter = self.get_adapter(db_type)
+        provider = build_mock_provider(db_type, adapter)
+        self._providers[db_type] = provider
+        return provider
+
 
 def _create_sqlite_demo_profile() -> MockProfile:
     """Create the sqlite-demo profile with pre-configured connection."""
     connections = [
-        ConnectionConfig(
-            name="Demo SQLite",
-            db_type="sqlite",
-            options={"file_path": "./demo.db"},
+        ConnectionConfig.from_dict(
+            {
+                "name": "Demo SQLite",
+                "db_type": "sqlite",
+                "endpoint": {"kind": "file", "path": "./demo.db"},
+            }
         ),
     ]
 
@@ -697,26 +837,40 @@ def _create_empty_profile() -> MockProfile:
 def _create_multi_db_profile() -> MockProfile:
     """Create a profile with multiple database types."""
     connections = [
-        ConnectionConfig(
-            name="Production PostgreSQL",
-            db_type="postgresql",
-            server="prod.example.com",
-            port="5432",
-            database="app_db",
-            username="admin",
+        ConnectionConfig.from_dict(
+            {
+                "name": "Production PostgreSQL",
+                "db_type": "postgresql",
+                "endpoint": {
+                    "kind": "tcp",
+                    "host": "prod.example.com",
+                    "port": "5432",
+                    "database": "app_db",
+                    "username": "admin",
+                    "password": None,
+                },
+            }
         ),
-        ConnectionConfig(
-            name="Local SQLite",
-            db_type="sqlite",
-            options={"file_path": "./local.db"},
+        ConnectionConfig.from_dict(
+            {
+                "name": "Local SQLite",
+                "db_type": "sqlite",
+                "endpoint": {"kind": "file", "path": "./local.db"},
+            }
         ),
-        ConnectionConfig(
-            name="Dev MySQL",
-            db_type="mysql",
-            server="localhost",
-            port="3306",
-            database="dev_db",
-            username="root",
+        ConnectionConfig.from_dict(
+            {
+                "name": "Dev MySQL",
+                "db_type": "mysql",
+                "endpoint": {
+                    "kind": "tcp",
+                    "host": "localhost",
+                    "port": "3306",
+                    "database": "dev_db",
+                    "username": "root",
+                    "password": None,
+                },
+            }
         ),
     ]
 
@@ -731,13 +885,19 @@ def _create_multi_db_profile() -> MockProfile:
 def _create_driver_install_success_profile() -> MockProfile:
     """Profile intended for demoing the driver install UX."""
     connections = [
-        ConnectionConfig(
-            name="PostgreSQL (missing driver)",
-            db_type="postgresql",
-            server="localhost",
-            port="5432",
-            database="postgres",
-            username="user",
+        ConnectionConfig.from_dict(
+            {
+                "name": "PostgreSQL (missing driver)",
+                "db_type": "postgresql",
+                "endpoint": {
+                    "kind": "tcp",
+                    "host": "localhost",
+                    "port": "5432",
+                    "database": "postgres",
+                    "username": "user",
+                    "password": None,
+                },
+            }
         ),
     ]
     return MockProfile(
@@ -751,13 +911,19 @@ def _create_driver_install_success_profile() -> MockProfile:
 def _create_driver_install_fail_profile() -> MockProfile:
     """Profile intended for demoing the driver install failure UX."""
     connections = [
-        ConnectionConfig(
-            name="MySQL (missing driver)",
-            db_type="mysql",
-            server="localhost",
-            port="3306",
-            database="test_sqlit",
-            username="user",
+        ConnectionConfig.from_dict(
+            {
+                "name": "MySQL (missing driver)",
+                "db_type": "mysql",
+                "endpoint": {
+                    "kind": "tcp",
+                    "host": "localhost",
+                    "port": "3306",
+                    "database": "test_sqlit",
+                    "username": "user",
+                    "password": None,
+                },
+            }
         ),
     ]
     return MockProfile(
@@ -788,10 +954,12 @@ def _create_perf_test_profile() -> MockProfile:
     with large datasets. Use --demo-rows to specify the number of rows.
     """
     connections = [
-        ConnectionConfig(
-            name="Performance Test DB",
-            db_type="sqlite",
-            options={"file_path": "./perf_test.db"},
+        ConnectionConfig.from_dict(
+            {
+                "name": "Performance Test DB",
+                "db_type": "sqlite",
+                "endpoint": {"kind": "file", "path": "./perf_test.db"},
+            }
         ),
     ]
 

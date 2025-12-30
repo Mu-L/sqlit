@@ -8,7 +8,7 @@ from __future__ import annotations
 from dataclasses import dataclass, field
 from typing import Any
 
-from sqlit.domains.connections.domain.config import ConnectionConfig
+from tests.helpers import ConnectionConfig
 from sqlit.domains.connections.providers.adapters.base import ColumnInfo, DatabaseAdapter
 
 

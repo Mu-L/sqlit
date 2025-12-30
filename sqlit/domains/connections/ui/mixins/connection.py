@@ -8,13 +8,13 @@ from sqlit.domains.connections.domain.passwords import (
     needs_db_password as _needs_db_password,
     needs_ssh_password as _needs_ssh_password,
 )
-from sqlit.shared.ui.protocols import AppProtocol
+from sqlit.shared.ui.protocols import ConnectionMixinHost
 from sqlit.shared.ui.spinner import Spinner
 
 if TYPE_CHECKING:
     from sqlit.domains.connections.app.session import ConnectionSession
     from sqlit.domains.connections.domain.config import ConnectionConfig
-    from sqlit.domains.connections.providers.adapters.base import DatabaseAdapter
+    from sqlit.domains.connections.providers.model import DatabaseProvider
     from sqlit.domains.connections.discovery.cloud_detector import AzureSqlServer
     from sqlit.domains.connections.discovery.docker_detector import DetectedContainer
     from ..screens.connection_picker import (
@@ -28,28 +28,29 @@ class ConnectionMixin:
     """Mixin providing connection management functionality."""
 
     current_config: ConnectionConfig | None = None
-    current_adapter: DatabaseAdapter | None = None
+    current_provider: DatabaseProvider | None = None
     _connecting_config: ConnectionConfig | None = None
     _connect_spinner: Spinner | None = None
     _active_database: str | None = None
     _session: ConnectionSession | None = None
     _query_target_database: str | None = None
 
-    def _populate_credentials_if_missing(self: AppProtocol, config: ConnectionConfig) -> None:
+    def _populate_credentials_if_missing(self: ConnectionMixinHost, config: ConnectionConfig) -> None:
         """Populate missing credentials from the credentials service."""
-        if config.password is not None and config.ssh_password is not None:
+        endpoint = config.tcp_endpoint
+        if endpoint and endpoint.password is not None and (not config.tunnel or config.tunnel.password is not None):
             return
         from sqlit.domains.connections.app.credentials import get_credentials_service
 
         service = get_credentials_service()
-        if config.password is None:
+        if endpoint and endpoint.password is None:
             password = service.get_password(config.name)
             if password is not None:
-                config.password = password
-        if config.ssh_password is None:
+                endpoint.password = password
+        if config.tunnel and config.tunnel.password is None:
             ssh_password = service.get_ssh_password(config.name)
             if ssh_password is not None:
-                config.ssh_password = ssh_password
+                config.tunnel.password = ssh_password
 
     def _get_connection_config_from_data(self, data: Any) -> ConnectionConfig | None:
         if data is None:
@@ -64,7 +65,7 @@ class ConnectionMixin:
         data = getattr(node, "data", None)
         return self._get_connection_config_from_data(data)
 
-    def connect_to_server(self: AppProtocol, config: ConnectionConfig) -> None:
+    def connect_to_server(self: ConnectionMixinHost, config: ConnectionConfig) -> None:
         """Connect to a database (async, non-blocking).
 
         If the connection requires a password that is not stored (empty),
@@ -81,7 +82,7 @@ class ConnectionMixin:
             def on_ssh_password(password: str | None) -> None:
                 if password is None:
                     return
-                temp_config = replace(config, ssh_password=password)
+                temp_config = config.with_tunnel(password=password)
                 self._connect_with_db_password_check(temp_config)
 
             self.push_screen(
@@ -92,7 +93,7 @@ class ConnectionMixin:
 
         self._connect_with_db_password_check(config)
 
-    def _connect_with_db_password_check(self: AppProtocol, config: ConnectionConfig) -> None:
+    def _connect_with_db_password_check(self: ConnectionMixinHost, config: ConnectionConfig) -> None:
         """Check for database password and prompt if needed, then connect."""
         from dataclasses import replace
 
@@ -103,7 +104,7 @@ class ConnectionMixin:
             def on_db_password(password: str | None) -> None:
                 if password is None:
                     return
-                temp_config = replace(config, password=password)
+                temp_config = config.with_endpoint(password=password)
                 self._do_connect(temp_config)
 
             self.push_screen(
@@ -114,7 +115,7 @@ class ConnectionMixin:
 
         self._do_connect(config)
 
-    def _set_connecting_state(self: AppProtocol, config: ConnectionConfig | None, refresh: bool = True) -> None:
+    def _set_connecting_state(self: ConnectionMixinHost, config: ConnectionConfig | None, refresh: bool = True) -> None:
         """Track which connection is currently being attempted."""
         self._connecting_config = config
         if config is None:
@@ -136,20 +137,20 @@ class ConnectionMixin:
         except Exception:
             pass
 
-    def _start_connect_spinner(self: AppProtocol) -> None:
+    def _start_connect_spinner(self: ConnectionMixinHost) -> None:
         """Start the connection spinner animation."""
         if self._connect_spinner is not None:
             self._connect_spinner.stop()
         self._connect_spinner = Spinner(self, on_tick=lambda _: self._on_connect_spinner_tick(), fps=30)
         self._connect_spinner.start()
 
-    def _stop_connect_spinner(self: AppProtocol) -> None:
+    def _stop_connect_spinner(self: ConnectionMixinHost) -> None:
         """Stop the connection spinner animation."""
         if self._connect_spinner is not None:
             self._connect_spinner.stop()
             self._connect_spinner = None
 
-    def _on_connect_spinner_tick(self: AppProtocol) -> None:
+    def _on_connect_spinner_tick(self: ConnectionMixinHost) -> None:
         """Update UI on connect spinner tick."""
         if not getattr(self, "_connecting_config", None):
             return
@@ -159,7 +160,7 @@ class ConnectionMixin:
         except Exception:
             pass
 
-    def _do_connect(self: AppProtocol, config: ConnectionConfig) -> None:
+    def _do_connect(self: ConnectionMixinHost, config: ConnectionConfig) -> None:
         from sqlit.domains.connections.app.session import ConnectionSession
 
         # Disconnect from current server first (if any)
@@ -191,7 +192,7 @@ class ConnectionMixin:
             self._session = session
             self.current_connection = session.connection
             self.current_config = config
-            self.current_adapter = session.adapter
+            self.current_provider = session.provider
             self.current_ssh_tunnel = session.tunnel
             is_saved = any(c.name == config.name for c in self.connections)
             self._direct_connection_config = None if is_saved else config
@@ -207,9 +208,8 @@ class ConnectionMixin:
             # Update database labels to show star on active database
             if hasattr(self, "_update_database_labels"):
                 self.call_after_refresh(self._update_database_labels)
-            if self.current_adapter:
-                warnings = self.current_adapter.get_post_connect_warnings(config)
-                for message in warnings:
+            if self.current_provider:
+                for message in self.current_provider.post_connect_warnings(config):
                     self.notify(message, severity="warning")
 
         def on_error(error: Exception) -> None:
@@ -239,7 +239,7 @@ class ConnectionMixin:
         # Use fixed name so exclusive=True cancels any previous connection attempt
         self.run_worker(do_work, name="connect", thread=True, exclusive=True)
 
-    def _disconnect_silent(self: AppProtocol) -> None:
+    def _disconnect_silent(self: ConnectionMixinHost) -> None:
         """Disconnect without user notification.
 
         Closes the session, clears connection state, and refreshes the tree.
@@ -251,7 +251,7 @@ class ConnectionMixin:
 
         self.current_connection = None
         self.current_config = None
-        self.current_adapter = None
+        self.current_provider = None
         self.current_ssh_tunnel = None
         self._direct_connection_config = None
         self._active_database = None
@@ -259,7 +259,7 @@ class ConnectionMixin:
         self.refresh_tree()
         self._update_section_labels()
 
-    def _select_connected_node(self: AppProtocol) -> None:
+    def _select_connected_node(self: ConnectionMixinHost) -> None:
         """Move cursor to the connected node without toggling expansion."""
         if not self.current_config:
             return
@@ -269,43 +269,45 @@ class ConnectionMixin:
                 self.object_tree.move_cursor(node)
                 break
 
-    def action_disconnect(self: AppProtocol) -> None:
+    def action_disconnect(self: ConnectionMixinHost) -> None:
         """Disconnect from current database."""
         if self.current_connection:
             self._disconnect_silent()
             self.status_bar.update("Disconnected")
             self.notify("Disconnected")
 
-    def _get_effective_database(self: AppProtocol) -> str | None:
+    def _get_effective_database(self: ConnectionMixinHost) -> str | None:
         """Return the active database for the current connection context."""
-        if not self.current_adapter or not self.current_config:
+        if not self.current_provider or not self.current_config:
             return None
-        if self.current_adapter.supports_cross_database_queries:
-            db_name = getattr(self, "_active_database", None) or self.current_config.database
+        if self.current_provider.capabilities.supports_cross_database_queries:
+            endpoint = self.current_config.tcp_endpoint
+            db_name = getattr(self, "_active_database", None) or (endpoint.database if endpoint else "")
             return db_name or None
-        db_name = self.current_config.database
+        endpoint = self.current_config.tcp_endpoint
+        db_name = endpoint.database if endpoint else ""
         return db_name or None
 
-    def _get_metadata_db_arg(self: AppProtocol, database: str | None) -> str | None:
+    def _get_metadata_db_arg(self: ConnectionMixinHost, database: str | None) -> str | None:
         """Return database arg for metadata calls when cross-db queries are supported."""
-        if not database or not self.current_adapter:
+        if not database or not self.current_provider:
             return None
-        if self.current_adapter.supports_cross_database_queries:
+        if self.current_provider.capabilities.supports_cross_database_queries:
             return database
         return None
 
-    def _clear_query_target_database(self: AppProtocol) -> None:
+    def _clear_query_target_database(self: ConnectionMixinHost) -> None:
         """Clear any pending per-query database override."""
         if hasattr(self, "_query_target_database"):
             self._query_target_database = None
 
-    def action_new_connection(self: AppProtocol) -> None:
+    def action_new_connection(self: ConnectionMixinHost) -> None:
         from ..screens import ConnectionScreen
 
         self._set_connection_screen_footer()
         self.push_screen(ConnectionScreen(), self._wrap_connection_result)
 
-    def action_edit_connection(self: AppProtocol) -> None:
+    def action_edit_connection(self: ConnectionMixinHost) -> None:
         from ..screens import ConnectionScreen
 
         node = self.object_tree.cursor_node
@@ -320,7 +322,7 @@ class ConnectionMixin:
         self._set_connection_screen_footer()
         self.push_screen(ConnectionScreen(config, editing=True), self._wrap_connection_result)
 
-    def _set_connection_screen_footer(self: AppProtocol) -> None:
+    def _set_connection_screen_footer(self: ConnectionMixinHost) -> None:
         from sqlit.shared.ui.widgets import ContextFooter
 
         try:
@@ -329,11 +331,11 @@ class ConnectionMixin:
             return
         footer.set_bindings([], [])
 
-    def _wrap_connection_result(self: AppProtocol, result: tuple | None) -> None:
+    def _wrap_connection_result(self: ConnectionMixinHost, result: tuple | None) -> None:
         self._update_footer_bindings()
         self.handle_connection_result(result)
 
-    def handle_connection_result(self: AppProtocol, result: tuple | None) -> None:
+    def handle_connection_result(self: ConnectionMixinHost, result: tuple | None) -> None:
         from sqlit.domains.connections.store.connections import save_connections
         from sqlit.domains.shell.store.settings import SettingsStore
         from sqlit.domains.connections.app.credentials import (
@@ -364,7 +366,10 @@ class ConnectionMixin:
                 self.refresh_tree()
                 self.notify(f"Connection '{with_config.name}' saved")
 
-            needs_password_persist = bool(getattr(config, "password", "") or getattr(config, "ssh_password", ""))
+            endpoint = config.tcp_endpoint
+            needs_password_persist = bool(
+                (endpoint and endpoint.password) or (config.tunnel and config.tunnel.password)
+            )
             if not getattr(self, "_mock_profile", None) and needs_password_persist and not is_keyring_usable():
                 store = SettingsStore.get_instance()
                 settings = store.load_all()
@@ -376,8 +381,10 @@ class ConnectionMixin:
                     return
 
                 if allow_plaintext is False:
-                    config.password = ""
-                    config.ssh_password = ""
+                    if endpoint:
+                        endpoint.password = ""
+                    if config.tunnel:
+                        config.tunnel.password = ""
                     do_save(config, original_name)
                     self.notify("Keyring unavailable: passwords will be prompted when needed", severity="warning")
                     return
@@ -394,8 +401,10 @@ class ConnectionMixin:
 
                     settings2[ALLOW_PLAINTEXT_CREDENTIALS_SETTING] = False
                     store.save_all(settings2)
-                    config.password = ""
-                    config.ssh_password = ""
+                    if endpoint:
+                        endpoint.password = ""
+                    if config.tunnel:
+                        config.tunnel.password = ""
                     do_save(config, original_name)
                     self.notify("Passwords were not saved (keyring unavailable)", severity="warning")
 
@@ -412,7 +421,7 @@ class ConnectionMixin:
 
             do_save(config, original_name)
 
-    def action_duplicate_connection(self: AppProtocol) -> None:
+    def action_duplicate_connection(self: ConnectionMixinHost) -> None:
         from dataclasses import replace
 
         from ..screens import ConnectionScreen
@@ -439,7 +448,7 @@ class ConnectionMixin:
         self._set_connection_screen_footer()
         self.push_screen(ConnectionScreen(duplicated, editing=False), self._wrap_connection_result)
 
-    def action_delete_connection(self: AppProtocol) -> None:
+    def action_delete_connection(self: ConnectionMixinHost) -> None:
         from sqlit.shared.ui.screens.confirm import ConfirmScreen
 
         node = self.object_tree.cursor_node
@@ -464,7 +473,7 @@ class ConnectionMixin:
             do_delete,
         )
 
-    def _do_delete_connection(self: AppProtocol, config: ConnectionConfig) -> None:
+    def _do_delete_connection(self: ConnectionMixinHost, config: ConnectionConfig) -> None:
         from sqlit.domains.connections.store.connections import save_connections
 
         self.connections = [c for c in self.connections if c.name != config.name]
@@ -475,7 +484,7 @@ class ConnectionMixin:
         self.refresh_tree()
         self.notify(f"Connection '{config.name}' deleted")
 
-    def action_connect_selected(self: AppProtocol) -> None:
+    def action_connect_selected(self: ConnectionMixinHost) -> None:
         node = self.object_tree.cursor_node
 
         if not node:
@@ -489,7 +498,7 @@ class ConnectionMixin:
         # Don't disconnect here - we'll disconnect only after successful connection
         self.connect_to_server(config)
 
-    def action_show_connection_picker(self: AppProtocol) -> None:
+    def action_show_connection_picker(self: ConnectionMixinHost) -> None:
         from ..screens import ConnectionPickerScreen
 
         self.push_screen(
@@ -497,7 +506,7 @@ class ConnectionMixin:
             self._handle_connection_picker_result,
         )
 
-    def _handle_connection_picker_result(self: AppProtocol, result: Any) -> None:
+    def _handle_connection_picker_result(self: ConnectionMixinHost, result: Any) -> None:
         if result is None:
             return
 
@@ -534,7 +543,7 @@ class ConnectionMixin:
             # Don't disconnect here - we'll disconnect only after successful connection
             self.connect_to_server(config)
 
-    def _handle_docker_container_result(self: AppProtocol, result: DockerConnectionResult) -> None:
+    def _handle_docker_container_result(self: ConnectionMixinHost, result: DockerConnectionResult) -> None:
         """Handle a Docker container selection from the connection picker."""
         from sqlit.domains.connections.discovery.docker_detector import container_to_connection_config
 
@@ -557,7 +566,7 @@ class ConnectionMixin:
         # Don't disconnect here - we'll disconnect only after successful connection
         self.connect_to_server(config)
 
-    def _find_matching_saved_connection(self: AppProtocol, container: DetectedContainer) -> ConnectionConfig | None:
+    def _find_matching_saved_connection(self: ConnectionMixinHost, container: DetectedContainer) -> ConnectionConfig | None:
         """Find a saved connection that matches a Docker container."""
         for conn in self.connections:
             # Match by name (container name saved as connection name)
@@ -565,21 +574,23 @@ class ConnectionMixin:
                 return conn
 
             # Match by host:port and db_type
+            endpoint = conn.tcp_endpoint
             if (
-                conn.db_type == container.db_type
-                and conn.server in ("localhost", "127.0.0.1", container.host)
-                and conn.port == str(container.port)
+                endpoint
+                and conn.db_type == container.db_type
+                and endpoint.host in ("localhost", "127.0.0.1", container.host)
+                and endpoint.port == str(container.port)
             ):
                 # If container has a known database, require it to match too
                 if container.database:
-                    if conn.database == container.database:
+                    if endpoint.database == container.database:
                         return conn
                 else:
                     # No database info on container, match by host:port only
                     return conn
         return None
 
-    def _handle_azure_resource_result(self: AppProtocol, result: AzureConnectionResult) -> None:
+    def _handle_azure_resource_result(self: ConnectionMixinHost, result: AzureConnectionResult) -> None:
         """Handle an Azure SQL resource selection from the connection picker."""
         from sqlit.domains.connections.discovery.cloud_detector import azure_server_to_connection_config
 
@@ -591,7 +602,7 @@ class ConnectionMixin:
         # Connect - will prompt for password if using SQL auth
         self.connect_to_server(config)
 
-    def _handle_cloud_connection_result(self: AppProtocol, result: CloudConnectionResult) -> None:
+    def _handle_cloud_connection_result(self: ConnectionMixinHost, result: CloudConnectionResult) -> None:
         """Handle a cloud resource selection (AWS, GCP, etc.) from the connection picker."""
         config = result.config
 

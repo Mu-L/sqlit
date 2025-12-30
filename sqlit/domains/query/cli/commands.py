@@ -11,9 +11,14 @@ from typing import Any
 from sqlit.domains.connections.app.session import ConnectionSession
 from sqlit.domains.connections.cli.prompts import prompt_for_password
 from sqlit.domains.connections.domain.config import ConnectionConfig
-from sqlit.domains.connections.providers.registry import get_adapter_class
+from sqlit.domains.connections.providers.catalog import get_provider
 from sqlit.domains.connections.store.connections import load_connections
-from sqlit.domains.query.app.query_service import QueryResult, QueryService, is_select_query
+from sqlit.domains.query.app.query_service import (
+    KeywordQueryAnalyzer,
+    QueryKind,
+    QueryResult,
+    QueryService,
+)
 
 
 def _stream_csv_output(cursor: Any, columns: list[str]) -> int:
@@ -106,9 +111,9 @@ def cmd_query(
         print(f"Error: Connection '{args.connection}' not found.")
         return 1
 
+    provider = get_provider(config.db_type)
     if args.database:
-        adapter_class = get_adapter_class(config.db_type)
-        config = adapter_class().apply_database_override(config, args.database)
+        config = provider.apply_database_override(config, args.database)
 
     config = prompt_for_password(config)
 
@@ -131,13 +136,24 @@ def cmd_query(
     max_rows = args.limit if args.limit > 0 else None
 
     create_session = session_factory or ConnectionSession.create
-    service = query_service or QueryService()
+    if query_service is None:
+        from sqlit.domains.query.store.history import HistoryStore
+
+        service = QueryService(HistoryStore.get_instance())
+    else:
+        service = query_service
+    analyzer = KeywordQueryAnalyzer()
 
     try:
         with create_session(config) as session:
             has_cursor = hasattr(session.connection, "cursor") and callable(getattr(session.connection, "cursor", None))
 
-            if max_rows is None and args.format in ("csv", "json") and is_select_query(query) and has_cursor:
+            if (
+                max_rows is None
+                and args.format in ("csv", "json")
+                and analyzer.classify(query) == QueryKind.RETURNS_ROWS
+                and has_cursor
+            ):
                 cursor = session.connection.cursor()
                 cursor.execute(query)
 
@@ -158,7 +174,7 @@ def cmd_query(
 
             result = service.execute(
                 connection=session.connection,
-                adapter=session.adapter,
+                executor=session.provider.query_executor,
                 query=query,
                 config=config,
                 max_rows=max_rows,

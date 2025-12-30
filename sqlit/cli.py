@@ -10,7 +10,7 @@ import time
 
 from sqlit.domains.connections.cli.helpers import add_schema_arguments, build_connection_config_from_args
 from sqlit.domains.connections.domain.config import AuthType, ConnectionConfig, DatabaseType
-from sqlit.domains.connections.providers.registry import get_connection_schema, get_supported_db_types
+from sqlit.domains.connections.providers.catalog import get_provider_schema, get_supported_db_types
 
 
 def _extract_connection_url(argv: list[str]) -> tuple[str | None, list[str]]:
@@ -206,7 +206,7 @@ def main() -> int:
     )
     add_provider_parsers = add_parser.add_subparsers(dest="provider", metavar="PROVIDER")
     for db_type in get_supported_db_types():
-        schema = get_connection_schema(db_type)
+        schema = get_provider_schema(db_type)
         provider_parser = add_provider_parsers.add_parser(
             db_type,
             help=f"{schema.display_name} options",
@@ -237,7 +237,7 @@ def main() -> int:
     connect_parser = subparsers.add_parser("connect", help="Temporary connection (not saved)")
     connect_provider_parsers = connect_parser.add_subparsers(dest="provider", metavar="PROVIDER")
     for db_type in get_supported_db_types():
-        schema = get_connection_schema(db_type)
+        schema = get_provider_schema(db_type)
         provider_parser = connect_provider_parsers.add_parser(
             db_type,
             help=f"{schema.display_name} options",
@@ -378,7 +378,7 @@ def main() -> int:
                 print(f"Available profiles: {', '.join(list_mock_profiles())}")
                 return 1
 
-        schema = get_connection_schema(provider_db_type)
+        schema = get_provider_schema(provider_db_type)
         try:
             temp_config = build_connection_config_from_args(
                 schema,
@@ -440,7 +440,7 @@ def _build_temp_connection(args: argparse.Namespace) -> ConnectionConfig | None:
     except ValueError:
         raise ValueError(f"Invalid database type '{db_type}'")
 
-    schema = get_connection_schema(db_type)
+    schema = get_provider_schema(db_type)
     return build_connection_config_from_args(
         schema,
         args,

@@ -13,67 +13,21 @@ if TYPE_CHECKING:
 
 
 @runtime_checkable
-class AdapterProtocol(Protocol):
-    """Protocol for database adapters.
-
-    This protocol defines the minimal interface required by QueryService
-    to execute queries against a database.
-    """
-
-    def connect(self, config: ConnectionConfig) -> Any:
-        """Connect to the database.
-
-        Args:
-            config: Connection configuration.
-
-        Returns:
-            A database connection object.
-        """
-        ...
+class QueryExecutorProtocol(Protocol):
+    """Protocol for executing queries against a database connection."""
 
     def execute_query(self, conn: Any, query: str, max_rows: int | None = None) -> tuple[list[str], list[tuple], bool]:
-        """Execute a SELECT-type query.
-
-        Args:
-            conn: Database connection.
-            query: SQL query string.
-            max_rows: Optional maximum rows to fetch.
-
-        Returns:
-            Tuple of (columns, rows, truncated).
-        """
         ...
 
     def execute_non_query(self, conn: Any, query: str) -> int:
-        """Execute a non-SELECT query.
-
-        Args:
-            conn: Database connection.
-            query: SQL query string.
-
-        Returns:
-            Number of rows affected.
-        """
         ...
 
 
 @runtime_checkable
-class AdapterFactoryProtocol(Protocol):
-    """Protocol for adapter factory functions.
+class ProviderFactoryProtocol(Protocol):
+    """Protocol for provider factory functions."""
 
-    This protocol defines the interface for functions that create
-    database adapters based on database type.
-    """
-
-    def __call__(self, db_type: str) -> AdapterProtocol:
-        """Create an adapter for the given database type.
-
-        Args:
-            db_type: Database type string (e.g., 'mssql', 'postgresql').
-
-        Returns:
-            A database adapter instance.
-        """
+    def __call__(self, db_type: str) -> Any:
         ...
 
 

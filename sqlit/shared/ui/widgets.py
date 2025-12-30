@@ -16,7 +16,7 @@ if TYPE_CHECKING:
     from collections.abc import Callable
 
     from textual.widget import Widget
-    from sqlit.shared.ui.protocols import AppProtocol
+    from sqlit.shared.ui.protocols import AutocompleteProtocol, UINavigationProtocol
 
 
 class QueryTextArea(TextArea):
@@ -26,7 +26,7 @@ class QueryTextArea(TextArea):
         """Intercept Enter key when autocomplete is visible."""
         if event.key == "enter":
             # Check if autocomplete is visible on the app
-            app = cast("AppProtocol", self.app)
+            app = cast("AutocompleteProtocol", self.app)
             if getattr(app, "_autocomplete_visible", False):
                 # Hide autocomplete and suppress re-triggering from the newline
                 if hasattr(app, "_hide_autocomplete"):
@@ -485,7 +485,7 @@ class InlineValueView(VerticalScroll):
             return
 
         key = event.key
-        app = cast("AppProtocol", self.app)
+        app = cast("UINavigationProtocol", self.app)
 
         # Close value view
         if key in ("escape", "q"):

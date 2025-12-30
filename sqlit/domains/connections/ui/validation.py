@@ -6,7 +6,7 @@ from dataclasses import dataclass, field
 from pathlib import Path
 from typing import TYPE_CHECKING
 
-from sqlit.domains.connections.providers.registry import is_file_based
+from sqlit.domains.connections.providers.metadata import is_file_based
 
 if TYPE_CHECKING:
     from sqlit.domains.connections.ui.fields import FieldDefinition

@@ -4,7 +4,15 @@ from __future__ import annotations
 
 from typing import TYPE_CHECKING, Any
 
-from sqlit.domains.connections.providers.adapters.base import CursorBasedAdapter, DockerCredentials, import_driver_module, ColumnInfo, IndexInfo, TriggerInfo, SequenceInfo, TableInfo
+from sqlit.domains.connections.providers.adapters.base import (
+    ColumnInfo,
+    CursorBasedAdapter,
+    IndexInfo,
+    SequenceInfo,
+    TableInfo,
+    TriggerInfo,
+)
+from sqlit.domains.connections.providers.driver import import_driver_module
 
 if TYPE_CHECKING:
     from sqlit.domains.connections.domain.config import ConnectionConfig
@@ -12,10 +20,6 @@ if TYPE_CHECKING:
 
 class SnowflakeAdapter(CursorBasedAdapter):
     """Adapter for Snowflake."""
-
-    @classmethod
-    def badge_label(cls) -> str:
-        return "SNOW"
 
     @property
     def name(self) -> str:
@@ -59,11 +63,14 @@ class SnowflakeAdapter(CursorBasedAdapter):
         )
 
         # Map 'server' to 'account'
+        endpoint = config.tcp_endpoint
+        if endpoint is None:
+            raise ValueError("Snowflake connections require a TCP-style endpoint.")
         connect_args = {
-            "user": config.username,
-            "password": config.password,
-            "account": config.server,
-            "database": config.database,
+            "user": endpoint.username,
+            "password": endpoint.password,
+            "account": endpoint.host,
+            "database": endpoint.database,
         }
 
         # Additional args from our schema:

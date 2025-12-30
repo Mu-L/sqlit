@@ -8,11 +8,10 @@ from __future__ import annotations
 
 from dataclasses import dataclass
 from enum import Enum
-from typing import TYPE_CHECKING, Any
+from typing import TYPE_CHECKING, Any, cast
 
 if TYPE_CHECKING:
     from sqlit.domains.connections.domain.config import ConnectionConfig
-    from sqlit.domains.connections.providers.adapters.base import DatabaseAdapter, DockerCredentials
 
 
 class DockerStatus(Enum):
@@ -57,7 +56,7 @@ class DetectedContainer:
 
     def get_display_name(self) -> str:
         """Get a display name for the container."""
-        from sqlit.domains.connections.providers.registry import get_display_name
+        from sqlit.domains.connections.providers.metadata import get_display_name
 
         label = get_display_name(self.db_type)
         if label == self.db_type:
@@ -65,15 +64,16 @@ class DetectedContainer:
         return f"{self.container_name} ({label})"
 
 
-def _iter_docker_adapters() -> list[tuple[str, type["DatabaseAdapter"]]]:
-    from sqlit.domains.connections.providers.registry import get_adapter_class, get_supported_db_types
+def _iter_docker_detectors() -> list[tuple[str, Any]]:
+    from sqlit.domains.connections.providers.catalog import get_provider, get_supported_db_types
 
-    adapters: list[tuple[str, type["DatabaseAdapter"]]] = []
+    detectors: list[tuple[str, Any]] = []
     for db_type in get_supported_db_types():
-        adapter_class = get_adapter_class(db_type)
-        if adapter_class.docker_image_patterns():
-            adapters.append((db_type, adapter_class))
-    return adapters
+        provider = get_provider(db_type)
+        if provider.docker_detector is None:
+            continue
+        detectors.append((db_type, provider.docker_detector))
+    return detectors
 
 
 def get_docker_status() -> DockerStatus:
@@ -109,8 +109,8 @@ def _get_db_type_from_image(image_name: str) -> str | None:
     Returns:
         Database type string or None if not a recognized database image.
     """
-    for db_type, adapter_class in _iter_docker_adapters():
-        if adapter_class.match_docker_image(image_name):
+    for db_type, detector in _iter_docker_detectors():
+        if detector.match_image(image_name):
             return db_type
     return None
 
@@ -208,14 +208,6 @@ def _get_container_env_vars(container: Any) -> dict[str, str]:
     return env_dict
 
 
-def _get_container_credentials(
-    adapter_class: type["DatabaseAdapter"],
-    env_vars: dict[str, str],
-) -> "DockerCredentials":
-    """Extract credentials from container environment variables."""
-    return adapter_class.get_docker_credentials(env_vars)
-
-
 def _detect_containers_with_status(
     client: Any, status_filter: str, container_status: ContainerStatus
 ) -> list[DetectedContainer]:
@@ -247,10 +239,13 @@ def _detect_containers_with_status(
         if not db_type:
             continue
 
-        from sqlit.domains.connections.providers.registry import get_adapter_class, get_default_port
+        from sqlit.domains.connections.providers.catalog import get_provider
 
-        adapter_class = get_adapter_class(db_type)
-        default_port_str = get_default_port(db_type)
+        provider = get_provider(db_type)
+        detector = provider.docker_detector
+        if detector is None:
+            continue
+        default_port_str = provider.metadata.default_port
         default_port = int(default_port_str) if default_port_str else None
 
         # Get host-mapped port (only available for running containers)
@@ -271,7 +266,7 @@ def _detect_containers_with_status(
 
         # Get credentials from environment variables
         env_vars = _get_container_env_vars(container)
-        credentials = _get_container_credentials(adapter_class, env_vars)
+        credentials = detector.get_credentials(env_vars)
 
         # Create container name (strip leading slash if present)
         container_name = container.name
@@ -280,14 +275,12 @@ def _detect_containers_with_status(
 
         # Use 127.0.0.1 for MySQL/MariaDB to force TCP connection
         # (localhost causes them to try Unix socket which doesn't exist on host)
-        host = adapter_class.docker_preferred_host()
+        host = detector.preferred_host
 
         # For databases that don't require auth, use empty string instead of None
         # This prevents the UI from prompting for a password
-        from sqlit.domains.connections.providers.registry import requires_auth
-
         password = credentials.password
-        if password is None and not requires_auth(db_type):
+        if password is None and not provider.metadata.requires_auth:
             password = ""
 
         detected.append(
@@ -355,21 +348,26 @@ def container_to_connection_config(container: DetectedContainer) -> ConnectionCo
     Returns:
         ConnectionConfig ready for connection or saving.
     """
-    from sqlit.domains.connections.domain.config import ConnectionConfig
-    from sqlit.domains.connections.providers.registry import get_adapter_class, normalize_connection_config
+    from sqlit.domains.connections.domain.config import ConnectionConfig, TcpEndpoint
+    from sqlit.domains.connections.providers.catalog import get_provider
+    from sqlit.domains.connections.providers.config_service import normalize_connection_config
 
     server = container.host
     port = str(container.port) if container.port else ""
+    provider = get_provider(container.db_type)
     config = ConnectionConfig(
         name=container.container_name,
         db_type=container.db_type,
-        server=server,
-        port=port,
-        database=container.database or "",
-        username=container.username or "",
-        password=container.password,
+        endpoint=TcpEndpoint(
+            host=server,
+            port=port or provider.metadata.default_port,
+            database=container.database or "",
+            username=container.username or "",
+            password=container.password,
+        ),
         source="docker",
     )
-    adapter_class = get_adapter_class(container.db_type)
-    config = adapter_class.normalize_docker_connection(config)
+    normalize = getattr(provider.connection_factory, "normalize_docker_connection", None)
+    if callable(normalize):
+        config = cast(ConnectionConfig, normalize(config))
     return normalize_connection_config(config)

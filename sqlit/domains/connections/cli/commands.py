@@ -3,7 +3,6 @@
 from __future__ import annotations
 
 import sys
-from dataclasses import replace
 from typing import TYPE_CHECKING, Any
 
 from .helpers import build_connection_config_from_args
@@ -15,7 +14,7 @@ from sqlit.domains.connections.domain.config import (
     get_database_type_labels,
 )
 from sqlit.domains.connections.store.connections import load_connections, save_connections
-from sqlit.domains.connections.providers.registry import get_adapter_class, get_connection_schema, has_advanced_auth, is_file_based
+from sqlit.domains.connections.providers.catalog import get_provider, get_provider_schema
 
 from sqlit.domains.connections.app.credentials import (
     ALLOW_PLAINTEXT_CREDENTIALS_SETTING,
@@ -58,8 +57,11 @@ def _maybe_prompt_plaintext_credentials() -> bool:
 
 
 def _clear_passwords_if_not_persisted(config: ConnectionConfig) -> None:
-    config.password = ""
-    config.ssh_password = ""
+    endpoint = config.tcp_endpoint
+    if endpoint:
+        endpoint.password = ""
+    if config.tunnel:
+        config.tunnel.password = ""
 
 
 def cmd_connection_list(args: Any) -> int:
@@ -74,22 +76,29 @@ def cmd_connection_list(args: Any) -> int:
     labels = get_database_type_labels()
     for conn in connections:
         db_type_label = labels.get(conn.get_db_type(), conn.db_type)
-        if is_file_based(conn.db_type):
-            file_path = str(conn.get_option("file_path", ""))
+        provider = get_provider(conn.db_type)
+        if provider.metadata.is_file_based:
+            file_endpoint = conn.file_endpoint
+            file_path = str(file_endpoint.path if file_endpoint else "")
             conn_info = file_path[:38] + ".." if len(file_path) > 40 else file_path
             auth_label = "N/A"
-        elif has_advanced_auth(conn.db_type):
-            conn_info = f"{conn.server}@{conn.database}" if conn.database else conn.server
+        elif provider.metadata.has_advanced_auth:
+            endpoint = conn.tcp_endpoint
+            host = endpoint.host if endpoint else ""
+            database = endpoint.database if endpoint else ""
+            conn_info = f"{host}@{database}" if database else host
             conn_info = conn_info[:38] + ".." if len(conn_info) > 40 else conn_info
             auth_value = str(conn.get_option("auth_type", ""))
-            adapter_class = get_adapter_class(conn.db_type)
-            auth_type = adapter_class().get_auth_type(conn)
+            auth_type = provider.get_auth_type(conn)
             auth_label = AUTH_TYPE_LABELS.get(auth_type, auth_value) if auth_type else auth_value
         else:
             # Server-based databases with simple auth
-            conn_info = f"{conn.server}@{conn.database}" if conn.database else conn.server
+            endpoint = conn.tcp_endpoint
+            host = endpoint.host if endpoint else ""
+            database = endpoint.database if endpoint else ""
+            conn_info = f"{host}@{database}" if database else host
             conn_info = conn_info[:38] + ".." if len(conn_info) > 40 else conn_info
-            auth_label = f"User: {conn.username}" if conn.username else "N/A"
+            auth_label = f"User: {endpoint.username}" if endpoint and endpoint.username else "N/A"
         print(f"{conn.name:<20} {db_type_label:<10} {conn_info:<40} {auth_label:<25}")
     return 0
 
@@ -123,7 +132,9 @@ def cmd_connection_create(args: Any) -> int:
             return 1
 
         connections.append(config)
-        if (config.password or config.ssh_password) and not is_keyring_usable():
+        has_db_password = bool(config.tcp_endpoint and config.tcp_endpoint.password)
+        has_ssh_password = bool(config.tunnel and config.tunnel.password)
+        if (has_db_password or has_ssh_password) and not is_keyring_usable():
             if not _maybe_prompt_plaintext_credentials():
                 _clear_passwords_if_not_persisted(config)
         save_connections(connections)
@@ -153,7 +164,7 @@ def cmd_connection_create(args: Any) -> int:
         print(f"Error: Invalid database type '{db_type}'. Valid types: {valid_types}")
         return 1
 
-    schema = get_connection_schema(db_type)
+    schema = get_provider_schema(db_type)
     try:
         config = build_connection_config_from_args(
             schema,
@@ -167,7 +178,9 @@ def cmd_connection_create(args: Any) -> int:
         return 1
 
     connections.append(config)
-    if (config.password or config.ssh_password) and not is_keyring_usable():
+    has_db_password = bool(config.tcp_endpoint and config.tcp_endpoint.password)
+    has_ssh_password = bool(config.tunnel and config.tunnel.password)
+    if (has_db_password or has_ssh_password) and not is_keyring_usable():
         if not _maybe_prompt_plaintext_credentials():
             _clear_passwords_if_not_persisted(config)
     save_connections(connections)
@@ -197,13 +210,15 @@ def cmd_connection_edit(args: Any) -> int:
             return 1
         conn.name = args.name
 
+    endpoint = conn.tcp_endpoint
     server = getattr(args, "server", None) or getattr(args, "host", None)
-    if server:
-        conn.server = server
-    if args.port:
-        conn.port = args.port
-    if args.database:
-        conn.database = args.database
+    if endpoint:
+        if server:
+            endpoint.host = server
+        if args.port:
+            endpoint.port = args.port
+        if args.database:
+            endpoint.database = args.database
     if args.auth_type:
         try:
             auth_type = AuthType(args.auth_type)
@@ -213,16 +228,24 @@ def cmd_connection_edit(args: Any) -> int:
             valid_types = ", ".join(t.value for t in AuthType)
             print(f"Error: Invalid auth type '{args.auth_type}'. Valid types: {valid_types}")
             return 1
-    if args.username is not None:
-        conn.username = args.username
-    if args.password is not None:
-        conn.password = args.password
+    if endpoint:
+        if args.username is not None:
+            endpoint.username = args.username
+        if args.password is not None:
+            endpoint.password = args.password
 
     file_path = getattr(args, "file_path", None)
     if file_path is not None:
-        conn.set_option("file_path", file_path)
+        if conn.file_endpoint:
+            conn.file_endpoint.path = file_path
+        else:
+            from sqlit.domains.connections.domain.config import FileEndpoint
 
-    if (conn.password or conn.ssh_password) and not is_keyring_usable():
+            conn.endpoint = FileEndpoint(path=file_path)
+
+    has_db_password = bool(conn.tcp_endpoint and conn.tcp_endpoint.password)
+    has_ssh_password = bool(conn.tunnel and conn.tunnel.password)
+    if (has_db_password or has_ssh_password) and not is_keyring_usable():
         if not _maybe_prompt_plaintext_credentials():
             _clear_passwords_if_not_persisted(conn)
 

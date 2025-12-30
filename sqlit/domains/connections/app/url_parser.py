@@ -13,13 +13,13 @@ from typing import Protocol
 from urllib.parse import ParseResult, parse_qs, unquote, urlparse
 
 from sqlit.domains.connections.domain.config import ConnectionConfig
-from sqlit.domains.connections.providers.registry import (
-    get_connection_schema,
+from sqlit.domains.connections.providers.catalog import (
     get_db_type_for_scheme,
-    get_display_name,
+    get_provider_schema,
     get_url_scheme_map,
-    normalize_connection_config,
 )
+from sqlit.domains.connections.providers.config_service import normalize_connection_config
+from sqlit.domains.connections.providers.metadata import get_display_name
 
 
 class UrlParseStrategy(Protocol):
@@ -127,7 +127,7 @@ def parse_connection_url(
     # Generate default name if not provided
     config_name = name or f"Temp {get_display_name(db_type)}"
 
-    schema = get_connection_schema(db_type)
+    schema = get_provider_schema(db_type)
     strategy: UrlParseStrategy = SERVER_BASED_STRATEGY
     if schema.is_file_based:
         strategy = FILE_BASED_STRATEGY
@@ -166,12 +166,14 @@ def _parse_file_based_url(
     if not file_path:
         raise ValueError(f"No file path specified in {db_type} URL")
 
-    return ConnectionConfig(
-        name=name,
-        db_type=db_type,
-        options={"file_path": file_path},
-        connection_url=original_url,
-        extra_options=extra_options,
+    return ConnectionConfig.from_dict(
+        {
+            "name": name,
+            "db_type": db_type,
+            "endpoint": {"kind": "file", "path": file_path},
+            "connection_url": original_url,
+            "extra_options": extra_options,
+        }
     )
 
 
@@ -197,14 +199,19 @@ def _parse_server_based_url(
     # Database: strip leading slash from path
     database = parsed.path.lstrip("/") if parsed.path else ""
 
-    return ConnectionConfig(
-        name=name,
-        db_type=db_type,
-        server=hostname,
-        port=port,
-        database=database,
-        username=username,
-        password=password,
-        connection_url=original_url,
-        extra_options=extra_options,
+    return ConnectionConfig.from_dict(
+        {
+            "name": name,
+            "db_type": db_type,
+            "endpoint": {
+                "kind": "tcp",
+                "host": hostname,
+                "port": port,
+                "database": database,
+                "username": username,
+                "password": password,
+            },
+            "connection_url": original_url,
+            "extra_options": extra_options,
+        }
     )

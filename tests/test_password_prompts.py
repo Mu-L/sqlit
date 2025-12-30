@@ -8,7 +8,7 @@ from unittest.mock import MagicMock, patch
 import pytest
 
 from sqlit.domains.connections.cli.prompts import prompt_for_password
-from sqlit.domains.connections.domain.config import ConnectionConfig
+from tests.helpers import ConnectionConfig
 from sqlit.domains.connections.ui.mixins.connection import _needs_db_password, _needs_ssh_password
 
 

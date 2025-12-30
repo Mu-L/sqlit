@@ -7,12 +7,15 @@ for query execution that can be cancelled by closing the connection.
 from __future__ import annotations
 
 import threading
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 from typing import TYPE_CHECKING, Any
+
+from sqlit.domains.query.app.query_service import KeywordQueryAnalyzer, QueryKind
 
 if TYPE_CHECKING:
     from sqlit.domains.connections.domain.config import ConnectionConfig
-    from sqlit.domains.connections.providers.adapters.base import DatabaseAdapter
+    from sqlit.domains.connections.providers.model import DatabaseProvider
+    from .query_service import QueryAnalyzer
     from .query_service import NonQueryResult, QueryResult
 
 
@@ -47,8 +50,9 @@ class CancellableQuery:
 
     sql: str
     config: ConnectionConfig
-    adapter: DatabaseAdapter
+    provider: DatabaseProvider
     tunnel: Any | None = None
+    analyzer: QueryAnalyzer = field(default_factory=KeywordQueryAnalyzer)
 
     def __post_init__(self) -> None:
         """Initialize internal state."""
@@ -77,10 +81,8 @@ class CancellableQuery:
             RuntimeError: If already cancelled before execution started.
             Any database-specific errors from connection or query execution.
         """
-        from dataclasses import replace
-
         from sqlit.domains.connections.app.tunnel import create_ssh_tunnel
-        from .query_service import NonQueryResult, QueryResult, is_select_query
+        from .query_service import NonQueryResult, QueryResult
 
         with self._lock:
             if self._cancelled:
@@ -99,7 +101,7 @@ class CancellableQuery:
 
             # Adjust config for tunnel
             if self.tunnel or self._created_tunnel:
-                connect_config = replace(self.config, server=host, port=str(port))
+                connect_config = self.config.with_endpoint(host=host, port=str(port))
             else:
                 connect_config = self.config
 
@@ -107,11 +109,19 @@ class CancellableQuery:
             with self._lock:
                 if self._cancelled:
                     raise RuntimeError("Query was cancelled")
-                self._connection = self.adapter.connect(connect_config)
+                self._connection = self.provider.connection_factory.connect(connect_config)
+                try:
+                    self.provider.post_connect(self._connection, connect_config)
+                except Exception:
+                    pass
 
             # Execute query using adapter methods
-            if is_select_query(self.sql):
-                columns, rows, truncated = self.adapter.execute_query(self._connection, self.sql, max_rows)
+            if self.analyzer.classify(self.sql) == QueryKind.RETURNS_ROWS:
+                columns, rows, truncated = self.provider.query_executor.execute_query(
+                    self._connection,
+                    self.sql,
+                    max_rows,
+                )
                 return QueryResult(
                     columns=columns,
                     rows=rows,
@@ -120,7 +130,7 @@ class CancellableQuery:
                 )
             else:
                 # Non-SELECT query
-                rows_affected = self.adapter.execute_non_query(self._connection, self.sql)
+                rows_affected = self.provider.query_executor.execute_non_query(self._connection, self.sql)
                 return NonQueryResult(rows_affected=rows_affected)
 
         finally:

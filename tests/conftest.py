@@ -1726,7 +1726,7 @@ def d1_db(d1_server_ready: bool) -> str:
         "password": D1_API_TOKEN,
         "database": D1_DATABASE,
     }
-    from sqlit.domains.connections.domain.config import ConnectionConfig
+    from tests.helpers import ConnectionConfig
 
     conn_config = ConnectionConfig(**config)
     try:

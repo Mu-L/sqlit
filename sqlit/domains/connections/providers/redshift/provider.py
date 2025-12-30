@@ -1,6 +1,7 @@
 """Provider registration."""
 
-from sqlit.domains.connections.providers.registry import ProviderSpec, register_provider
+from sqlit.domains.connections.providers.catalog import register_provider
+from sqlit.domains.connections.providers.model import ProviderSpec
 
 SPEC = ProviderSpec(
     db_type="redshift",
@@ -12,6 +13,8 @@ SPEC = ProviderSpec(
     has_advanced_auth=True,
     default_port="5439",
     requires_auth=True,
+    badge_label="RS",
+    url_schemes=("redshift",),
 )
 
 register_provider(SPEC)

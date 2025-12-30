@@ -6,18 +6,26 @@ from unittest.mock import MagicMock, patch
 
 import pytest
 
-from sqlit.domains.connections.providers.registry import get_adapter_class, get_default_port
+from sqlit.domains.connections.providers.catalog import get_provider
+from sqlit.domains.connections.providers.docker import DockerCredentials
+from sqlit.domains.connections.providers.registry import get_default_port
 from sqlit.domains.connections.app.mock_settings import set_mock_docker_containers
 from sqlit.domains.connections.discovery.docker_detector import (
     DetectedContainer,
     DockerStatus,
-    _get_container_credentials,
     _get_db_type_from_image,
     _get_host_port,
     container_to_connection_config,
     detect_database_containers,
     get_docker_status,
 )
+
+
+def _get_container_credentials(db_type: str, env_vars: dict[str, str]) -> DockerCredentials:
+    provider = get_provider(db_type)
+    detector = provider.docker_detector
+    assert detector is not None
+    return detector.get_credentials(env_vars)
 
 
 class TestDockerStatus:
@@ -75,14 +83,14 @@ class TestCredentialExtraction:
             "POSTGRES_PASSWORD": "mypass",
             "POSTGRES_DB": "mydb",
         }
-        creds = _get_container_credentials(get_adapter_class("postgresql"), env_vars)
+        creds = _get_container_credentials("postgresql", env_vars)
         assert creds.user == "myuser"
         assert creds.password == "mypass"
         assert creds.database == "mydb"
 
     def test_postgresql_defaults(self):
         """Test PostgreSQL defaults when no env vars set."""
-        creds = _get_container_credentials(get_adapter_class("postgresql"), {})
+        creds = _get_container_credentials("postgresql", {})
         assert creds.user == "postgres"
         assert creds.password is None
         assert creds.database == "postgres"
@@ -90,7 +98,7 @@ class TestCredentialExtraction:
     def test_mysql_root_password(self):
         """Test MySQL with root password."""
         env_vars = {"MYSQL_ROOT_PASSWORD": "rootpass"}
-        creds = _get_container_credentials(get_adapter_class("mysql"), env_vars)
+        creds = _get_container_credentials("mysql", env_vars)
         assert creds.user == "root"
         assert creds.password == "rootpass"
 
@@ -101,7 +109,7 @@ class TestCredentialExtraction:
             "MYSQL_PASSWORD": "userpass",
             "MYSQL_DATABASE": "mydb",
         }
-        creds = _get_container_credentials(get_adapter_class("mysql"), env_vars)
+        creds = _get_container_credentials("mysql", env_vars)
         assert creds.user == "myuser"
         assert creds.password == "userpass"
         assert creds.database == "mydb"
@@ -109,7 +117,7 @@ class TestCredentialExtraction:
     def test_mssql_credentials(self):
         """Test SQL Server credential extraction."""
         env_vars = {"SA_PASSWORD": "StrongP@ssw0rd"}
-        creds = _get_container_credentials(get_adapter_class("mssql"), env_vars)
+        creds = _get_container_credentials("mssql", env_vars)
         assert creds.user == "sa"
         assert creds.password == "StrongP@ssw0rd"
         assert creds.database == "master"
@@ -120,7 +128,7 @@ class TestCredentialExtraction:
             "MYSQL_USER": "myuser",
             "MYSQL_PASSWORD": "mypass",
         }
-        creds = _get_container_credentials(get_adapter_class("mariadb"), env_vars)
+        creds = _get_container_credentials("mariadb", env_vars)
         assert creds.user == "myuser"
         assert creds.password == "mypass"
 

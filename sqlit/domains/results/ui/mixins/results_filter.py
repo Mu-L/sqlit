@@ -7,7 +7,7 @@ from typing import TYPE_CHECKING, Any
 from rich.markup import escape as escape_markup
 
 from sqlit.shared.core.utils import fuzzy_match, highlight_matches
-from sqlit.shared.ui.protocols import AppProtocol
+from sqlit.shared.ui.protocols import ResultsFilterMixinHost
 
 if TYPE_CHECKING:
     pass
@@ -47,7 +47,7 @@ class ResultsFilterMixin:
         else:
             return 200
 
-    def action_results_filter(self: AppProtocol) -> None:
+    def action_results_filter(self: ResultsFilterMixinHost) -> None:
         """Open the results filter."""
         if not self.results_table.has_focus:
             self.results_table.focus()
@@ -72,7 +72,7 @@ class ResultsFilterMixin:
         self.results_filter_input.set_filter("", 0, total)
         self._update_footer_bindings()
 
-    def action_results_filter_close(self: AppProtocol) -> None:
+    def action_results_filter_close(self: ResultsFilterMixinHost) -> None:
         """Close the results filter and restore original data."""
         self._results_filter_visible = False
         self._results_filter_text = ""
@@ -85,7 +85,7 @@ class ResultsFilterMixin:
 
         self._update_footer_bindings()
 
-    def action_results_filter_accept(self: AppProtocol) -> None:
+    def action_results_filter_accept(self: ResultsFilterMixinHost) -> None:
         """Accept current filter selection and close, keeping filtered view."""
         self._results_filter_visible = False
         self._results_filter_text = ""
@@ -96,7 +96,7 @@ class ResultsFilterMixin:
 
         self._update_footer_bindings()
 
-    def action_results_filter_next(self: AppProtocol) -> None:
+    def action_results_filter_next(self: ResultsFilterMixinHost) -> None:
         """Move to next filter match."""
         if not self._results_filter_matches:
             return
@@ -105,7 +105,7 @@ class ResultsFilterMixin:
         )
         self._jump_to_current_results_match()
 
-    def action_results_filter_prev(self: AppProtocol) -> None:
+    def action_results_filter_prev(self: ResultsFilterMixinHost) -> None:
         """Move to previous filter match."""
         if not self._results_filter_matches:
             return
@@ -114,7 +114,7 @@ class ResultsFilterMixin:
         )
         self._jump_to_current_results_match()
 
-    def _jump_to_current_results_match(self: AppProtocol) -> None:
+    def _jump_to_current_results_match(self: ResultsFilterMixinHost) -> None:
         """Jump to the current match in the results table."""
         if not self._results_filter_matches:
             return
@@ -124,7 +124,7 @@ class ResultsFilterMixin:
         if row_idx < table.row_count:
             table.move_cursor(row=row_idx, column=0)
 
-    def on_key(self: AppProtocol, event: Any) -> None:
+    def on_key(self: ResultsFilterMixinHost, event: Any) -> None:
         """Handle key events when results filter is active."""
         if not self._results_filter_visible:
             # Pass to next mixin in chain if it has on_key
@@ -175,7 +175,7 @@ class ResultsFilterMixin:
         if callable(parent_on_key):
             parent_on_key(event)
 
-    def _schedule_filter_update(self: AppProtocol) -> None:
+    def _schedule_filter_update(self: ResultsFilterMixinHost) -> None:
         """Schedule a debounced filter update based on row count."""
         # Cancel any pending timer
         if self._results_filter_debounce_timer:
@@ -204,14 +204,14 @@ class ResultsFilterMixin:
                 self._do_debounced_filter_update,
             )
 
-    def _do_debounced_filter_update(self: AppProtocol) -> None:
+    def _do_debounced_filter_update(self: ResultsFilterMixinHost) -> None:
         """Execute the debounced filter update."""
         self._results_filter_debounce_timer = None
         if self._results_filter_pending_update:
             self._results_filter_pending_update = False
             self._update_results_filter()
 
-    def _update_results_filter(self: AppProtocol) -> None:
+    def _update_results_filter(self: ResultsFilterMixinHost) -> None:
         """Update the results table based on current filter text.
 
         Uses simple case-insensitive substring matching by default.
@@ -290,7 +290,7 @@ class ResultsFilterMixin:
         if matches:
             self._jump_to_current_results_match()
 
-    def _rebuild_results_with_matches(self: AppProtocol, matching_rows: list[tuple], search_text: str) -> None:
+    def _rebuild_results_with_matches(self: ResultsFilterMixinHost, matching_rows: list[tuple], search_text: str) -> None:
         """Rebuild the results table with only matching rows."""
         # Build highlighted rows
         highlighted_rows: list[tuple] = []
@@ -321,7 +321,7 @@ class ResultsFilterMixin:
         # Update the table with filtered results (markup already applied)
         self._replace_results_table_raw(self._last_result_columns, highlighted_rows)
 
-    def _highlight_substring(self: AppProtocol, text: str, search_lower: str) -> str:
+    def _highlight_substring(self: ResultsFilterMixinHost, text: str, search_lower: str) -> str:
         """Highlight substring matches in text (case-insensitive)."""
         text_lower = text.lower()
         start = text_lower.find(search_lower)
@@ -347,7 +347,7 @@ class ResultsFilterMixin:
 
         return "".join(result_parts)
 
-    def _restore_results_table(self: AppProtocol) -> None:
+    def _restore_results_table(self: ResultsFilterMixinHost) -> None:
         """Restore the results table to show all original rows."""
         if not self._results_filter_original_rows:
             return

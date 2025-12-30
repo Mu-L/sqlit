@@ -3,7 +3,6 @@
 from __future__ import annotations
 
 import argparse
-from dataclasses import fields
 from functools import lru_cache
 from typing import Any, Iterable
 
@@ -12,7 +11,7 @@ from sqlit.domains.connections.providers.schema_catalog import ConnectionSchema,
 
 @lru_cache(maxsize=1)
 def _get_connection_arg_names() -> set[str]:
-    from sqlit.domains.connections.providers.registry import get_all_schemas
+    from sqlit.domains.connections.providers.catalog import get_all_schemas
 
     names = {
         field.name
@@ -76,7 +75,7 @@ def build_connection_config_from_args(
     strict: bool = True,
 ) -> ConnectionConfig:
     """Build a ConnectionConfig from CLI args based on a provider schema."""
-    from sqlit.domains.connections.providers.registry import normalize_connection_config
+    from sqlit.domains.connections.providers.config_service import normalize_connection_config
 
     raw_values = _extract_raw_values(schema, args)
 
@@ -96,8 +95,6 @@ def build_connection_config_from_args(
         "name": config_name,
         "db_type": schema.db_type,
     }
-    options: dict[str, Any] = {}
-    base_fields = {f.name for f in fields(ConnectionConfig)}
 
     # Fields where None means "not set" vs "" means "explicitly empty"
     nullable_fields = {"password", "ssh_password"}
@@ -114,21 +111,46 @@ def build_connection_config_from_args(
             config_values[field.name] = normalized
             continue
 
-        if field.name in base_fields:
-            config_values[field.name] = value
-        else:
-            options[field.name] = value
+        config_values[field.name] = value
 
     if "port" in config_values and not config_values["port"]:
         config_values["port"] = schema.default_port or ""
 
     if schema.has_advanced_auth:
-        auth_type = options.get("auth_type") or "sql"
-        options["auth_type"] = auth_type
-        options["trusted_connection"] = auth_type == "windows"
+        auth_type = config_values.get("auth_type") or "sql"
+        config_values["auth_type"] = auth_type
+        config_values["trusted_connection"] = auth_type == "windows"
 
-    config_values["options"] = options
-    return normalize_connection_config(ConnectionConfig(**config_values))
+    file_path = str(config_values.pop("file_path", ""))
+    if file_path:
+        endpoint = {"kind": "file", "path": file_path}
+    else:
+        endpoint = {
+            "kind": "tcp",
+            "host": config_values.pop("server", ""),
+            "port": config_values.pop("port", ""),
+            "database": config_values.pop("database", ""),
+            "username": config_values.pop("username", ""),
+            "password": config_values.pop("password", None),
+        }
+    ssh_enabled = config_values.pop("ssh_enabled", False)
+    if ssh_enabled:
+        tunnel = {
+            "enabled": True,
+            "host": config_values.pop("ssh_host", ""),
+            "port": config_values.pop("ssh_port", "22"),
+            "username": config_values.pop("ssh_username", ""),
+            "auth_type": config_values.pop("ssh_auth_type", "key"),
+            "password": config_values.pop("ssh_password", None),
+            "key_path": config_values.pop("ssh_key_path", ""),
+        }
+    else:
+        tunnel = {"enabled": False}
+
+    config_values["endpoint"] = endpoint
+    config_values["tunnel"] = tunnel
+
+    return normalize_connection_config(ConnectionConfig.from_dict(config_values))
 
 
 def _extract_raw_values(schema: ConnectionSchema, args: Any) -> dict[str, Any]:

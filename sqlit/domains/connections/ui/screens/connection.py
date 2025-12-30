@@ -27,21 +27,15 @@ from textual.widgets import (
 )
 from textual.widgets.option_list import Option
 
-from dataclasses import fields, replace
-
 from sqlit.domains.connections.domain.config import (
     ConnectionConfig,
     DatabaseType,
     get_database_type_labels,
 )
 from sqlit.domains.connections.app.tunnel import create_ssh_tunnel
-from sqlit.domains.connections.providers.registry import (
-    get_adapter,
-    get_connection_schema,
-    has_advanced_auth,
-    is_file_based,
-    supports_ssh,
-)
+from sqlit.domains.connections.providers.catalog import get_provider, get_provider_schema
+from sqlit.domains.connections.providers.driver import ensure_provider_driver_available
+from sqlit.domains.connections.providers.metadata import has_advanced_auth, is_file_based, supports_ssh
 from sqlit.domains.connections.providers.exceptions import MissingDriverError
 from sqlit.domains.connections.ui.fields import (
     FieldDefinition,
@@ -302,11 +296,11 @@ class ConnectionScreen(ModalScreen):
             return self.config.get_db_type()
         return next(iter(DatabaseType))
 
-    def _get_adapter_for_type(self, db_type: DatabaseType) -> Any:
-        return get_adapter(db_type.value)
+    def _get_provider_for_type(self, db_type: DatabaseType) -> Any:
+        return get_provider(db_type.value)
 
     def _get_field_groups_for_type(self, db_type: DatabaseType, tab: str | None = None) -> list[FieldGroup]:
-        schema = get_connection_schema(db_type.value)
+        schema = get_provider_schema(db_type.value)
         definitions = schema_to_field_definitions(schema)
         if tab:
             definitions = [d for d in definitions if d.tab == tab]
@@ -450,8 +444,8 @@ class ConnectionScreen(ModalScreen):
     def _check_driver_availability(self, db_type: DatabaseType) -> None:
         self._missing_driver_error = None
         try:
-            adapter = get_adapter(db_type.value)
-            adapter.ensure_driver_available()
+            provider = get_provider(db_type.value)
+            ensure_provider_driver_available(provider)
         except MissingDriverError as e:
             self._missing_driver_error = e
 
@@ -1328,42 +1322,60 @@ class ConnectionScreen(ModalScreen):
                     pass
             return None
 
-        config_kwargs: dict[str, Any] = {
-            "name": name,
-            "db_type": db_type.value,
-        }
-        options: dict[str, Any] = {}
-        base_fields = {f.name for f in fields(ConnectionConfig)}
-
-        for field_name, value in values.items():
-            if not field_name.startswith("ssh_"):
-                if field_name in base_fields:
-                    config_kwargs[field_name] = value
-                else:
-                    options[field_name] = value
+        config_data = dict(values)
+        config_data["name"] = name
+        config_data["db_type"] = db_type.value
 
         if has_advanced_auth(db_type.value):
             auth_type = values.get("auth_type", "sql")
-            options["auth_type"] = auth_type
-            options["trusted_connection"] = auth_type == "windows"
+            config_data["auth_type"] = auth_type
+            config_data["trusted_connection"] = auth_type == "windows"
 
+        file_path = str(config_data.pop("file_path", ""))
+        if file_path:
+            endpoint = {"kind": "file", "path": file_path}
+        else:
+            endpoint = {
+                "kind": "tcp",
+                "host": config_data.pop("server", ""),
+                "port": config_data.pop("port", ""),
+                "database": config_data.pop("database", ""),
+                "username": config_data.pop("username", ""),
+                "password": config_data.pop("password", None),
+            }
+
+        tunnel = {"enabled": False}
         if supports_ssh(db_type.value):
-            config_kwargs["ssh_enabled"] = values.get("ssh_enabled") == "enabled"
-            config_kwargs["ssh_host"] = values.get("ssh_host", "")
-            config_kwargs["ssh_port"] = values.get("ssh_port", "22")
-            config_kwargs["ssh_username"] = values.get("ssh_username", "")
-            config_kwargs["ssh_auth_type"] = values.get("ssh_auth_type", "key")
-            config_kwargs["ssh_key_path"] = values.get("ssh_key_path", "")
-            config_kwargs["ssh_password"] = values.get("ssh_password", "")
+            ssh_enabled = config_data.pop("ssh_enabled", "disabled") == "enabled"
+            if ssh_enabled:
+                tunnel = {
+                    "enabled": True,
+                    "host": config_data.pop("ssh_host", ""),
+                    "port": config_data.pop("ssh_port", "22"),
+                    "username": config_data.pop("ssh_username", ""),
+                    "auth_type": config_data.pop("ssh_auth_type", "key"),
+                    "password": config_data.pop("ssh_password", None),
+                    "key_path": config_data.pop("ssh_key_path", ""),
+                }
 
-        config_kwargs["options"] = options
+        config_data["endpoint"] = endpoint
+        config_data["tunnel"] = tunnel
 
-        return ConnectionConfig(**config_kwargs)
+        return ConnectionConfig.from_dict(config_data)
 
     def _get_package_install_hint(self, db_type: str) -> str | None:
         try:
-            adapter = get_adapter(db_type)
-            return adapter.install_hint
+            provider = get_provider(db_type)
+            driver = provider.driver
+            if driver is None or not driver.package_name or not driver.extra_name:
+                return None
+            strategy = detect_strategy(extra_name=driver.extra_name, package_name=driver.package_name)
+            if strategy.can_auto_install:
+                return self._format_install_hint(strategy, driver.package_name)
+            manual = getattr(strategy, "manual_instructions", "")
+            if isinstance(manual, str) and manual:
+                return manual.split("\n")[0].strip()
+            return None
         except (ValueError, ImportError):
             return None
 
@@ -1393,12 +1405,16 @@ class ConnectionScreen(ModalScreen):
         if not config:
             return
 
-        if config.ssh_enabled and config.ssh_auth_type == "password" and config.ssh_password is None:
+        if (
+            config.tunnel
+            and config.tunnel.auth_type == "password"
+            and config.tunnel.password is None
+        ):
 
             def on_ssh_password(password: str | None) -> None:
                 if password is None:
                     return
-                temp_config = replace(config, ssh_password=password)
+                temp_config = config.with_tunnel(password=password)
                 self._test_with_config(temp_config)
 
             self.app.push_screen(
@@ -1407,12 +1423,13 @@ class ConnectionScreen(ModalScreen):
             )
             return
 
-        if not is_file_based(config.db_type) and config.password is None:
+        endpoint = config.tcp_endpoint
+        if not is_file_based(config.db_type) and endpoint and endpoint.password is None:
 
             def on_db_password(password: str | None) -> None:
                 if password is None:
                     return
-                temp_config = replace(config, password=password)
+                temp_config = config.with_endpoint(password=password)
                 self._test_with_config(temp_config)
 
             self.app.push_screen(
@@ -1500,17 +1517,17 @@ class ConnectionScreen(ModalScreen):
             tunnel = None
             try:
                 if mock_profile:
-                    adapter = mock_profile.get_adapter(config.db_type)
+                    provider = mock_profile.get_provider(config.db_type)
                     connect_config = config
                 else:
                     tunnel, host, port = create_ssh_tunnel(config)
                     if tunnel:
-                        connect_config = replace(config, server=host, port=str(port))
+                        connect_config = config.with_endpoint(host=host, port=str(port))
                     else:
                         connect_config = config
-                    adapter = get_adapter(config.db_type)
+                    provider = get_provider(config.db_type)
 
-                conn = adapter.connect(connect_config)
+                conn = provider.connection_factory.connect(connect_config)
                 conn.close()
 
                 if tunnel:
@@ -1541,7 +1558,7 @@ class ConnectionScreen(ModalScreen):
             return
 
         try:
-            get_adapter(config.db_type).ensure_driver_available()
+            ensure_provider_driver_available(get_provider(config.db_type))
         except MissingDriverError as e:
             self._prompt_install_missing_driver(e)
             return

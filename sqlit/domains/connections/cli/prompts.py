@@ -3,7 +3,6 @@
 from __future__ import annotations
 
 import getpass
-from dataclasses import replace
 
 from sqlit.domains.connections.domain.config import ConnectionConfig
 from sqlit.domains.connections.domain.passwords import needs_db_password, needs_ssh_password
@@ -15,10 +14,10 @@ def prompt_for_password(config: ConnectionConfig) -> ConnectionConfig:
 
     if needs_ssh_password(config):
         ssh_password = getpass.getpass(f"SSH password for '{config.name}': ")
-        new_config = replace(new_config, ssh_password=ssh_password)
+        new_config = new_config.with_tunnel(password=ssh_password)
 
     if needs_db_password(config):
         db_password = getpass.getpass(f"Password for '{config.name}': ")
-        new_config = replace(new_config, password=db_password)
+        new_config = new_config.with_endpoint(password=db_password)
 
     return new_config

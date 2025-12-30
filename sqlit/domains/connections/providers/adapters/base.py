@@ -2,8 +2,6 @@
 
 from __future__ import annotations
 
-import importlib
-import os
 from abc import ABC, abstractmethod
 from dataclasses import dataclass
 from pathlib import Path
@@ -11,6 +9,7 @@ from typing import TYPE_CHECKING, Any
 
 if TYPE_CHECKING:
     from sqlit.domains.connections.domain.config import ConnectionConfig
+
 
 
 def resolve_file_path(path_str: str) -> Path:
@@ -69,54 +68,8 @@ class SequenceInfo:
     name: str
 
 
-@dataclass(frozen=True)
-class DockerCredentials:
-    """Docker-derived connection credentials."""
-
-    user: str | None
-    password: str | None
-    database: str | None
-
-
 # Type alias for table/view info: (schema, name)
 TableInfo = tuple[str, str]
-
-
-def import_driver_module(
-    module_name: str,
-    *,
-    driver_name: str,
-    extra_name: str | None,
-    package_name: str | None,
-) -> Any:
-    """Import a driver module, raising MissingDriverError with detail if it fails."""
-    # Mock flag to force driver import error for testing
-    if os.environ.get("SQLIT_MOCK_DRIVER_ERROR") and extra_name and package_name:
-        from sqlit.domains.connections.providers.exceptions import MissingDriverError
-
-        raise MissingDriverError(
-            driver_name,
-            extra_name,
-            package_name,
-            module_name=module_name,
-            import_error=f"No module named '{module_name}'",
-        )
-
-    if not extra_name or not package_name:
-        return importlib.import_module(module_name)
-
-    try:
-        return importlib.import_module(module_name)
-    except ImportError as e:
-        from sqlit.domains.connections.providers.exceptions import MissingDriverError
-
-        raise MissingDriverError(
-            driver_name,
-            extra_name,
-            package_name,
-            module_name=module_name,
-            import_error=str(e),
-        ) from e
 
 
 class DatabaseAdapter(ABC):
@@ -127,28 +80,9 @@ class DatabaseAdapter(ABC):
     """
 
     @property
-    def install_hint(self) -> str | None:
-        """Installation hint for the adapter's dependencies."""
-        if not self.install_extra or not self.install_package:
-            return None
-        return _create_driver_import_error_hint(self.name, self.install_extra, self.install_package).strip()
-
-    @property
     def driver_import_names(self) -> tuple[str, ...]:
         """Import names used to verify required driver dependencies are installed."""
         return ()
-
-    def ensure_driver_available(self) -> None:
-        """Verify required dependencies can be imported, raising MissingDriverError if not."""
-        if not self.driver_import_names:
-            return
-        for module_name in self.driver_import_names:
-            import_driver_module(
-                module_name,
-                driver_name=self.name,
-                extra_name=self.install_extra,
-                package_name=self.install_package,
-            )
 
     @property
     def install_extra(self) -> str | None:
@@ -165,16 +99,6 @@ class DatabaseAdapter(ABC):
     def name(self) -> str:
         """Human-readable name for this database type."""
         pass
-
-    @classmethod
-    def badge_label(cls) -> str:
-        """Short label used in the UI for this adapter."""
-        return cls.__name__.removesuffix("Adapter")
-
-    @classmethod
-    def url_schemes(cls) -> tuple[str, ...]:
-        """URL schemes supported by this adapter."""
-        return ()
 
     @property
     @abstractmethod
@@ -262,11 +186,6 @@ class DatabaseAdapter(ABC):
         cursor.execute(self.test_query)
         cursor.fetchone()
 
-    @property
-    def driver_setup_kind(self) -> str | None:
-        """Optional driver setup type for UI workflows."""
-        return None
-
     def normalize_config(self, config: ConnectionConfig) -> ConnectionConfig:
         """Normalize provider-specific config defaults."""
         return config
@@ -291,72 +210,11 @@ class DatabaseAdapter(ABC):
         """Return warning messages after a successful connection."""
         return []
 
-    def get_display_info(self, config: ConnectionConfig) -> str:
-        """Return a short, human-readable summary for UI labels."""
-        db_part = f"@{config.database}" if config.database else ""
-        return f"{config.name}{db_part}"
-
     def build_connection_string(self, config: ConnectionConfig) -> str:
         """Build a connection string for adapters that support it."""
         raise NotImplementedError(f"{self.name} does not support connection strings")
 
-    @classmethod
-    def docker_image_patterns(cls) -> tuple[str, ...]:
-        """Docker image substrings used to identify this provider."""
-        return ()
-
-    @classmethod
-    def docker_env_vars(cls) -> dict[str, tuple[str, ...]]:
-        """Environment variables used to extract docker credentials."""
-        return {
-            "user": (),
-            "password": (),
-            "database": (),
-        }
-
-    @classmethod
-    def docker_default_user(cls) -> str | None:
-        return None
-
-    @classmethod
-    def docker_default_database(cls) -> str | None:
-        return None
-
-    @classmethod
-    def docker_preferred_host(cls) -> str:
-        return "localhost"
-
-    @classmethod
-    def match_docker_image(cls, image_name: str) -> bool:
-        image_lower = image_name.lower()
-        return any(pattern in image_lower for pattern in cls.docker_image_patterns())
-
-    @classmethod
-    def get_docker_credentials(cls, env_vars: dict[str, str]) -> DockerCredentials:
-        def get_first(values: tuple[str, ...]) -> str | None:
-            for key in values:
-                if key in env_vars:
-                    return env_vars[key]
-            return None
-
-        env_map = cls.docker_env_vars()
-        user = get_first(tuple(env_map.get("user", ())))
-        password = get_first(tuple(env_map.get("password", ())))
-        database = get_first(tuple(env_map.get("database", ())))
-
-        if not user:
-            user = cls.docker_default_user()
-        if not database:
-            database = cls.docker_default_database()
-
-        return DockerCredentials(user=user, password=password, database=database)
-
-    @classmethod
-    def normalize_docker_connection(cls, config: ConnectionConfig) -> ConnectionConfig:
-        """Adjust a ConnectionConfig created from a docker container."""
-        return config
-
-    def format_table_name(self, schema: str, name: str) -> str:
+    def format_table_name(self, schema: str | None, table: str) -> str:
         """Format a table name for display, omitting default schema.
 
         Args:
@@ -367,8 +225,8 @@ class DatabaseAdapter(ABC):
             Display name - "name" if schema is default, otherwise "schema.name".
         """
         if not schema or schema == self.default_schema:
-            return name
-        return f"{schema}.{name}"
+            return table
+        return f"{schema}.{table}"
 
     @abstractmethod
     def connect(self, config: ConnectionConfig) -> Any:
@@ -603,18 +461,6 @@ class MySQLBaseAdapter(CursorBasedAdapter):
     @property
     def supports_stored_procedures(self) -> bool:
         return True
-
-    @classmethod
-    def docker_preferred_host(cls) -> str:
-        return "127.0.0.1"
-
-    @classmethod
-    def get_docker_credentials(cls, env_vars: dict[str, str]) -> DockerCredentials:
-        creds = super().get_docker_credentials(env_vars)
-        user = creds.user
-        if not user and creds.password:
-            user = "root"
-        return DockerCredentials(user=user, password=creds.password, database=creds.database)
 
     def get_databases(self, conn: Any) -> list[str]:
         """Get list of databases."""
@@ -1087,12 +933,12 @@ class PostgresBaseAdapter(CursorBasedAdapter):
         }
 
 
-def _create_driver_import_error_hint(driver_name: str, extra_name: str, package_name: str) -> str:
-    """Generate a context-aware hint for missing driver installation."""
-    from sqlit.domains.connections.app.install_strategy import detect_strategy
-
-    strategy = detect_strategy(extra_name=extra_name, package_name=package_name)
-    return (
-        f"{driver_name} driver not found.\n\n"
-        f"{strategy.manual_instructions}\n"
-    )
+__all__ = [
+    "ColumnInfo",
+    "IndexInfo",
+    "TriggerInfo",
+    "SequenceInfo",
+    "TableInfo",
+    "resolve_file_path",
+    "DatabaseAdapter",
+]

@@ -1,0 +1,86 @@
+"""Protocols for query execution mixins."""
+
+from __future__ import annotations
+
+from collections.abc import Awaitable
+from typing import TYPE_CHECKING, Any, Protocol
+
+if TYPE_CHECKING:
+    from textual.timer import Timer
+    from textual.worker import Worker
+    from sqlit.domains.query.app.query_service import QueryService
+    from sqlit.shared.ui.spinner import Spinner
+
+
+class QueryStateProtocol(Protocol):
+    _query_worker: Worker[Any] | None
+    _query_executing: bool
+    _query_start_time: float
+    _spinner_index: int
+    _spinner_timer: Timer | None
+    _cancellable_query: Any | None
+    _query_spinner: Spinner | None
+    _query_cursor_cache: dict[str, tuple[int, int]] | None
+
+
+class QueryActionsProtocol(Protocol):
+    _query_service: QueryService | None
+
+    def action_execute_query(self) -> None:
+        ...
+
+    def _execute_query_common(self, keep_insert_mode: bool) -> None:
+        ...
+
+    def _start_query_spinner(self) -> None:
+        ...
+
+    def _run_query_async(self, query: str, keep_insert_mode: bool) -> Awaitable[None]:
+        ...
+
+    def _animate_spinner(self) -> None:
+        ...
+
+    def _display_query_error(self, error_message: str) -> None:
+        ...
+
+    def _stop_query_spinner(self) -> None:
+        ...
+
+    def _display_query_results(
+        self, columns: list[str], rows: list[tuple[Any, ...]], row_count: int, truncated: bool, elapsed_ms: float
+    ) -> None:
+        ...
+
+    def _display_non_query_result(self, affected: int, elapsed_ms: float) -> None:
+        ...
+
+    def _restore_insert_mode(self) -> None:
+        ...
+
+    def _handle_history_result(self, result: Any) -> None:
+        ...
+
+    def _delete_history_entry(self, timestamp: str) -> None:
+        ...
+
+    def action_show_history(self) -> None:
+        ...
+
+    def action_copy_query(self) -> None:
+        ...
+
+    def action_copy_cell(self) -> None:
+        ...
+
+    def _toggle_star(self, query: str) -> None:
+        ...
+
+    def _clear_query_target_database(self) -> None:
+        ...
+
+
+class QueryProtocol(QueryStateProtocol, QueryActionsProtocol, Protocol):
+    """Composite protocol for query-related mixins."""
+
+    pass

@@ -9,7 +9,7 @@ from unittest.mock import MagicMock, patch
 
 import pytest
 
-from sqlit.domains.connections.domain.config import ConnectionConfig
+from tests.helpers import ConnectionConfig
 from sqlit.domains.connections.app.credentials import (
     KEYRING_SERVICE_NAME,
     CredentialsService,
