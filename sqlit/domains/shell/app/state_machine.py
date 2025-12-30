@@ -35,11 +35,12 @@ class LeaderCommand:
     label: str  # Display label (e.g., "Quit", "Toggle Explorer")
     category: str  # For grouping in the menu ("View", "Connection", "Actions")
     guard: Callable[[SSMSTUI], bool] | None = None  # Optional guard function
+    menu: str = "leader"
 
     @property
     def binding_action(self) -> str:
         """The action name used in Textual bindings (leader_prefixed)."""
-        return f"leader_{self.action}"
+        return f"{self.menu}_{self.action}"
 
     def is_allowed(self, app: SSMSTUI) -> bool:
         """Check if this command is currently allowed."""
@@ -48,7 +49,7 @@ class LeaderCommand:
         return self.guard(app)
 
 
-def _build_leader_commands() -> list[LeaderCommand]:
+def _build_leader_commands(menu: str = "leader") -> list[LeaderCommand]:
     """Build leader commands from the keymap provider."""
     from sqlit.domains.shell.app.keymap import get_keymap
 
@@ -56,6 +57,8 @@ def _build_leader_commands() -> list[LeaderCommand]:
     commands = []
 
     for cmd_def in keymap.get_leader_commands():
+        if cmd_def.menu != menu:
+            continue
         guard = LEADER_GUARDS.get(cmd_def.guard) if cmd_def.guard else None
         commands.append(
             LeaderCommand(
@@ -64,27 +67,55 @@ def _build_leader_commands() -> list[LeaderCommand]:
                 label=cmd_def.label,
                 category=cmd_def.category,
                 guard=guard,
+                menu=cmd_def.menu,
             )
         )
 
     return commands
 
 
-def get_leader_commands() -> list[LeaderCommand]:
+def get_leader_commands(menu: str = "leader") -> list[LeaderCommand]:
     """Get leader commands (rebuilt from keymap each time for testability)."""
-    return _build_leader_commands()
+    return _build_leader_commands(menu)
 
 
-def get_leader_binding_actions() -> set[str]:
+def get_leader_binding_actions(menu: str = "leader") -> set[str]:
     """Get set of leader binding action names."""
-    return {cmd.binding_action for cmd in get_leader_commands()}
+    return {cmd.binding_action for cmd in get_leader_commands(menu)}
 
 
-def get_leader_bindings() -> tuple:
+def get_leader_bindings(menu: str = "leader") -> tuple:
     """Generate Textual Bindings from leader commands."""
     from textual.binding import Binding
 
-    return tuple(Binding(cmd.key, cmd.binding_action, show=False) for cmd in get_leader_commands())
+    return tuple(Binding(cmd.key, cmd.binding_action, show=False) for cmd in get_leader_commands(menu))
+
+
+def get_app_bindings(contexts: set[str] | None = None) -> list[Any]:
+    """Generate Textual Bindings for the current keymap."""
+    from sqlit.domains.shell.app.keymap import get_action_bindings
+
+    bindings = []
+    bindings.extend(get_leader_bindings("leader"))
+    bindings.extend(get_leader_bindings("delete"))
+    bindings.extend(get_action_bindings(contexts))
+    return bindings
+
+
+def _resolve_display_key(action_name: str) -> str | None:
+    from sqlit.domains.shell.app.keymap import format_key, get_keymap
+
+    key = get_keymap().action(action_name)
+    return format_key(key) if key else None
+
+
+def _resolve_help_key(action_name: str) -> str | None:
+    from sqlit.domains.shell.app.keymap import format_key, get_keymap
+
+    keys = get_keymap().keys_for_action(action_name, include_secondary=True)
+    if not keys:
+        return None
+    return "/".join(format_key(key) for key in keys)
 
 
 def _get_node_kind(node: Any) -> str:
@@ -139,23 +170,29 @@ class ActionSpec:
         return self.guard(app)
 
     def get_display_binding(self, action_name: str) -> DisplayBinding | None:
-        if self.display_key and self.display_label:
-            return DisplayBinding(
-                key=self.display_key,
-                label=self.display_label,
-                action=action_name,
-            )
-        return None
+        if not self.display_label:
+            return None
+        key = self.display_key or _resolve_display_key(action_name)
+        if not key:
+            return None
+        return DisplayBinding(
+            key=key,
+            label=self.display_label,
+            action=action_name,
+        )
 
-    def get_help_entry(self, category: str) -> HelpEntry | None:
+    def get_help_entry(self, action_name: str, category: str) -> HelpEntry | None:
         """Get help entry if help info is defined."""
-        if self.help_key and self.help_description:
-            return HelpEntry(
-                key=self.help_key,
-                description=self.help_description,
-                category=category,
-            )
-        return None
+        if not self.help_description:
+            return None
+        key = self.help_key or _resolve_help_key(action_name)
+        if not key:
+            return None
+        return HelpEntry(
+            key=key,
+            description=self.help_description,
+            category=category,
+        )
 
 
 class State(ABC):
@@ -216,7 +253,7 @@ class State(ABC):
         entries = []
         if self.help_category:
             for action_name, spec in self._actions.items():
-                entry = spec.get_help_entry(self.help_category)
+                entry = spec.get_help_entry(action_name, self.help_category)
                 if entry:
                     entries.append(entry)
         return entries
@@ -321,9 +358,9 @@ class RootState(State):
     help_category = "General"
 
     def _setup_actions(self) -> None:
-        self.allows("quit", help="Quit", help_key="^q")
-        self.allows("show_help", help="Show this help", help_key="?")
-        self.allows("leader_key", help="Commands menu", help_key="<space>")
+        self.allows("quit", help="Quit")
+        self.allows("show_help", help="Show this help")
+        self.allows("leader_key", help="Commands menu")
 
     def is_active(self, app: SSMSTUI) -> bool:
         return True
@@ -360,13 +397,13 @@ class MainScreenState(State):
     help_category = "Navigation"
 
     def _setup_actions(self) -> None:
-        self.allows("focus_explorer", help="Focus Explorer", help_key="e")
-        self.allows("focus_query", help="Focus Query", help_key="q")
-        self.allows("focus_results", help="Focus Results", help_key="r")
-        self.allows("toggle_fullscreen", help="Toggle fullscreen", help_key="f")
+        self.allows("focus_explorer", help="Focus Explorer")
+        self.allows("focus_query", help="Focus Query")
+        self.allows("focus_results", help="Focus Results")
+        self.allows("toggle_fullscreen", help="Toggle fullscreen")
         self.allows("show_help")
         self.allows("change_theme")
-        self.allows("leader_key", key="<space>", label="Commands", right=True)
+        self.allows("leader_key", label="Commands", right=True)
 
     def is_active(self, app: SSMSTUI) -> bool:
         from textual.screen import ModalScreen
@@ -383,13 +420,12 @@ class QueryExecutingState(State):
     help_category = "Query"
 
     def _setup_actions(self) -> None:
-        self.allows("cancel_operation", key="^z", label="Cancel", help="Cancel query")
+        self.allows("cancel_operation", label="Cancel", help="Cancel query")
         self.allows("quit")
 
     def get_display_bindings(self, app: SSMSTUI) -> tuple[list[DisplayBinding], list[DisplayBinding]]:
-        left: list[DisplayBinding] = [
-            DisplayBinding(key="^z", label="Cancel", action="cancel_operation"),
-        ]
+        key = _resolve_display_key("cancel_operation") or "^z"
+        left: list[DisplayBinding] = [DisplayBinding(key=key, label="Cancel", action="cancel_operation")]
         return left, []
 
     def is_active(self, app: SSMSTUI) -> bool:
@@ -401,25 +437,20 @@ class QueryExecutingState(State):
 
 
 class LeaderPendingState(State):
-    """State when waiting for leader combo key.
-
-    Uses get_leader_commands() to determine which actions are valid leader targets.
-    """
+    """State when waiting for a leader-style combo key."""
 
     def _setup_actions(self) -> None:
         pass
 
     def check_action(self, app: SSMSTUI, action_name: str) -> ActionResult:
-        leader_binding_actions = get_leader_binding_actions()
+        menu = getattr(app, "_leader_pending_menu", "leader")
+        leader_binding_actions = get_leader_binding_actions(menu)
         if action_name in leader_binding_actions:
-            leader_commands = get_leader_commands()
+            leader_commands = get_leader_commands(menu)
             cmd = next((c for c in leader_commands if c.binding_action == action_name), None)
             if cmd and cmd.is_allowed(app):
                 return ActionResult.ALLOWED
             return ActionResult.FORBIDDEN
-
-        if action_name == "leader_key":
-            return ActionResult.ALLOWED
 
         return ActionResult.FORBIDDEN
 
@@ -440,17 +471,21 @@ class TreeFilterActiveState(BlockingState):
     help_category = "Explorer"
 
     def _setup_actions(self) -> None:
-        self.allows("tree_filter_close", help="Close filter", help_key="esc")
-        self.allows("tree_filter_accept", help="Select item", help_key="enter")
-        self.allows("tree_filter_next", help="Next match", help_key="n/j")
-        self.allows("tree_filter_prev", help="Previous match", help_key="N/k")
+        self.allows("tree_filter_close", help="Close filter")
+        self.allows("tree_filter_accept", help="Select item")
+        self.allows("tree_filter_next", help="Next match")
+        self.allows("tree_filter_prev", help="Previous match")
         self.allows("quit")
 
     def get_display_bindings(self, app: SSMSTUI) -> tuple[list[DisplayBinding], list[DisplayBinding]]:
+        close_key = _resolve_display_key("tree_filter_close") or "esc"
+        accept_key = _resolve_display_key("tree_filter_accept") or "enter"
+        next_key = _resolve_display_key("tree_filter_next") or "n"
+        prev_key = _resolve_display_key("tree_filter_prev") or "N"
         left: list[DisplayBinding] = [
-            DisplayBinding(key="esc", label="Close", action="tree_filter_close"),
-            DisplayBinding(key="enter", label="Select", action="tree_filter_accept"),
-            DisplayBinding(key="n/N", label="Next/Prev", action="tree_filter_next"),
+            DisplayBinding(key=close_key, label="Close", action="tree_filter_close"),
+            DisplayBinding(key=accept_key, label="Select", action="tree_filter_accept"),
+            DisplayBinding(key=f"{next_key}/{prev_key}", label="Next/Prev", action="tree_filter_next"),
         ]
         return left, []
 
@@ -467,12 +502,12 @@ class TreeFocusedState(State):
     help_category = "Explorer"
 
     def _setup_actions(self) -> None:
-        self.allows("new_connection", key="n", label="New", help="New connection")
-        self.allows("refresh_tree", key="f", label="Refresh", help="Refresh tree", help_key="R/f")
-        self.allows("collapse_tree", help="Collapse all", help_key="z")
+        self.allows("new_connection", label="New", help="New connection")
+        self.allows("refresh_tree", label="Refresh", help="Refresh tree")
+        self.allows("collapse_tree", help="Collapse all")
         self.allows("tree_cursor_down")  # vim j
         self.allows("tree_cursor_up")  # vim k
-        self.allows("tree_filter", help="Filter items", help_key="/")
+        self.allows("tree_filter", help="Filter items")
 
     def is_active(self, app: SSMSTUI) -> bool:
         if not app.object_tree.has_focus:
@@ -510,11 +545,11 @@ class TreeOnConnectionState(State):
                 and config.name == app.current_config.name
             )
 
-        self.allows("connect_selected", can_connect, key="enter", label="Connect", help="Connect/Expand/Columns")
-        self.allows("disconnect", is_connected_to_this, key="x", label="Disconnect", help="Disconnect")
-        self.allows("edit_connection", key="e", label="Edit", help="Edit connection")
-        self.allows("delete_connection", key="d", label="Delete", help="Delete connection")
-        self.allows("duplicate_connection", key="D", label="Duplicate", help="Duplicate connection")
+        self.allows("connect_selected", can_connect, label="Connect", help="Connect/Expand/Columns")
+        self.allows("disconnect", is_connected_to_this, label="Disconnect", help="Disconnect")
+        self.allows("edit_connection", label="Edit", help="Edit connection")
+        self.allows("delete_connection", label="Delete", help="Delete connection")
+        self.allows("duplicate_connection", label="Duplicate", help="Duplicate connection")
 
     def get_display_bindings(self, app: SSMSTUI) -> tuple[list[DisplayBinding], list[DisplayBinding]]:
         """Custom display logic for connection node."""
@@ -532,7 +567,13 @@ class TreeOnConnectionState(State):
         )
 
         if is_connected:
-            left.append(DisplayBinding(key="x", label="Disconnect", action="disconnect"))
+            left.append(
+                DisplayBinding(
+                    key=_resolve_display_key("disconnect") or "x",
+                    label="Disconnect",
+                    action="disconnect",
+                )
+            )
             seen.add("disconnect")
             seen.add("connect_selected")
         else:
@@ -540,15 +581,45 @@ class TreeOnConnectionState(State):
             seen.add("connect_selected")
             seen.add("disconnect")
 
-        left.append(DisplayBinding(key="n", label="New", action="new_connection"))
+        left.append(
+            DisplayBinding(
+                key=_resolve_display_key("new_connection") or "n",
+                label="New",
+                action="new_connection",
+            )
+        )
         seen.add("new_connection")
-        left.append(DisplayBinding(key="e", label="Edit", action="edit_connection"))
+        left.append(
+            DisplayBinding(
+                key=_resolve_display_key("edit_connection") or "e",
+                label="Edit",
+                action="edit_connection",
+            )
+        )
         seen.add("edit_connection")
-        left.append(DisplayBinding(key="D", label="Duplicate", action="duplicate_connection"))
+        left.append(
+            DisplayBinding(
+                key=_resolve_display_key("duplicate_connection") or "D",
+                label="Duplicate",
+                action="duplicate_connection",
+            )
+        )
         seen.add("duplicate_connection")
-        left.append(DisplayBinding(key="d", label="Delete", action="delete_connection"))
+        left.append(
+            DisplayBinding(
+                key=_resolve_display_key("delete_connection") or "d",
+                label="Delete",
+                action="delete_connection",
+            )
+        )
         seen.add("delete_connection")
-        left.append(DisplayBinding(key="f", label="Refresh", action="refresh_tree"))
+        left.append(
+            DisplayBinding(
+                key=_resolve_display_key("refresh_tree") or "f",
+                label="Refresh",
+                action="refresh_tree",
+            )
+        )
         seen.add("refresh_tree")
 
         right: list[DisplayBinding] = []
@@ -574,7 +645,7 @@ class TreeOnTableState(State):
     help_category = "Explorer"
 
     def _setup_actions(self) -> None:
-        self.allows("select_table", key="s", label="Select TOP 100", help="Select TOP 100 (table/view)")
+        self.allows("select_table", label="Select TOP 100", help="Select TOP 100 (table/view)")
 
     def get_display_bindings(self, app: SSMSTUI) -> tuple[list[DisplayBinding], list[DisplayBinding]]:
         left: list[DisplayBinding] = []
@@ -582,9 +653,21 @@ class TreeOnTableState(State):
 
         left.append(DisplayBinding(key="enter", label="Columns", action="toggle_node"))
         seen.add("toggle_node")
-        left.append(DisplayBinding(key="s", label="Select TOP 100", action="select_table"))
+        left.append(
+            DisplayBinding(
+                key=_resolve_display_key("select_table") or "s",
+                label="Select TOP 100",
+                action="select_table",
+            )
+        )
         seen.add("select_table")
-        left.append(DisplayBinding(key="f", label="Refresh", action="refresh_tree"))
+        left.append(
+            DisplayBinding(
+                key=_resolve_display_key("refresh_tree") or "f",
+                label="Refresh",
+                action="refresh_tree",
+            )
+        )
         seen.add("refresh_tree")
 
         right: list[DisplayBinding] = []
@@ -618,7 +701,13 @@ class TreeOnDatabaseState(State):
 
         left.append(DisplayBinding(key="enter", label="Use database", action="toggle_node"))
         seen.add("toggle_node")
-        left.append(DisplayBinding(key="f", label="Refresh", action="refresh_tree"))
+        left.append(
+            DisplayBinding(
+                key=_resolve_display_key("refresh_tree") or "f",
+                label="Refresh",
+                action="refresh_tree",
+            )
+        )
         seen.add("refresh_tree")
 
         right: list[DisplayBinding] = []
@@ -650,7 +739,13 @@ class TreeOnFolderState(State):
 
         left.append(DisplayBinding(key="enter", label="Expand", action="toggle_node"))
         seen.add("toggle_node")
-        left.append(DisplayBinding(key="f", label="Refresh", action="refresh_tree"))
+        left.append(
+            DisplayBinding(
+                key=_resolve_display_key("refresh_tree") or "f",
+                label="Refresh",
+                action="refresh_tree",
+            )
+        )
         seen.add("refresh_tree")
 
         right: list[DisplayBinding] = []
@@ -676,15 +771,27 @@ class TreeOnObjectState(State):
     help_category = "Explorer"
 
     def _setup_actions(self) -> None:
-        self.allows("select_table", key="s", label="Show Info", help="Show object definition/info")
+        self.allows("select_table", label="Show Info", help="Show object definition/info")
 
     def get_display_bindings(self, app: SSMSTUI) -> tuple[list[DisplayBinding], list[DisplayBinding]]:
         left: list[DisplayBinding] = []
         seen: set[str] = set()
 
-        left.append(DisplayBinding(key="s", label="Show Info", action="select_table"))
+        left.append(
+            DisplayBinding(
+                key=_resolve_display_key("select_table") or "s",
+                label="Show Info",
+                action="select_table",
+            )
+        )
         seen.add("select_table")
-        left.append(DisplayBinding(key="f", label="Refresh", action="refresh_tree"))
+        left.append(
+            DisplayBinding(
+                key=_resolve_display_key("refresh_tree") or "f",
+                label="Refresh",
+                action="refresh_tree",
+            )
+        )
         seen.add("refresh_tree")
 
         right: list[DisplayBinding] = []
@@ -720,31 +827,67 @@ class QueryNormalModeState(State):
     help_category = "Query Editor (Normal)"
 
     def _setup_actions(self) -> None:
-        self.allows("enter_insert_mode", key="i", label="Insert Mode", help="Enter INSERT mode")
-        self.allows("execute_query", key="enter", label="Execute", help="Execute query")
-        self.allows("clear_query", key="d", label="Clear", help="Clear query")
-        self.allows("new_query", key="n", label="New", help="New query (clear all)")
-        self.allows("copy_context", key="y", label="Copy query", help="Copy current query")
-        self.allows("show_history", key="h", label="History", help="Query history")
+        self.allows("enter_insert_mode", label="Insert Mode", help="Enter INSERT mode")
+        self.allows("execute_query", label="Execute", help="Execute query")
+        self.allows("delete_leader_key", label="Delete", help="Delete (menu)")
+        self.allows("new_query", label="New", help="New query (clear all)")
+        self.allows("copy_context", label="Copy query", help="Copy current query")
+        self.allows("show_history", label="History", help="Query history")
 
     def get_display_bindings(self, app: SSMSTUI) -> tuple[list[DisplayBinding], list[DisplayBinding]]:
         left: list[DisplayBinding] = []
         seen: set[str] = set()
 
-        left.append(DisplayBinding(key="i", label="Insert Mode", action="enter_insert_mode"))
+        left.append(
+            DisplayBinding(
+                key=_resolve_display_key("enter_insert_mode") or "i",
+                label="Insert Mode",
+                action="enter_insert_mode",
+            )
+        )
         seen.add("enter_insert_mode")
-        left.append(DisplayBinding(key="enter", label="Execute", action="execute_query"))
+        left.append(
+            DisplayBinding(
+                key=_resolve_display_key("execute_query") or "enter",
+                label="Execute",
+                action="execute_query",
+            )
+        )
         seen.add("execute_query")
 
-        left.append(DisplayBinding(key="y", label="Copy query", action="copy_context"))
+        left.append(
+            DisplayBinding(
+                key=_resolve_display_key("copy_context") or "y",
+                label="Copy query",
+                action="copy_context",
+            )
+        )
         seen.add("copy_context")
 
-        left.append(DisplayBinding(key="h", label="History", action="show_history"))
+        left.append(
+            DisplayBinding(
+                key=_resolve_display_key("show_history") or "h",
+                label="History",
+                action="show_history",
+            )
+        )
         seen.add("show_history")
 
-        left.append(DisplayBinding(key="d", label="Clear", action="clear_query"))
-        seen.add("clear_query")
-        left.append(DisplayBinding(key="n", label="New", action="new_query"))
+        left.append(
+            DisplayBinding(
+                key=_resolve_display_key("delete_leader_key") or "d",
+                label="Delete",
+                action="delete_leader_key",
+            )
+        )
+        seen.add("delete_leader_key")
+        left.append(
+            DisplayBinding(
+                key=_resolve_display_key("new_query") or "n",
+                label="New",
+                action="new_query",
+            )
+        )
         seen.add("new_query")
 
         right: list[DisplayBinding] = []
@@ -769,9 +912,9 @@ class QueryInsertModeState(State):
     help_category = "Query Editor (Insert)"
 
     def _setup_actions(self) -> None:
-        self.allows("exit_insert_mode", key="esc", label="Normal Mode", help="Exit to NORMAL mode")
-        self.allows("execute_query_insert", key="f5 | ^enter", label="Execute", help="Execute query (stay INSERT)")
-        self.allows("autocomplete_accept", help="Accept autocomplete", help_key="tab")
+        self.allows("exit_insert_mode", label="Normal Mode", help="Exit to NORMAL mode")
+        self.allows("execute_query_insert", label="Execute", help="Execute query (stay INSERT)")
+        self.allows("autocomplete_accept", help="Accept autocomplete")
         self.allows("quit")
         self.forbids(
             "focus_explorer",
@@ -782,10 +925,23 @@ class QueryInsertModeState(State):
         )
 
     def get_display_bindings(self, app: SSMSTUI) -> tuple[list[DisplayBinding], list[DisplayBinding]]:
+        execute_key = _resolve_help_key("execute_query_insert") or _resolve_display_key("execute_query_insert") or "f5"
         left: list[DisplayBinding] = [
-            DisplayBinding(key="esc", label="Normal Mode", action="exit_insert_mode"),
-            DisplayBinding(key="f5 | ^enter", label="Execute", action="execute_query_insert"),
-            DisplayBinding(key="tab", label="Autocomplete", action="autocomplete_accept"),
+            DisplayBinding(
+                key=_resolve_display_key("exit_insert_mode") or "esc",
+                label="Normal Mode",
+                action="exit_insert_mode",
+            ),
+            DisplayBinding(
+                key=execute_key,
+                label="Execute",
+                action="execute_query_insert",
+            ),
+            DisplayBinding(
+                key=_resolve_display_key("autocomplete_accept") or "tab",
+                label="Autocomplete",
+                action="autocomplete_accept",
+            ),
         ]
         return left, []
 
@@ -820,10 +976,14 @@ class AutocompleteActiveState(State):
         )
 
     def get_display_bindings(self, app: SSMSTUI) -> tuple[list[DisplayBinding], list[DisplayBinding]]:
+        accept_key = _resolve_display_key("autocomplete_accept") or "tab"
+        next_key = _resolve_display_key("autocomplete_next") or "^j"
+        prev_key = _resolve_display_key("autocomplete_prev") or "^k"
+        close_key = _resolve_display_key("autocomplete_close") or "esc"
         left: list[DisplayBinding] = [
-            DisplayBinding(key="tab", label="Accept", action="autocomplete_accept"),
-            DisplayBinding(key="^j/^k", label="Next/Prev", action="autocomplete_next"),
-            DisplayBinding(key="esc", label="Close", action="autocomplete_close"),
+            DisplayBinding(key=accept_key, label="Accept", action="autocomplete_accept"),
+            DisplayBinding(key=f"{next_key}/{prev_key}", label="Next/Prev", action="autocomplete_next"),
+            DisplayBinding(key=close_key, label="Close", action="autocomplete_close"),
         ]
         return left, []
 
@@ -854,9 +1014,11 @@ class ResultsFilterActiveState(BlockingState):
         self.allows("quit")
 
     def get_display_bindings(self, app: SSMSTUI) -> tuple[list[DisplayBinding], list[DisplayBinding]]:
+        close_key = _resolve_display_key("results_filter_close") or "esc"
+        accept_key = _resolve_display_key("results_filter_accept") or "enter"
         left: list[DisplayBinding] = [
-            DisplayBinding(key="esc", label="Close", action="results_filter_close"),
-            DisplayBinding(key="enter", label="Select", action="results_filter_accept"),
+            DisplayBinding(key=close_key, label="Close", action="results_filter_close"),
+            DisplayBinding(key=accept_key, label="Select", action="results_filter_accept"),
         ]
         return left, []
 
@@ -922,17 +1084,77 @@ class ResultsFocusedState(State):
         is_error = getattr(app, "_last_result_columns", []) == ["Error"]
 
         if is_error:
-            left.append(DisplayBinding(key="v", label="View error", action="view_cell"))
-            left.append(DisplayBinding(key="y", label="Copy error", action="copy_context"))
+            left.append(
+                DisplayBinding(
+                    key=_resolve_display_key("view_cell") or "v",
+                    label="View error",
+                    action="view_cell",
+                )
+            )
+            left.append(
+                DisplayBinding(
+                    key=_resolve_display_key("copy_context") or "y",
+                    label="Copy error",
+                    action="copy_context",
+                )
+            )
         else:
-            left.append(DisplayBinding(key="v", label="Preview", action="view_cell"))
-            left.append(DisplayBinding(key="V", label="View", action="view_cell_full"))
-            left.append(DisplayBinding(key="u", label="Update", action="edit_cell"))
-            left.append(DisplayBinding(key="y", label="Copy cell", action="copy_context"))
-            left.append(DisplayBinding(key="Y", label="Copy row", action="copy_row"))
-            left.append(DisplayBinding(key="a", label="Copy all", action="copy_results"))
-        left.append(DisplayBinding(key="x", label="Clear", action="clear_results"))
-        left.append(DisplayBinding(key="/", label="Filter", action="results_filter"))
+            left.append(
+                DisplayBinding(
+                    key=_resolve_display_key("view_cell") or "v",
+                    label="Preview",
+                    action="view_cell",
+                )
+            )
+            left.append(
+                DisplayBinding(
+                    key=_resolve_display_key("view_cell_full") or "V",
+                    label="View",
+                    action="view_cell_full",
+                )
+            )
+            left.append(
+                DisplayBinding(
+                    key=_resolve_display_key("edit_cell") or "u",
+                    label="Update",
+                    action="edit_cell",
+                )
+            )
+            left.append(
+                DisplayBinding(
+                    key=_resolve_display_key("copy_context") or "y",
+                    label="Copy cell",
+                    action="copy_context",
+                )
+            )
+            left.append(
+                DisplayBinding(
+                    key=_resolve_display_key("copy_row") or "Y",
+                    label="Copy row",
+                    action="copy_row",
+                )
+            )
+            left.append(
+                DisplayBinding(
+                    key=_resolve_display_key("copy_results") or "a",
+                    label="Copy all",
+                    action="copy_results",
+                )
+            )
+        left.append(
+            DisplayBinding(
+                key=_resolve_display_key("clear_results") or "x",
+                label="Clear",
+                action="clear_results",
+            )
+        )
+        left.append(
+            DisplayBinding(
+                key=_resolve_display_key("results_filter") or "/",
+                label="Filter",
+                action="results_filter",
+            )
+        )
 
         seen.update(["view_cell", "view_cell_full", "copy_context", "copy_row", "copy_results", "clear_results", "results_filter"])
 
@@ -1042,8 +1264,21 @@ class UIStateMachine:
                 if entry.key not in existing_keys:
                     entries_by_category[entry.category].append(entry)
 
-        entries_by_category["Commands (<space>)"] = [
-            HelpEntry(f"<space>+{cmd.key}", cmd.label, "Commands (<space>)") for cmd in get_leader_commands()
+        from sqlit.domains.shell.app.keymap import format_key
+
+        leader_key = _resolve_display_key("leader_key") or "<space>"
+        delete_key = _resolve_display_key("delete_leader_key") or "d"
+
+        commands_category = f"Commands ({leader_key})"
+        entries_by_category[commands_category] = [
+            HelpEntry(f"{leader_key}+{format_key(cmd.key)}", cmd.label, commands_category)
+            for cmd in get_leader_commands()
+        ]
+
+        delete_category = f"Delete ({delete_key})"
+        entries_by_category[delete_category] = [
+            HelpEntry(f"{delete_key}+{format_key(cmd.key)}", cmd.label, delete_category)
+            for cmd in get_leader_commands("delete")
         ]
 
         # Add Connection picker section (modal dialog, not state-based)
@@ -1064,7 +1299,8 @@ class UIStateMachine:
             "Results",
             "Connection Picker",
             "Navigation",
-            "Commands (<space>)",
+            delete_category,
+            commands_category,
             "General",
         ]
 

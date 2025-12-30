@@ -480,6 +480,9 @@ class UINavigationMixin:
         except Exception:
             return
 
+        if hasattr(self, "_refresh_app_bindings"):
+            self._refresh_app_bindings()
+
         left_display, right_display = self._state_machine.get_display_bindings(self)
 
         left_bindings = [KeyBinding(b.key, b.label, b.action) for b in left_display]
@@ -496,6 +499,14 @@ class UINavigationMixin:
 
     def action_leader_key(self: UINavigationMixinHost) -> None:
         """Handle leader key (space) press - show command menu after delay."""
+        self._start_leader_pending("leader")
+
+    def action_delete_leader_key(self: UINavigationMixinHost) -> None:
+        """Handle delete leader key (d) press - show delete menu after delay."""
+        self._start_leader_pending("delete")
+
+    def _start_leader_pending(self: UINavigationMixinHost, menu: str) -> None:
+        """Start a leader-style pending state and show menu if no follow-up key."""
         from sqlit.shared.ui.widgets import VimMode
 
         # Don't trigger in INSERT mode
@@ -507,11 +518,12 @@ class UINavigationMixin:
             self._leader_timer.stop()
 
         self._leader_pending = True
+        self._leader_pending_menu = menu
 
         def show_menu() -> None:
             if getattr(self, "_leader_pending", False):
                 self._leader_pending = False
-                self._show_leader_menu()
+                self._show_leader_menu(menu)
 
         # Show menu after 200ms delay
         self._leader_timer = self.set_timer(0.2, show_menu)
@@ -519,6 +531,7 @@ class UINavigationMixin:
     def _cancel_leader_pending(self: UINavigationMixinHost) -> None:
         """Cancel leader pending state and timer."""
         self._leader_pending = False
+        self._leader_pending_menu = "leader"
         if hasattr(self, "_leader_timer") and self._leader_timer is not None:
             self._leader_timer.stop()
             self._leader_timer = None
@@ -537,8 +550,8 @@ class UINavigationMixin:
         if action_method:
             action_method()
 
-    def _show_leader_menu(self: UINavigationMixinHost) -> None:
-        """Display the leader menu."""
+    def _show_leader_menu(self: UINavigationMixinHost, menu: str = "leader") -> None:
+        """Display a leader menu."""
         from textual.screen import ModalScreen
 
         from ..screens import LeaderMenuScreen
@@ -546,13 +559,18 @@ class UINavigationMixin:
         if any(isinstance(screen, ModalScreen) for screen in self.screen_stack[1:]):
             return
 
-        self.push_screen(LeaderMenuScreen(), self._handle_leader_result)
+        self.push_screen(LeaderMenuScreen(menu), self._handle_leader_result)
 
     def _handle_leader_result(self: UINavigationMixinHost, result: str | None) -> None:
         """Handle result from leader menu."""
         self._update_footer_bindings()
-        if result:
-            self._execute_leader_command(result)
+        if not result:
+            return
+        action_method = getattr(self, f"action_{result}", None)
+        if action_method:
+            action_method()
+            return
+        self._execute_leader_command(result)
 
     def action_leader_toggle_explorer(self: UINavigationMixinHost) -> None:
         self._execute_leader_command("toggle_explorer")

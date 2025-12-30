@@ -10,7 +10,6 @@ from pathlib import Path
 from typing import Any, TYPE_CHECKING, cast
 
 from textual.app import App, ComposeResult
-from textual.binding import Binding
 from textual.containers import Container, Horizontal, Vertical
 from textual.lazy import Lazy
 from textual.screen import ModalScreen
@@ -30,7 +29,7 @@ from sqlit.domains.results.ui.mixins.results_filter import ResultsFilterMixin
 from sqlit.domains.shell.app.idle_scheduler import IdleScheduler
 from sqlit.domains.shell.app.omarchy import DEFAULT_THEME
 from sqlit.domains.shell.app.startup_flow import run_on_mount
-from sqlit.domains.shell.app.state_machine import UIStateMachine, get_leader_bindings
+from sqlit.domains.shell.app.state_machine import UIStateMachine, get_app_bindings
 from sqlit.domains.shell.app.theme_manager import ThemeManager
 from sqlit.domains.shell.ui.mixins.ui_navigation import UINavigationMixin
 from sqlit.domains.connections.ui.mixins.connection import ConnectionMixin
@@ -247,62 +246,7 @@ class SSMSTUI(
 
     LAYERS = ["autocomplete"]
 
-    BINDINGS = [
-        # Leader combo bindings - generated from keymap provider
-        *get_leader_bindings(),
-        # Regular bindings
-        Binding("n", "new_connection", "New", show=False),
-        Binding("s", "select_table", "Select", show=False),
-        Binding("R", "refresh_tree", "Refresh", show=False),
-        Binding("f", "refresh_tree", "Refresh", show=False),
-        Binding("e", "edit_connection", "Edit", show=False),
-        Binding("d", "delete_connection", "Delete", show=False),
-        Binding("D", "duplicate_connection", "Duplicate", show=False),
-        Binding("delete", "delete_connection", "Delete", show=False),
-        Binding("x", "disconnect", "Disconnect", show=False),
-        Binding("space", "leader_key", "Commands", show=False, priority=True),
-        Binding("ctrl+q", "quit", "Quit", show=False),
-        Binding("question_mark", "show_help", "Help", show=False),
-        Binding("e", "focus_explorer", "Explorer", show=False),
-        Binding("q", "focus_query", "Query", show=False),
-        Binding("r", "focus_results", "Results", show=False),
-        Binding("i", "enter_insert_mode", "Insert", show=False),
-        Binding("escape", "exit_insert_mode", "Normal", show=False),
-        Binding("enter", "execute_query", "Execute", show=False),
-        Binding("f5", "execute_query_insert", "Execute", show=False),
-        Binding("ctrl+enter", "execute_query_insert", "Execute", show=False),
-        Binding("d", "clear_query", "Clear", show=False),
-        Binding("n", "new_query", "New", show=False),
-        Binding("h", "show_history", "History", show=False),
-        Binding("z", "collapse_tree", "Collapse", show=False),
-        Binding("j", "tree_cursor_down", "Down", show=False),
-        Binding("k", "tree_cursor_up", "Up", show=False),
-        Binding("v", "view_cell", "View cell", show=False),
-        Binding("V", "view_cell_full", "View cell full", show=False),
-        Binding("u", "edit_cell", "Update cell", show=False),
-        Binding("h", "results_cursor_left", "Left", show=False),
-        Binding("j", "results_cursor_down", "Down", show=False),
-        Binding("k", "results_cursor_up", "Up", show=False),
-        Binding("l", "results_cursor_right", "Right", show=False),
-        Binding("y", "copy_context", "Copy", show=False),
-        Binding("Y", "copy_row", "Copy row", show=False),
-        Binding("a", "copy_results", "Copy results", show=False),
-        Binding("x", "clear_results", "Clear results", show=False),
-        Binding("ctrl+z", "cancel_operation", "Cancel", show=False),
-        Binding("ctrl+j", "autocomplete_next", "Next suggestion", show=False),
-        Binding("ctrl+k", "autocomplete_prev", "Prev suggestion", show=False),
-        Binding("slash", "tree_filter", "Filter", show=False),
-        Binding("escape", "tree_filter_close", "Close filter", show=False),
-        Binding("enter", "tree_filter_accept", "Select", show=False),
-        Binding("n", "tree_filter_next", "Next match", show=False),
-        Binding("N", "tree_filter_prev", "Prev match", show=False),
-        # Results filter bindings
-        Binding("slash", "results_filter", "Filter results", show=False),
-        Binding("escape", "results_filter_close", "Close filter", show=False),
-        Binding("enter", "results_filter_accept", "Select", show=False),
-        Binding("n", "results_filter_next", "Next match", show=False),
-        Binding("N", "results_filter_prev", "Prev match", show=False),
-    ]
+    BINDINGS: list[Any] = []
 
     def __init__(
         self,
@@ -310,6 +254,8 @@ class SSMSTUI(
         startup_connection: ConnectionConfig | None = None,
     ):
         super().__init__()
+        self._base_bindings = self._bindings.copy()
+        self._refresh_app_bindings()
         self._mock_profile = mock_profile
         self._startup_connection = startup_connection
         self._startup_connect_config: ConnectionConfig | None = None
@@ -328,6 +274,7 @@ class SSMSTUI(
         self.current_ssh_tunnel: Any | None = None
         self.vim_mode: VimMode = VimMode.NORMAL
         self._expanded_paths: set[str] = set()
+        self._leader_pending_menu: str = "leader"
         self._loading_nodes: set[str] = set()
         self._session: ConnectionSession | None = None
         self._schema_cache: dict[str, Any] = {
@@ -380,6 +327,24 @@ class SSMSTUI(
         if mock_profile:
             self._session_factory = self._create_mock_session_factory(mock_profile)
         self._startup_stamp("init_end")
+
+    def _refresh_app_bindings(self) -> None:
+        """Refresh dynamic keymap bindings based on current focus context."""
+        from sqlit.domains.shell.app.bindings_context import get_binding_contexts
+
+        contexts = get_binding_contexts(self)
+        bindings = get_app_bindings(contexts)
+        merged = self._base_bindings.copy()
+        for binding in bindings:
+            merged.bind(
+                binding.key,
+                binding.action,
+                binding.description,
+                show=binding.show,
+                key_display=binding.key_display,
+                priority=binding.priority,
+            )
+        self._bindings = merged
 
     def _create_mock_session_factory(self, profile: MockProfile) -> Any:
         """Create a session factory that uses mock adapters."""

@@ -42,22 +42,23 @@ class LeaderMenuScreen(ModalScreen):
     }
     """
 
-    def __init__(self) -> None:
+    def __init__(self, menu: str = "leader") -> None:
         super().__init__()
         from sqlit.domains.shell.app.state_machine import get_leader_commands
 
-        leader_commands = get_leader_commands()
-        self._cmd_actions = {cmd.action: cmd for cmd in leader_commands}
+        self._menu = menu
+        leader_commands = get_leader_commands(menu)
+        self._cmd_actions = {cmd.binding_action: cmd for cmd in leader_commands}
 
         for cmd in leader_commands:
-            self._bindings.bind(cmd.key, f"cmd_{cmd.action}", cmd.label, show=False)
+            self._bindings.bind(cmd.key, f"cmd_{cmd.binding_action}", cmd.label, show=False)
 
     def compose(self) -> ComposeResult:
         """Generate menu content from leader commands."""
         from sqlit.domains.shell.app.state_machine import get_leader_commands
 
         lines = []
-        leader_commands = get_leader_commands()
+        leader_commands = get_leader_commands(self._menu)
         app = cast("SSMSTUI", self.app)
 
         categories: dict[str, list] = {}
@@ -103,7 +104,7 @@ class LeaderMenuScreen(ModalScreen):
 
                 def handler() -> None:
                     if cmd.is_allowed(cast("SSMSTUI", self.app)):
-                        self._run_and_dismiss(cmd.action)
+                        self._run_and_dismiss(cmd.binding_action)
 
                 return handler
         raise AttributeError(f"'{type(self).__name__}' has no attribute '{name}'")

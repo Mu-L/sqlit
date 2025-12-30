@@ -74,6 +74,199 @@ class QueryMixin:
             return
         self.notify("Nothing to copy", severity="warning")
 
+    def action_delete_line(self: QueryMixinHost) -> None:
+        """Delete the current line in the query editor."""
+        self._clear_leader_pending()
+        text, lines, row, col = self._get_query_state()
+        if not lines:
+            return
+        lines.pop(row)
+        if not lines:
+            self._set_query_text("", 0, 0)
+            return
+        row = min(row, len(lines) - 1)
+        col = min(col, len(lines[row]))
+        self._set_query_text("\n".join(lines), row, col)
+
+    def action_delete_word(self: QueryMixinHost) -> None:
+        """Delete forward word starting at cursor."""
+        self._clear_leader_pending()
+        text, lines, row, col = self._get_query_state()
+        if not lines:
+            return
+        line = lines[row]
+        if col >= len(line):
+            return
+        start = col
+        if line[start].isspace():
+            end = start
+            while end < len(line) and line[end].isspace():
+                end += 1
+        else:
+            end = start
+            if self._is_word_char(line[end]):
+                while end < len(line) and self._is_word_char(line[end]):
+                    end += 1
+            else:
+                end = start + 1
+            while end < len(line) and line[end].isspace():
+                end += 1
+        lines[row] = line[:start] + line[end:]
+        self._set_query_text("\n".join(lines), row, min(start, len(lines[row])))
+
+    def action_delete_word_back(self: QueryMixinHost) -> None:
+        """Delete word backwards from cursor."""
+        self._clear_leader_pending()
+        text, lines, row, col = self._get_query_state()
+        if not lines:
+            return
+        line = lines[row]
+        if col <= 0:
+            return
+        start = col
+        while start > 0 and line[start - 1].isspace():
+            start -= 1
+        if start > 0:
+            if self._is_word_char(line[start - 1]):
+                while start > 0 and self._is_word_char(line[start - 1]):
+                    start -= 1
+            else:
+                start -= 1
+        lines[row] = line[:start] + line[col:]
+        self._set_query_text("\n".join(lines), row, start)
+
+    def action_delete_word_end(self: QueryMixinHost) -> None:
+        """Delete through the end of the current word."""
+        self._clear_leader_pending()
+        text, lines, row, col = self._get_query_state()
+        if not lines:
+            return
+        line = lines[row]
+        if col >= len(line):
+            return
+        end = col
+        while end < len(line) and line[end].isspace():
+            end += 1
+        if end >= len(line):
+            return
+        if self._is_word_char(line[end]):
+            while end < len(line) and self._is_word_char(line[end]):
+                end += 1
+        else:
+            end += 1
+        lines[row] = line[:col] + line[end:]
+        self._set_query_text("\n".join(lines), row, min(col, len(lines[row])))
+
+    def action_delete_line_start(self: QueryMixinHost) -> None:
+        """Delete from line start to cursor."""
+        self._clear_leader_pending()
+        text, lines, row, col = self._get_query_state()
+        if not lines:
+            return
+        line = lines[row]
+        if col <= 0:
+            return
+        lines[row] = line[col:]
+        self._set_query_text("\n".join(lines), row, 0)
+
+    def action_delete_line_end(self: QueryMixinHost) -> None:
+        """Delete from cursor to line end."""
+        self._clear_leader_pending()
+        text, lines, row, col = self._get_query_state()
+        if not lines:
+            return
+        line = lines[row]
+        if col >= len(line):
+            return
+        lines[row] = line[:col]
+        self._set_query_text("\n".join(lines), row, col)
+
+    def action_delete_char(self: QueryMixinHost) -> None:
+        """Delete the character under the cursor."""
+        self._clear_leader_pending()
+        text, lines, row, col = self._get_query_state()
+        if not text:
+            return
+        index = self._cursor_index(lines, row, col)
+        if index >= len(text):
+            return
+        new_text = text[:index] + text[index + 1 :]
+        new_row, new_col = self._cursor_from_index(new_text, index)
+        self._set_query_text(new_text, new_row, new_col)
+
+    def action_delete_char_back(self: QueryMixinHost) -> None:
+        """Delete the character before the cursor."""
+        self._clear_leader_pending()
+        text, lines, row, col = self._get_query_state()
+        if not text:
+            return
+        index = self._cursor_index(lines, row, col)
+        if index <= 0:
+            return
+        new_index = index - 1
+        new_text = text[:new_index] + text[index:]
+        new_row, new_col = self._cursor_from_index(new_text, new_index)
+        self._set_query_text(new_text, new_row, new_col)
+
+    def action_delete_to_end(self: QueryMixinHost) -> None:
+        """Delete from cursor to end of buffer."""
+        self._clear_leader_pending()
+        text, lines, row, col = self._get_query_state()
+        if not text:
+            return
+        index = self._cursor_index(lines, row, col)
+        if index >= len(text):
+            return
+        new_text = text[:index]
+        new_row, new_col = self._cursor_from_index(new_text, index)
+        self._set_query_text(new_text, new_row, new_col)
+
+    def action_delete_all(self: QueryMixinHost) -> None:
+        """Delete all query text."""
+        self._clear_leader_pending()
+        self._set_query_text("", 0, 0)
+
+    def _clear_leader_pending(self: QueryMixinHost) -> None:
+        """Clear any leader pending state if supported by the host."""
+        cancel = getattr(self, "_cancel_leader_pending", None)
+        if callable(cancel):
+            cancel()
+
+    def _get_query_state(self: QueryMixinHost) -> tuple[str, list[str], int, int]:
+        text = self.query_input.text
+        lines = text.split("\n")
+        if not lines:
+            lines = [""]
+        row, col = self.query_input.cursor_location
+        row = max(0, min(row, len(lines) - 1))
+        col = max(0, min(col, len(lines[row])))
+        return text, lines, row, col
+
+    def _set_query_text(self: QueryMixinHost, text: str, row: int, col: int) -> None:
+        self.query_input.text = text
+        self.query_input.cursor_location = (max(0, row), max(0, col))
+
+    @staticmethod
+    def _is_word_char(ch: str) -> bool:
+        return ch.isalnum() or ch == "_"
+
+    @staticmethod
+    def _cursor_index(lines: list[str], row: int, col: int) -> int:
+        return sum(len(lines[i]) + 1 for i in range(row)) + col
+
+    @staticmethod
+    def _cursor_from_index(text: str, index: int) -> tuple[int, int]:
+        index = max(0, min(index, len(text)))
+        if not text:
+            return 0, 0
+        before = text[:index]
+        row = before.count("\n")
+        last_break = before.rfind("\n")
+        if last_break == -1:
+            col = index
+        else:
+            col = index - last_break - 1
+        return row, col
     def _execute_query_common(self: QueryMixinHost, keep_insert_mode: bool) -> None:
         """Common query execution logic."""
         if not self.current_connection or not self.current_provider:
