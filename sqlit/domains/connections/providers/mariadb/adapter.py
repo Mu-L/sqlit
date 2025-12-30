@@ -6,7 +6,8 @@ import re
 from typing import TYPE_CHECKING, Any
 
 from sqlit.domains.connections.providers.registry import get_default_port
-from sqlit.domains.connections.providers.adapters.base import ColumnInfo, IndexInfo, MySQLBaseAdapter, SequenceInfo, TableInfo, TriggerInfo
+from sqlit.domains.connections.providers.adapters.base import ColumnInfo, IndexInfo, SequenceInfo, TableInfo, TriggerInfo
+from sqlit.domains.connections.providers.mysql.base import MySQLBaseAdapter
 from sqlit.domains.connections.providers.driver import import_driver_module
 
 if TYPE_CHECKING:

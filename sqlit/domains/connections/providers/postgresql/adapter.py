@@ -5,7 +5,7 @@ from __future__ import annotations
 from typing import TYPE_CHECKING, Any
 
 from sqlit.domains.connections.providers.registry import get_default_port
-from sqlit.domains.connections.providers.adapters.base import PostgresBaseAdapter
+from sqlit.domains.connections.providers.postgresql.base import PostgresBaseAdapter
 from sqlit.domains.connections.providers.driver import import_driver_module
 
 if TYPE_CHECKING:

@@ -4,30 +4,27 @@ from __future__ import annotations
 
 from dataclasses import dataclass, field
 from enum import Enum
-from typing import TYPE_CHECKING, Any, Mapping
-
-from sqlit.domains.connections.providers.catalog import get_supported_db_types as _get_supported_db_types
+from typing import Any, Mapping
 
 
-if TYPE_CHECKING:
-
-    class DatabaseType(str, Enum):
-        MSSQL = "mssql"
-        POSTGRESQL = "postgresql"
-        COCKROACHDB = "cockroachdb"
-        MYSQL = "mysql"
-        MARIADB = "mariadb"
-        ORACLE = "oracle"
-        SQLITE = "sqlite"
-        DUCKDB = "duckdb"
-        SUPABASE = "supabase"
-        TURSO = "turso"
-        D1 = "d1"
-        FIREBIRD = "firebird"
-        SNOWFLAKE = "snowflake"
-
-else:
-    DatabaseType = Enum("DatabaseType", {t.upper(): t for t in _get_supported_db_types()})  # type: ignore[misc]
+class DatabaseType(str, Enum):
+    ATHENA = "athena"
+    BIGQUERY = "bigquery"
+    CLICKHOUSE = "clickhouse"
+    COCKROACHDB = "cockroachdb"
+    D1 = "d1"
+    DUCKDB = "duckdb"
+    FIREBIRD = "firebird"
+    MARIADB = "mariadb"
+    MSSQL = "mssql"
+    MYSQL = "mysql"
+    ORACLE = "oracle"
+    POSTGRESQL = "postgresql"
+    REDSHIFT = "redshift"
+    SNOWFLAKE = "snowflake"
+    SQLITE = "sqlite"
+    SUPABASE = "supabase"
+    TURSO = "turso"
 
 
 def get_database_type_labels() -> dict[DatabaseType, str]:

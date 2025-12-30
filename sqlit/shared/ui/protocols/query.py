@@ -25,8 +25,16 @@ class QueryStateProtocol(Protocol):
 
 class QueryActionsProtocol(Protocol):
     _query_service: QueryService | None
+    _history_store: Any | None
+    _query_service_db_type: str | None
 
     def action_execute_query(self) -> None:
+        ...
+
+    def _get_history_store(self) -> Any:
+        ...
+
+    def _get_query_service(self, provider: Any) -> QueryService:
         ...
 
     def _execute_query_common(self, keep_insert_mode: bool) -> None:

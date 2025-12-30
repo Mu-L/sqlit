@@ -34,6 +34,8 @@ class QueryMixin:
     """
 
     _query_service: QueryService | None = None
+    _history_store: Any | None = None
+    _query_service_db_type: str | None = None
 
     _query_worker: Worker[Any] | None = None
     _schema_worker: Worker[Any] | None = None
@@ -114,6 +116,29 @@ class QueryMixin:
             self._query_spinner = None
         self._update_status_bar()
 
+    def _get_history_store(self: QueryMixinHost) -> Any:
+        store = getattr(self, "_history_store", None)
+        if store is None:
+            from sqlit.domains.query.store.history import HistoryStore
+
+            store = HistoryStore()
+            self._history_store = store
+        return store
+
+    def _get_query_service(self: QueryMixinHost, provider: Any) -> QueryService:
+        if self._query_service is None or (
+            self._query_service_db_type is not None
+            and self._query_service_db_type != provider.metadata.db_type
+        ):
+            from sqlit.domains.query.app.query_service import DialectQueryAnalyzer, QueryService
+
+            self._query_service = QueryService(
+                self._get_history_store(),
+                analyzer=DialectQueryAnalyzer(provider.dialect),
+            )
+            self._query_service_db_type = provider.metadata.db_type
+        return self._query_service
+
     async def _run_query_async(self: QueryMixinHost, query: str, keep_insert_mode: bool) -> None:
         """Run query asynchronously using a cancellable dedicated connection."""
         import asyncio
@@ -169,11 +194,7 @@ class QueryMixin:
         )
         self._cancellable_query = cancellable
 
-        if self._query_service is None:
-            from sqlit.domains.query.store.history import HistoryStore
-
-            self._query_service = QueryService(HistoryStore.get_instance())
-        service = self._query_service
+        service = self._get_query_service(provider)
 
         try:
             start_time = time.perf_counter()
@@ -424,11 +445,10 @@ class QueryMixin:
             self.notify("Not connected", severity="warning")
             return
 
-        from sqlit.domains.query.store.history import HistoryStore
         from sqlit.domains.query.store.starred import StarredStore
         from ..screens import QueryHistoryScreen
 
-        history_store = HistoryStore.get_instance()
+        history_store = self._get_history_store()
         starred_store = StarredStore.get_instance()
         history = history_store.load_for_connection(self.current_config.name)
         starred = starred_store.load_for_connection(self.current_config.name)
@@ -474,11 +494,9 @@ class QueryMixin:
 
     def _delete_history_entry(self: QueryMixinHost, timestamp: str) -> None:
         """Delete a specific history entry by timestamp."""
-        from sqlit.domains.query.store.history import HistoryStore
-
         if not self.current_config:
             return
-        HistoryStore.get_instance().delete_entry(self.current_config.name, timestamp)
+        self._get_history_store().delete_entry(self.current_config.name, timestamp)
 
     def _toggle_star(self: QueryMixinHost, query: str) -> None:
         """Toggle star status for a query."""

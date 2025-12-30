@@ -13,6 +13,20 @@ from sqlit.domains.connections.domain.config import AuthType, ConnectionConfig, 
 from sqlit.domains.connections.providers.catalog import get_provider_schema, get_supported_db_types
 
 
+def _get_schema_value_flags() -> set[str]:
+    from sqlit.domains.connections.providers.catalog import iter_provider_schemas
+
+    flags: set[str] = set()
+    for schema in iter_provider_schemas():
+        for field in schema.fields:
+            if field.name == "ssh_enabled":
+                continue
+            flags.add(f"--{field.name.replace('_', '-')}")
+            if field.name == "server":
+                flags.add("--host")
+    return flags
+
+
 def _extract_connection_url(argv: list[str]) -> tuple[str | None, list[str]]:
     """Extract a connection URL from argv if present.
 
@@ -41,12 +55,18 @@ def _extract_connection_url(argv: list[str]) -> tuple[str | None, list[str]]:
             if i + 1 < len(argv) and not argv[i + 1].startswith("-") and "=" not in arg:
                 # Flags that take values
                 value_flags = {
-                    "--mock", "--db-type", "--name", "--server", "--host", "--port",
-                    "--database", "--username", "--password", "--file-path", "--auth-type",
-                    "--supabase-region", "--supabase-project-id", "--settings",
-                    "--mock-missing-drivers", "--mock-install", "--mock-pipx",
-                    "--mock-query-delay", "--demo-rows", "--max-rows",
+                    "--mock",
+                    "--db-type",
+                    "--name",
+                    "--settings",
+                    "--mock-missing-drivers",
+                    "--mock-install",
+                    "--mock-pipx",
+                    "--mock-query-delay",
+                    "--demo-rows",
+                    "--max-rows",
                 }
+                value_flags |= _get_schema_value_flags()
                 if arg in value_flags:
                     i += 1
                     result_argv.append(argv[i])

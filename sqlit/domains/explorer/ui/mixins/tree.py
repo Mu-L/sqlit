@@ -10,7 +10,6 @@ from textual.widgets import Tree
 from sqlit.shared.ui.protocols import TreeMixinHost
 from sqlit.shared.ui.spinner import SPINNER_FRAMES
 from sqlit.domains.connections.providers.metadata import get_badge_label, get_connection_display_info
-from sqlit.domains.connections.providers.model import IndexInspector, ProcedureInspector, SequenceInspector, TriggerInspector
 from sqlit.domains.explorer.domain.tree_nodes import (
     ColumnNode,
     ConnectionNode,
@@ -42,12 +41,30 @@ class TreeMixin:
     current_provider: DatabaseProvider | None = None
     _session: ConnectionSession | None = None
     _last_query_table: dict[str, Any] | None = None
+    _schema_service: Any | None = None
+    _schema_service_session: Any | None = None
 
-    def _run_db_call(self: TreeMixinHost, fn: Any, *args: Any, **kwargs: Any) -> Any:
-        session = getattr(self, "_session", None)
-        if session is not None:
-            return session.executor.submit(fn, *args, **kwargs).result()
-        return fn(*args, **kwargs)
+    def _get_object_cache(self) -> dict[str, dict[str, Any]]:
+        cache = getattr(self, "_db_object_cache", None)
+        if cache is None:
+            cache = {}
+            self._db_object_cache = cache
+        return cache
+
+    def _get_schema_service(self) -> Any | None:
+        if not self._session:
+            return None
+        if self._schema_service is None or self._schema_service_session is not self._session:
+            from sqlit.domains.explorer.app.schema_service import ExplorerSchemaService
+
+            db_arg_resolver = self._get_metadata_db_arg if hasattr(self, "_get_metadata_db_arg") else None
+            self._schema_service = ExplorerSchemaService(
+                session=self._session,
+                object_cache=self._get_object_cache(),
+                db_arg_resolver=db_arg_resolver,
+            )
+            self._schema_service_session = self._session
+        return self._schema_service
 
     def _db_type_badge(self, db_type: str) -> str:
         """Get short badge for database type."""
@@ -153,6 +170,7 @@ class TreeMixin:
             return
 
         provider = self.current_provider
+        schema_service = self._get_schema_service()
 
         def get_conn_label(config: Any, connected: Any = False) -> str:
             display_info = escape_markup(get_connection_display_info(config))
@@ -196,10 +214,10 @@ class TreeMixin:
                     dbs_node = active_node.add("Databases")
                     dbs_node.data = FolderNode(folder_type="databases")
 
-                    databases = self._run_db_call(
-                        provider.schema_inspector.get_databases,
-                        self.current_connection,
-                    )
+                    if not schema_service:
+                        databases = []
+                    else:
+                        databases = schema_service.list_databases()
                     active_db = None
                     if hasattr(self, "_get_effective_database"):
                         active_db = self._get_effective_database()
@@ -355,22 +373,11 @@ class TreeMixin:
         def work() -> None:
             """Run in worker thread."""
             try:
-                if not self._session:
+                schema_service = self._get_schema_service()
+                if not schema_service:
                     columns = []
                 else:
-                    provider = self._session.provider
-                    inspector = provider.schema_inspector
-                    conn = self._session.connection
-                    db_arg = db_name
-                    if hasattr(self, "_get_metadata_db_arg"):
-                        db_arg = self._get_metadata_db_arg(db_name)
-                    columns = self._run_db_call(
-                        inspector.get_columns,
-                        conn,
-                        obj_name,
-                        db_arg,
-                        schema_name,
-                    )
+                    columns = schema_service.list_columns(db_name, schema_name, obj_name)
 
                 # Update UI from worker thread
                 self.call_from_thread(self._on_columns_loaded, node, db_name, schema_name, obj_name, columns)
@@ -405,87 +412,15 @@ class TreeMixin:
         """Spawn worker to load folder contents (tables/views/indexes/triggers/sequences/procedures)."""
         folder_type = data.folder_type
         db_name = data.database
-        cache_key = db_name or "__default__"
 
         def work() -> None:
             """Run in worker thread."""
             try:
-                if not self._session:
+                schema_service = self._get_schema_service()
+                if not schema_service:
                     items = []
                 else:
-                    provider = self._session.provider
-                    inspector = provider.schema_inspector
-                    caps = provider.capabilities
-                    conn = self._session.connection
-                    db_arg = db_name
-                    if hasattr(self, "_get_metadata_db_arg"):
-                        db_arg = self._get_metadata_db_arg(db_name)
-
-                    # Check shared cache first for tables/views/procedures
-                    obj_cache = getattr(self, "_db_object_cache", {})
-
-                    if folder_type == "tables":
-                        if cache_key in obj_cache and "tables" in obj_cache[cache_key]:
-                            raw_data = obj_cache[cache_key]["tables"]
-                        else:
-                            raw_data = self._run_db_call(inspector.get_tables, conn, db_arg)
-                            # Store in shared cache
-                            if cache_key not in obj_cache:
-                                obj_cache[cache_key] = {}
-                            obj_cache[cache_key]["tables"] = raw_data
-                            self._db_object_cache = obj_cache
-                        items = [("table", s, t) for s, t in raw_data]
-                    elif folder_type == "views":
-                        if cache_key in obj_cache and "views" in obj_cache[cache_key]:
-                            raw_data = obj_cache[cache_key]["views"]
-                        else:
-                            raw_data = self._run_db_call(inspector.get_views, conn, db_arg)
-                            # Store in shared cache
-                            if cache_key not in obj_cache:
-                                obj_cache[cache_key] = {}
-                            obj_cache[cache_key]["views"] = raw_data
-                            self._db_object_cache = obj_cache
-                        items = [("view", s, v) for s, v in raw_data]
-                    elif folder_type == "indexes":
-                        if caps.supports_indexes and isinstance(inspector, IndexInspector):
-                            items = [
-                                ("index", i.name, i.table_name)
-                                for i in self._run_db_call(inspector.get_indexes, conn, db_arg)
-                            ]
-                        else:
-                            items = []
-                    elif folder_type == "triggers":
-                        if caps.supports_triggers and isinstance(inspector, TriggerInspector):
-                            items = [
-                                ("trigger", t.name, t.table_name)
-                                for t in self._run_db_call(inspector.get_triggers, conn, db_arg)
-                            ]
-                        else:
-                            items = []
-                    elif folder_type == "sequences":
-                        if caps.supports_sequences and isinstance(inspector, SequenceInspector):
-                            items = [
-                                ("sequence", s.name, "")
-                                for s in self._run_db_call(inspector.get_sequences, conn, db_arg)
-                            ]
-                        else:
-                            items = []
-                    elif folder_type == "procedures":
-                        if caps.supports_stored_procedures and isinstance(inspector, ProcedureInspector):
-                            if cache_key in obj_cache and "procedures" in obj_cache[cache_key]:
-                                raw_data = obj_cache[cache_key]["procedures"]
-                            else:
-                                raw_data = self._run_db_call(inspector.get_procedures, conn, db_arg)
-                                # Store in shared cache
-                                if cache_key not in obj_cache:
-                                    obj_cache[cache_key] = {}
-                                obj_cache[cache_key]["procedures"] = raw_data
-                                self._db_object_cache = obj_cache
-                            items = [("procedure", "", p) for p in raw_data]
-                        else:
-                            items = []
-                    else:
-                        items = []
+                    items = schema_service.list_folder_items(folder_type, db_name)
 
                 # Update UI from worker thread
                 self.call_from_thread(self._on_folder_loaded, node, db_name, folder_type, items)
@@ -660,7 +595,7 @@ class TreeMixin:
     def action_refresh_tree(self: TreeMixinHost) -> None:
         """Refresh the explorer."""
         # Clear shared object cache so fresh data is fetched
-        self._db_object_cache = {}
+        self._get_object_cache().clear()
         # Clear column cache too so columns are re-fetched
         if hasattr(self, "_schema_cache") and "columns" in self._schema_cache:
             self._schema_cache["columns"] = {}
@@ -705,15 +640,8 @@ class TreeMixin:
         if self._get_node_kind(node) in ("table", "view"):
             # Store table info for edit_cell action
             try:
-                db_arg = data.database
-                if hasattr(self, "_get_metadata_db_arg"):
-                    db_arg = self._get_metadata_db_arg(data.database)
-                columns = self._session.provider.schema_inspector.get_columns(
-                    self._session.connection,
-                    data.name,
-                    db_arg,
-                    data.schema,
-                )
+                schema_service = self._get_schema_service()
+                columns = schema_service.list_columns(data.database, data.schema, data.name) if schema_service else []
                 self._last_query_table = {
                     "database": data.database,
                     "schema": data.schema,
@@ -751,68 +679,45 @@ class TreeMixin:
 
     def _show_index_info(self: TreeMixinHost, data: IndexNode) -> None:
         """Show index definition in the results panel."""
-        if not self._session:
+        schema_service = self._get_schema_service()
+        if not schema_service:
             return
 
         try:
-            inspector = self._session.provider.schema_inspector
-            if not isinstance(inspector, IndexInspector):
+            info = schema_service.get_index_definition(data.database, data.name, data.table_name)
+            if info is None:
                 self.notify("Indexes not supported for this database.", severity="warning")
                 return
-            db_arg = data.database
-            if hasattr(self, "_get_metadata_db_arg"):
-                db_arg = self._get_metadata_db_arg(data.database)
-            info = inspector.get_index_definition(
-                self._session.connection,
-                data.name,
-                data.table_name,
-                db_arg,
-            )
             self._display_object_info("Index", info)
         except Exception as e:
             self.notify(f"Error getting index info: {e}", severity="error")
 
     def _show_trigger_info(self: TreeMixinHost, data: TriggerNode) -> None:
         """Show trigger definition in the results panel."""
-        if not self._session:
+        schema_service = self._get_schema_service()
+        if not schema_service:
             return
 
         try:
-            inspector = self._session.provider.schema_inspector
-            if not isinstance(inspector, TriggerInspector):
+            info = schema_service.get_trigger_definition(data.database, data.name, data.table_name)
+            if info is None:
                 self.notify("Triggers not supported for this database.", severity="warning")
                 return
-            db_arg = data.database
-            if hasattr(self, "_get_metadata_db_arg"):
-                db_arg = self._get_metadata_db_arg(data.database)
-            info = inspector.get_trigger_definition(
-                self._session.connection,
-                data.name,
-                data.table_name,
-                db_arg,
-            )
             self._display_object_info("Trigger", info)
         except Exception as e:
             self.notify(f"Error getting trigger info: {e}", severity="error")
 
     def _show_sequence_info(self: TreeMixinHost, data: SequenceNode) -> None:
         """Show sequence information in the results panel."""
-        if not self._session:
+        schema_service = self._get_schema_service()
+        if not schema_service:
             return
 
         try:
-            inspector = self._session.provider.schema_inspector
-            if not isinstance(inspector, SequenceInspector):
+            info = schema_service.get_sequence_definition(data.database, data.name)
+            if info is None:
                 self.notify("Sequences not supported for this database.", severity="warning")
                 return
-            db_arg = data.database
-            if hasattr(self, "_get_metadata_db_arg"):
-                db_arg = self._get_metadata_db_arg(data.database)
-            info = inspector.get_sequence_definition(
-                self._session.connection,
-                data.name,
-                db_arg,
-            )
             self._display_object_info("Sequence", info)
         except Exception as e:
             self.notify(f"Error getting sequence info: {e}", severity="error")
@@ -919,7 +824,7 @@ class TreeMixin:
             self._update_database_labels()
 
             # Clear caches and reload schema for autocomplete
-            self._db_object_cache = {}
+            self._get_object_cache().clear()
             self._load_schema_cache()
 
         except Exception as e:

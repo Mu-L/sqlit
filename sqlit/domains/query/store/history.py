@@ -44,17 +44,9 @@ class HistoryStore(JSONFileStore):
     """
 
     MAX_ENTRIES_PER_CONNECTION = 100
-    _instance: HistoryStore | None = None
 
     def __init__(self) -> None:
         super().__init__(CONFIG_DIR / "query_history.json")
-
-    @classmethod
-    def get_instance(cls) -> HistoryStore:
-        """Get the singleton instance."""
-        if cls._instance is None:
-            cls._instance = cls()
-        return cls._instance
 
     def _load_all_entries(self) -> list[dict]:
         """Load all history entries as raw dictionaries."""

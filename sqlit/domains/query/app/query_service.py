@@ -70,6 +70,22 @@ class KeywordQueryAnalyzer:
         return QueryKind.RETURNS_ROWS if query_type in SELECT_KEYWORDS else QueryKind.NON_QUERY
 
 
+class DialectQueryAnalyzer:
+    def __init__(self, dialect: Any, fallback: QueryAnalyzer | None = None) -> None:
+        self._dialect = dialect
+        self._fallback = fallback or KeywordQueryAnalyzer()
+
+    def classify(self, query: str) -> QueryKind:
+        classifier = getattr(self._dialect, "classify_query", None)
+        if callable(classifier):
+            result = classifier(query)
+            if isinstance(result, QueryKind):
+                return result
+            if isinstance(result, bool):
+                return QueryKind.RETURNS_ROWS if result else QueryKind.NON_QUERY
+        return self._fallback.classify(query)
+
+
 @dataclass
 class QueryResult:
     """Result of a SELECT-type query execution."""

@@ -14,7 +14,7 @@ from sqlit.domains.connections.domain.config import ConnectionConfig
 from sqlit.domains.connections.providers.catalog import get_provider
 from sqlit.domains.connections.store.connections import load_connections
 from sqlit.domains.query.app.query_service import (
-    KeywordQueryAnalyzer,
+    DialectQueryAnalyzer,
     QueryKind,
     QueryResult,
     QueryService,
@@ -139,10 +139,10 @@ def cmd_query(
     if query_service is None:
         from sqlit.domains.query.store.history import HistoryStore
 
-        service = QueryService(HistoryStore.get_instance())
+        service = QueryService(HistoryStore(), analyzer=DialectQueryAnalyzer(provider.dialect))
     else:
         service = query_service
-    analyzer = KeywordQueryAnalyzer()
+    analyzer = DialectQueryAnalyzer(provider.dialect)
 
     try:
         with create_session(config) as session:

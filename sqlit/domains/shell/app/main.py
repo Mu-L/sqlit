@@ -2,10 +2,8 @@
 
 from __future__ import annotations
 
-import json
 import os
 import sys
-import tempfile
 import time
 from collections.abc import Awaitable, Callable
 from pathlib import Path
@@ -20,26 +18,18 @@ from textual.timer import Timer
 from textual.widgets import Static, Tree
 from textual.worker import Worker
 
-from sqlit.domains.connections.app.mock_settings import (
-    apply_mock_environment,
-    build_mock_profile_from_settings,
-)
 from sqlit.domains.connections.app.mocks import MockProfile
 from sqlit.domains.connections.domain.config import ConnectionConfig
 from sqlit.domains.connections.providers.model import DatabaseProvider
-from sqlit.domains.connections.store.connections import load_connections
 from sqlit.domains.explorer.ui.mixins.tree import TreeMixin
 from sqlit.domains.explorer.ui.mixins.tree_filter import TreeFilterMixin
 from sqlit.domains.query.ui.mixins.autocomplete import AutocompleteMixin
 from sqlit.domains.query.ui.mixins.query import QueryMixin
 from sqlit.domains.results.ui.mixins.results import ResultsMixin
 from sqlit.domains.results.ui.mixins.results_filter import ResultsFilterMixin
-from sqlit.domains.shell.app.idle_scheduler import (
-    IdleScheduler,
-    init_idle_scheduler,
-    on_user_activity,
-)
+from sqlit.domains.shell.app.idle_scheduler import IdleScheduler
 from sqlit.domains.shell.app.omarchy import DEFAULT_THEME
+from sqlit.domains.shell.app.startup_flow import run_on_mount
 from sqlit.domains.shell.app.state_machine import UIStateMachine, get_leader_bindings
 from sqlit.domains.shell.app.theme_manager import ThemeManager
 from sqlit.domains.shell.ui.mixins.ui_navigation import UINavigationMixin
@@ -570,128 +560,12 @@ class SSMSTUI(
 
     def on_mount(self) -> None:
         """Initialize the app."""
-        app = cast(AppProtocol, self)
-        self._startup_stamp("on_mount_start")
-        self._restart_argv = self._compute_restart_argv()
-
-        # Initialize and start idle scheduler
-        self._idle_scheduler = init_idle_scheduler(self)
-        self._idle_scheduler.start()
-
-        # Show idle scheduler debug bar if enabled
-        if self._debug_idle_scheduler:
-            self.idle_scheduler_bar.add_class("visible")
-            self._idle_scheduler_bar_timer = self.set_interval(0.1, app._update_idle_scheduler_bar)
-
-        self._theme_manager.register_builtin_themes()
-        self._theme_manager.register_textarea_themes()
-
-        settings = self._theme_manager.initialize()
-        self._startup_stamp("settings_loaded")
-
-        self._expanded_paths = set(settings.get("expanded_nodes", []))
-        self._startup_stamp("settings_applied")
-
-        self._apply_mock_settings(settings)
-
-        if self._mock_profile:
-            self.connections = self._mock_profile.connections.copy()
-        else:
-            self.connections = load_connections(load_credentials=False)
-        if self._startup_connection:
-            self._setup_startup_connection(self._startup_connection)
-        self._startup_stamp("connections_loaded")
-
-        app.refresh_tree()
-        self._startup_stamp("tree_refreshed")
-
-        self.object_tree.focus()
-        self._startup_stamp("tree_focused")
-        # Move cursor to first node if available
-        if self.object_tree.root.children:
-            self.object_tree.cursor_line = 0
-        app._update_section_labels()
-        self._maybe_restore_connection_screen()
-        self._startup_stamp("restore_checked")
-        if self._debug_mode:
-            self.call_after_refresh(self._record_launch_ms)
-        self.call_after_refresh(app._update_status_bar)
-        app._update_footer_bindings()
-        self._startup_stamp("footer_updated")
-        startup_config = self._startup_connect_config
-        if startup_config is not None:
-            self.call_after_refresh(lambda config=startup_config: app.connect_to_server(config))
-        self._log_startup_timing()
-
-    def _apply_mock_settings(self, settings: dict) -> None:
-        apply_mock_environment(settings)
-        if self._mock_profile:
-            return
-        mock_profile = build_mock_profile_from_settings(settings)
-        if mock_profile:
-            self._mock_profile = mock_profile
-            self._session_factory = self._create_mock_session_factory(mock_profile)
-
-    def _setup_startup_connection(self, config: ConnectionConfig) -> None:
-        """Set up a startup connection to auto-connect after mount."""
-        if not config.name:
-            config.name = "Temp Connection"
-        self._startup_connect_config = config
+        run_on_mount(cast(AppProtocol, self))
 
     def _startup_stamp(self, name: str) -> None:
         if not self._startup_profile:
             return
         self._startup_events.append((name, time.perf_counter()))
-
-    def _log_startup_timing(self) -> None:
-        if not self._startup_profile:
-            return
-        now = time.perf_counter()
-        if self._startup_mark is not None:
-            since_start = (now - self._startup_mark) * 1000
-        else:
-            since_start = None
-        init_to_mount = (now - self._startup_init_time) * 1000
-
-        parts = []
-        if since_start is not None:
-            parts.append(f"start_to_mount_ms={since_start:.2f}")
-        parts.append(f"init_to_mount_ms={init_to_mount:.2f}")
-        print(f"[sqlit] startup {' '.join(parts)}", file=sys.stderr)
-        self._log_startup_steps()
-
-        def after_refresh() -> None:
-            now_refresh = time.perf_counter()
-            if self._startup_mark is not None:
-                start_to_refresh = (now_refresh - self._startup_mark) * 1000
-            else:
-                start_to_refresh = None
-            init_to_refresh = (now_refresh - self._startup_init_time) * 1000
-
-            self._log_startup_step("first_refresh", now_refresh)
-            refresh_parts = []
-            if start_to_refresh is not None:
-                refresh_parts.append(f"start_to_first_refresh_ms={start_to_refresh:.2f}")
-            refresh_parts.append(f"init_to_first_refresh_ms={init_to_refresh:.2f}")
-            print(f"[sqlit] startup {' '.join(refresh_parts)}", file=sys.stderr)
-
-        self.call_after_refresh(after_refresh)
-
-    def _log_startup_steps(self) -> None:
-        for name, ts in self._startup_events:
-            self._log_startup_step(name, ts)
-
-    def _log_startup_step(self, name: str, timestamp: float) -> None:
-        if not self._startup_profile:
-            return
-        parts = [f"step={name}"]
-        if self._startup_mark is not None:
-            parts.append(f"start_ms={(timestamp - self._startup_mark) * 1000:.2f}")
-        parts.append(f"init_ms={(timestamp - self._startup_init_time) * 1000:.2f}")
-        print(f"[sqlit] startup {' '.join(parts)}", file=sys.stderr)
-
-    def _get_restart_cache_path(self) -> Path:
-        return Path(tempfile.gettempdir()) / "sqlit-driver-install-restore.json"
 
     @staticmethod
     def _parse_startup_mark(value: str | None) -> float | None:
@@ -707,70 +581,6 @@ class SSMSTUI(
         self._launch_ms = (time.perf_counter() - base) * 1000
         app = cast(AppProtocol, self)
         app._update_status_bar()
-
-    def _maybe_restore_connection_screen(self) -> None:
-        """Restore an in-progress connection form after a driver-install restart."""
-        cache_path = self._get_restart_cache_path()
-        if not cache_path.exists():
-            return
-
-        try:
-            payload = json.loads(cache_path.read_text(encoding="utf-8"))
-        except Exception:
-            try:
-                cache_path.unlink(missing_ok=True)
-            except Exception:
-                pass
-            return
-
-        try:
-            cache_path.unlink(missing_ok=True)
-        except Exception:
-            pass
-
-        if not isinstance(payload, dict) or payload.get("version") != 1:
-            return
-
-        values = payload.get("values")
-        if not isinstance(values, dict):
-            return
-
-        editing = bool(payload.get("editing"))
-        original_name = payload.get("original_name")
-        post_install_message = payload.get("post_install_message")
-        active_tab = payload.get("active_tab")
-
-        config = None
-        if editing and isinstance(original_name, str) and original_name:
-            config = next((c for c in self.connections if getattr(c, "name", None) == original_name), None)
-
-        if config is None:
-            from sqlit.domains.connections.domain.config import ConnectionConfig
-
-            config = ConnectionConfig(
-                name=str(values.get("name", "")),
-                db_type=str(values.get("db_type", "mssql") or "mssql"),
-            )
-            editing = False
-
-        prefill_values = {
-            "values": values,
-            "active_tab": active_tab,
-        }
-
-        from sqlit.domains.connections.ui.screens.connection import ConnectionScreen
-
-        app = cast(AppProtocol, self)
-        app._set_connection_screen_footer()
-        self.push_screen(
-            ConnectionScreen(
-                config,
-                editing=editing,
-                prefill_values=prefill_values,
-                post_install_message=post_install_message if isinstance(post_install_message, str) else None,
-            ),
-            app._wrap_connection_result,
-        )
 
     def watch_theme(self, old_theme: str, new_theme: str) -> None:
         """Save theme whenever it changes."""

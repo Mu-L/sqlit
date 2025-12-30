@@ -15,13 +15,6 @@ if TYPE_CHECKING:
     from sqlit.domains.connections.app.session import ConnectionSession
     from sqlit.domains.connections.domain.config import ConnectionConfig
     from sqlit.domains.connections.providers.model import DatabaseProvider
-    from sqlit.domains.connections.discovery.cloud_detector import AzureSqlServer
-    from sqlit.domains.connections.discovery.docker_detector import DetectedContainer
-    from ..screens.connection_picker import (
-        AzureConnectionResult,
-        CloudConnectionResult,
-        DockerConnectionResult,
-    )
 
 
 class ConnectionMixin:
@@ -508,6 +501,17 @@ class ConnectionMixin:
             self._handle_connection_picker_result,
         )
 
+    def _get_connection_result_registry(self) -> Any:
+        registry = getattr(self, "_connection_result_registry", None)
+        if registry is None:
+            from sqlit.domains.connections.ui.handlers.connection_picker import (
+                get_default_connection_result_registry,
+            )
+
+            registry = get_default_connection_result_registry()
+            self._connection_result_registry = registry
+        return registry
+
     def _handle_connection_picker_result(self: ConnectionMixinHost, result: Any) -> None:
         if result is None:
             return
@@ -520,14 +524,8 @@ class ConnectionMixin:
         result_kind = getattr(result, "get_result_kind", None)
         if callable(result_kind):
             kind = result_kind()
-            if kind == "docker":
-                self._handle_docker_container_result(result)
-                return
-            elif kind == "azure":
-                self._handle_azure_resource_result(result)
-                return
-            elif kind == "cloud":
-                self._handle_cloud_connection_result(result)
+            registry = self._get_connection_result_registry()
+            if registry.handle(self, kind, result):
                 return
 
         # Handle saved connection selection
@@ -544,69 +542,3 @@ class ConnectionMixin:
                 return
             # Don't disconnect here - we'll disconnect only after successful connection
             self.connect_to_server(config)
-
-    def _handle_docker_container_result(self: ConnectionMixinHost, result: DockerConnectionResult) -> None:
-        """Handle a Docker container selection from the connection picker."""
-        from sqlit.domains.connections.discovery.docker_detector import container_to_connection_config
-
-        container = result.container
-        config = container_to_connection_config(container)
-
-        # Try to find matching saved connection to select in tree
-        matching_config = self._find_matching_saved_connection(container)
-        if matching_config:
-            # Select the saved connection in tree
-            for node in self.object_tree.root.children:
-                node_config = self._get_connection_config_from_node(node)
-                if node_config and node_config.name == matching_config.name:
-                    self.object_tree.select_node(node)
-                    break
-            # Use the saved config (has the saved name)
-            config = matching_config
-
-        # Connect directly (saving is handled in the picker itself)
-        # Don't disconnect here - we'll disconnect only after successful connection
-        self.connect_to_server(config)
-
-    def _find_matching_saved_connection(self: ConnectionMixinHost, container: DetectedContainer) -> ConnectionConfig | None:
-        """Find a saved connection that matches a Docker container."""
-        for conn in self.connections:
-            # Match by name (container name saved as connection name)
-            if conn.name == container.container_name:
-                return conn
-
-            # Match by host:port and db_type
-            endpoint = conn.tcp_endpoint
-            if (
-                endpoint
-                and conn.db_type == container.db_type
-                and endpoint.host in ("localhost", "127.0.0.1", container.host)
-                and endpoint.port == str(container.port)
-            ):
-                # If container has a known database, require it to match too
-                if container.database:
-                    if endpoint.database == container.database:
-                        return conn
-                else:
-                    # No database info on container, match by host:port only
-                    return conn
-        return None
-
-    def _handle_azure_resource_result(self: ConnectionMixinHost, result: AzureConnectionResult) -> None:
-        """Handle an Azure SQL resource selection from the connection picker."""
-        from sqlit.domains.connections.discovery.cloud_detector import azure_server_to_connection_config
-
-        server = result.server
-        database = result.database
-        use_sql_auth = result.use_sql_auth
-        config = azure_server_to_connection_config(server, database, use_sql_auth)
-
-        # Connect - will prompt for password if using SQL auth
-        self.connect_to_server(config)
-
-    def _handle_cloud_connection_result(self: ConnectionMixinHost, result: CloudConnectionResult) -> None:
-        """Handle a cloud resource selection (AWS, GCP, etc.) from the connection picker."""
-        config = result.config
-
-        # Connect - will prompt for password if needed
-        self.connect_to_server(config)
