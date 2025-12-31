@@ -7,7 +7,7 @@ import sys
 import time
 from collections.abc import Awaitable, Callable
 from pathlib import Path
-from typing import Any, TYPE_CHECKING, cast
+from typing import Any, TYPE_CHECKING, cast, ClassVar
 
 from textual.app import App, ComposeResult
 from textual.containers import Container, Horizontal, Vertical
@@ -246,7 +246,7 @@ class SSMSTUI(
 
     LAYERS = ["autocomplete"]
 
-    BINDINGS: list[Any] = []
+    BINDINGS: ClassVar[list[Any]] = []
 
     def __init__(
         self,
@@ -526,6 +526,19 @@ class SSMSTUI(
     def on_mount(self) -> None:
         """Initialize the app."""
         run_on_mount(cast(AppProtocol, self))
+
+    def on_unmount(self) -> None:
+        """Clean up background timers when the app exits."""
+        if self._idle_scheduler is not None:
+            self._idle_scheduler.stop()
+            self._idle_scheduler = None
+        if self._leader_timer is not None:
+            self._leader_timer.stop()
+            self._leader_timer = None
+        idle_timer = getattr(self, "_idle_scheduler_bar_timer", None)
+        if idle_timer is not None:
+            idle_timer.stop()
+            self._idle_scheduler_bar_timer = None
 
     def _startup_stamp(self, name: str) -> None:
         if not self._startup_profile:

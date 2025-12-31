@@ -5,7 +5,7 @@ from collections.abc import Mapping
 from sqlit.domains.connections.providers.adapter_provider import build_adapter_provider
 from sqlit.domains.connections.providers.catalog import register_provider
 from sqlit.domains.connections.providers.docker import DockerCredentials, DockerDetector
-from sqlit.domains.connections.providers.model import ProviderSpec
+from sqlit.domains.connections.providers.model import DatabaseProvider, ProviderSpec
 from sqlit.domains.connections.providers.mariadb.schema import SCHEMA
 
 
@@ -16,7 +16,7 @@ def _mariadb_post_process(creds: DockerCredentials, env_vars: Mapping[str, str])
     return DockerCredentials(user=user, password=creds.password, database=creds.database)
 
 
-def _provider_factory(spec: ProviderSpec):
+def _provider_factory(spec: ProviderSpec) -> DatabaseProvider:
     from sqlit.domains.connections.providers.mariadb.adapter import MariaDBAdapter
 
     return build_adapter_provider(spec, SCHEMA, MariaDBAdapter())

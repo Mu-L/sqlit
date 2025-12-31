@@ -66,7 +66,7 @@ class TestContextualKeybindings:
         mock_settings = MockSettingsStore({"theme": "tokyo-night"})
 
         with (
-            patch("sqlit.domains.shell.app.main.load_connections", mock_connections.load_all),
+            patch("sqlit.domains.shell.app.startup_flow.load_connections", mock_connections.load_all),
             patch(
                 "sqlit.domains.shell.app.theme_manager.SettingsStore.get_instance",
                 return_value=mock_settings,

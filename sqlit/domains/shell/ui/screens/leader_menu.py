@@ -10,6 +10,7 @@ from textual.screen import ModalScreen
 from textual.widgets import Static
 
 from sqlit.shared.ui.widgets import Dialog
+from sqlit.domains.shell.app.leader_commands import get_leader_commands
 
 if TYPE_CHECKING:
     from sqlit.domains.shell.app.main import SSMSTUI
@@ -44,8 +45,6 @@ class LeaderMenuScreen(ModalScreen):
 
     def __init__(self, menu: str = "leader") -> None:
         super().__init__()
-        from sqlit.domains.shell.app.state_machine import get_leader_commands
-
         self._menu = menu
         leader_commands = get_leader_commands(menu)
         self._cmd_actions = {cmd.binding_action: cmd for cmd in leader_commands}
@@ -55,8 +54,6 @@ class LeaderMenuScreen(ModalScreen):
 
     def compose(self) -> ComposeResult:
         """Generate menu content from leader commands."""
-        from sqlit.domains.shell.app.state_machine import get_leader_commands
-
         lines = []
         leader_commands = get_leader_commands(self._menu)
         app = cast("SSMSTUI", self.app)

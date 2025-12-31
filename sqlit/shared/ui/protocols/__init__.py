@@ -22,6 +22,7 @@ from sqlit.shared.ui.protocols.mixins import (
 from sqlit.shared.ui.protocols.query import QueryProtocol
 from sqlit.shared.ui.protocols.results import ResultsProtocol
 from sqlit.shared.ui.protocols.screens import ThemeScreenAppProtocol
+from sqlit.shared.ui.protocols.startup import StartupProtocol
 from sqlit.shared.ui.protocols.ui_navigation import UINavigationProtocol
 from sqlit.shared.ui.protocols.vim import VimModeProtocol
 from sqlit.shared.ui.protocols.widgets import WidgetAccessProtocol
@@ -38,6 +39,7 @@ class AppProtocol(
     AutocompleteProtocol,
     ResultsProtocol,
     UINavigationProtocol,
+    StartupProtocol,
     Protocol,
 ):
     """Composite protocol for the SQLit Textual App."""
@@ -60,6 +62,7 @@ __all__ = [
     "ResultsProtocol",
     "ThemeScreenAppProtocol",
     "TextualAppProtocol",
+    "StartupProtocol",
     "TreeFilterMixinHost",
     "TreeMixinHost",
     "UINavigationMixinHost",

@@ -10,6 +10,7 @@ if TYPE_CHECKING:
     from textual.worker import Worker
     from sqlit.domains.query.app.query_service import QueryService
     from sqlit.shared.ui.spinner import Spinner
+    from sqlit.domains.query.editing.deletion import EditResult
 
 
 class QueryStateProtocol(Protocol):
@@ -85,6 +86,12 @@ class QueryActionsProtocol(Protocol):
         ...
 
     def _clear_query_target_database(self) -> None:
+        ...
+
+    def _clear_leader_pending(self) -> None:
+        ...
+
+    def _apply_edit_result(self, result: "EditResult") -> None:
         ...
 
 

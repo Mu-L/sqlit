@@ -2,11 +2,11 @@
 
 from sqlit.domains.connections.providers.adapter_provider import build_adapter_provider
 from sqlit.domains.connections.providers.catalog import register_provider
-from sqlit.domains.connections.providers.model import ProviderSpec
+from sqlit.domains.connections.providers.model import DatabaseProvider, ProviderSpec
 from sqlit.domains.connections.providers.redshift.schema import SCHEMA
 
 
-def _provider_factory(spec: ProviderSpec):
+def _provider_factory(spec: ProviderSpec) -> DatabaseProvider:
     from sqlit.domains.connections.providers.redshift.adapter import RedshiftAdapter
 
     return build_adapter_provider(spec, SCHEMA, RedshiftAdapter())

@@ -19,6 +19,12 @@ class ExplorerStateProtocol(Protocol):
 
 
 class ExplorerActionsProtocol(Protocol):
+    def _get_schema_service(self) -> Any:
+        ...
+
+    def _get_object_cache(self) -> dict[str, dict[str, Any]]:
+        ...
+
     def refresh_tree(self) -> None:
         ...
 

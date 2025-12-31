@@ -92,6 +92,9 @@ class ConnectionActionsProtocol(Protocol):
     def _get_connection_config_from_node(self, node: Any) -> ConnectionConfig | None:
         ...
 
+    def _get_connection_result_registry(self) -> Any:
+        ...
+
 
 class ConnectionsProtocol(ConnectionStateProtocol, ConnectionActionsProtocol, Protocol):
     """Composite protocol for connection-related mixins."""

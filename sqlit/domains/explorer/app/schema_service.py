@@ -3,7 +3,7 @@
 from __future__ import annotations
 
 from dataclasses import dataclass
-from typing import Any, Callable
+from typing import Any, Callable, TypeVar
 
 from sqlit.domains.connections.providers.model import (
     IndexInspector,
@@ -18,6 +18,7 @@ from sqlit.domains.connections.app.session import ConnectionSession
 
 
 DbArgResolver = Callable[[str | None], str | None]
+ResultT = TypeVar("ResultT")
 
 
 @dataclass
@@ -31,7 +32,7 @@ class ExplorerSchemaService:
             return self.db_arg_resolver(database)
         return database
 
-    def _run(self, fn: Callable[..., Any], *args: Any) -> Any:
+    def _run(self, fn: Callable[..., ResultT], *args: Any) -> ResultT:
         return self.session.executor.submit(fn, *args).result()
 
     def list_databases(self) -> list[str]:

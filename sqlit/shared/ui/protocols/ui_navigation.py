@@ -18,6 +18,7 @@ class UIStateProtocol(Protocol):
     _notification_history: list[tuple[str, str, str]]
     _leader_timer: Timer | None
     _leader_pending: bool
+    _leader_pending_menu: str
     _last_active_pane: str | None
     _state_machine: Any
     _mock_profile: Any
@@ -48,10 +49,13 @@ class UINavigationActionsProtocol(Protocol):
     def _show_error_in_results(self, message: str, timestamp: str) -> None:
         ...
 
-    def _show_leader_menu(self) -> None:
+    def _show_leader_menu(self, menu: str = "leader") -> None:
         ...
 
     def _cancel_leader_pending(self) -> None:
+        ...
+
+    def _start_leader_pending(self, menu: str) -> None:
         ...
 
     def _handle_leader_result(self, result: str | None) -> None:

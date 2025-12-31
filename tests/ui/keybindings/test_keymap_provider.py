@@ -9,7 +9,7 @@ from sqlit.domains.shell.app.keymap import (
     reset_keymap,
     set_keymap,
 )
-from sqlit.domains.shell.app.state_machine import get_leader_commands
+from sqlit.domains.shell.app.leader_commands import get_leader_commands
 
 from .conftest import MockKeymapProvider
 

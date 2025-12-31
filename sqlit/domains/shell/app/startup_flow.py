@@ -24,12 +24,14 @@ def run_on_mount(app: AppProtocol) -> None:
     app._startup_stamp("on_mount_start")
     app._restart_argv = app._compute_restart_argv()
 
-    app._idle_scheduler = init_idle_scheduler(app)
-    app._idle_scheduler.start()
+    is_headless = bool(getattr(app, "is_headless", False))
+    if not is_headless:
+        app._idle_scheduler = init_idle_scheduler(app)
+        app._idle_scheduler.start()
 
-    if app._debug_idle_scheduler:
-        app.idle_scheduler_bar.add_class("visible")
-        app._idle_scheduler_bar_timer = app.set_interval(0.1, app._update_idle_scheduler_bar)
+        if app._debug_idle_scheduler:
+            app.idle_scheduler_bar.add_class("visible")
+            app._idle_scheduler_bar_timer = app.set_interval(0.1, app._update_idle_scheduler_bar)
 
     app._theme_manager.register_builtin_themes()
     app._theme_manager.register_textarea_themes()
@@ -67,7 +69,12 @@ def run_on_mount(app: AppProtocol) -> None:
     app._startup_stamp("footer_updated")
     startup_config = app._startup_connect_config
     if startup_config is not None:
-        app.call_after_refresh(lambda config=startup_config: app.connect_to_server(config))
+        config = startup_config
+
+        def _connect_startup() -> None:
+            app.connect_to_server(config)
+
+        app.call_after_refresh(_connect_startup)
     log_startup_timing(app)
 
 

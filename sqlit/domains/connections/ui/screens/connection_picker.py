@@ -232,8 +232,9 @@ class ConnectionPickerScreen(ModalScreen):
         """Load Docker containers and cloud resources when screen mounts."""
         self._update_dialog_title()
         self._rebuild_list()
-        self._load_containers_async()
-        self._load_cloud_providers_async()
+        if not getattr(self.app, "is_headless", False):
+            self._load_containers_async()
+            self._load_cloud_providers_async()
         self._update_shortcuts()
 
     def _update_dialog_title(self) -> None:
