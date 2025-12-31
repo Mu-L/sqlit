@@ -138,6 +138,28 @@ class TestBracketTextObjects:
         result = text_object_bracket("no brackets", row=0, col=5, around=False, open_bracket="(")
         assert result is None
 
+    def test_text_object_bracket_cursor_before(self) -> None:
+        """Cursor before brackets should find the first bracket pair on line."""
+        # Cursor at position 0, brackets start at 4
+        result = text_object_bracket("say (hello)", row=0, col=0, around=False, open_bracket="(")
+        assert result is not None
+        assert result.start == Position(0, 5)  # 'h' in hello
+        assert result.end == Position(0, 9)    # 'o' in hello
+
+    def test_text_object_bracket_cursor_before_around(self) -> None:
+        """Cursor before brackets with around=True should include brackets."""
+        result = text_object_bracket("say (hello)", row=0, col=0, around=True, open_bracket="(")
+        assert result is not None
+        assert result.start == Position(0, 4)  # '('
+        assert result.end == Position(0, 10)   # ')'
+
+    def test_text_object_bracket_multiple_pairs(self) -> None:
+        """With cursor before first pair, should select first pair."""
+        result = text_object_bracket("(a) (b) (c)", row=0, col=0, around=False, open_bracket="(")
+        assert result is not None
+        assert result.start == Position(0, 1)  # 'a'
+        assert result.end == Position(0, 1)    # 'a'
+
 
 class TestGetTextObject:
     """Tests for the get_text_object dispatcher."""

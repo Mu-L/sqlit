@@ -293,9 +293,6 @@ class SSMSTUI(
         self._last_result_row_count: int = 0
         self._results_table_counter: int = 0
         self._internal_clipboard: str = ""
-        # Vim motion pending state for f/F/t/T (char motions) and i/a (text objects)
-        self._pending_delete_motion: str | None = None
-        self._pending_delete_text_object: str | None = None
         self._fullscreen_mode: str = "none"
         self._last_notification: str = ""
         self._last_notification_severity: str = "information"

@@ -421,54 +421,12 @@ class AutocompleteMixin:
         self._hide_autocomplete()
 
     def on_key(self: AutocompleteMixinHost, event: Any) -> None:
-        """Handle key events for autocomplete navigation and vim char pending."""
+        """Handle key events for autocomplete navigation."""
         from sqlit.shared.ui.widgets import VimMode
         from sqlit.domains.shell.app.idle_scheduler import on_user_activity
 
         # Track user activity for idle scheduler
         on_user_activity()
-
-        # Handle char pending state (d+f/F/t/T waiting for target char)
-        pending_motion = getattr(self, "_pending_delete_motion", None)
-        if pending_motion:
-            # Accept any single character (printable or special keys like semicolon)
-            char = event.character if hasattr(event, "character") else None
-            if char and len(char) == 1:
-                self._pending_delete_motion = None
-                self._delete_with_motion(pending_motion, char)
-                self._update_footer_bindings()
-                event.prevent_default()
-                event.stop()
-                return
-            elif event.key == "escape":
-                # Cancel char pending on escape
-                self._pending_delete_motion = None
-                self._update_footer_bindings()
-                event.prevent_default()
-                event.stop()
-                return
-
-        # Handle text object pending state (d+i/a waiting for object type)
-        pending_text_obj = getattr(self, "_pending_delete_text_object", None)
-        if pending_text_obj:
-            # Accept text object chars: w, W, ", ', (, ), [, ], {, }, <, >, b, B, `
-            char = event.character if hasattr(event, "character") else None
-            valid_text_objects = set('wW"\'()[]{}bB<>`')
-            if char and char in valid_text_objects:
-                around = pending_text_obj == "around"
-                self._pending_delete_text_object = None
-                self._delete_with_text_object(char, around)
-                self._update_footer_bindings()
-                event.prevent_default()
-                event.stop()
-                return
-            elif event.key == "escape":
-                # Cancel text object pending on escape
-                self._pending_delete_text_object = None
-                self._update_footer_bindings()
-                event.prevent_default()
-                event.stop()
-                return
 
         # Handle autocomplete navigation
         if not self._autocomplete_visible:

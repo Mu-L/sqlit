@@ -215,41 +215,55 @@ class QueryMixin:
         self._delete_with_motion("%")
 
     def action_delete_find_char(self: QueryMixinHost) -> None:
-        """Start delete to char (f motion) - needs follow-up char."""
+        """Start delete to char (f motion) - shows menu for char input."""
         self._clear_leader_pending()
-        # Set pending state for char input
-        self._pending_delete_motion = "f"
-        self._update_footer_bindings()
+        self._show_char_pending_menu("f")
 
     def action_delete_find_char_back(self: QueryMixinHost) -> None:
-        """Start delete back to char (F motion) - needs follow-up char."""
+        """Start delete back to char (F motion) - shows menu for char input."""
         self._clear_leader_pending()
-        self._pending_delete_motion = "F"
-        self._update_footer_bindings()
+        self._show_char_pending_menu("F")
 
     def action_delete_till_char(self: QueryMixinHost) -> None:
-        """Start delete till char (t motion) - needs follow-up char."""
+        """Start delete till char (t motion) - shows menu for char input."""
         self._clear_leader_pending()
-        self._pending_delete_motion = "t"
-        self._update_footer_bindings()
+        self._show_char_pending_menu("t")
 
     def action_delete_till_char_back(self: QueryMixinHost) -> None:
-        """Start delete back till char (T motion) - needs follow-up char."""
+        """Start delete back till char (T motion) - shows menu for char input."""
         self._clear_leader_pending()
-        self._pending_delete_motion = "T"
-        self._update_footer_bindings()
+        self._show_char_pending_menu("T")
 
     def action_delete_inner(self: QueryMixinHost) -> None:
-        """Start delete inside text object - needs follow-up object char."""
+        """Start delete inside text object - shows menu for object selection."""
         self._clear_leader_pending()
-        self._pending_delete_text_object = "inner"
-        self._update_footer_bindings()
+        self._show_text_object_menu("inner")
 
     def action_delete_around(self: QueryMixinHost) -> None:
-        """Start delete around text object - needs follow-up object char."""
+        """Start delete around text object - shows menu for object selection."""
         self._clear_leader_pending()
-        self._pending_delete_text_object = "around"
-        self._update_footer_bindings()
+        self._show_text_object_menu("around")
+
+    def _show_char_pending_menu(self: QueryMixinHost, motion: str) -> None:
+        """Show the char pending menu and handle the result."""
+        from sqlit.domains.query.ui.screens import CharPendingMenuScreen
+
+        def handle_result(char: str | None) -> None:
+            if char:
+                self._delete_with_motion(motion, char)
+
+        self.push_screen(CharPendingMenuScreen(motion), handle_result)
+
+    def _show_text_object_menu(self: QueryMixinHost, mode: str) -> None:
+        """Show the text object menu and handle the result."""
+        from sqlit.domains.query.ui.screens import TextObjectMenuScreen
+
+        def handle_result(obj_char: str | None) -> None:
+            if obj_char:
+                around = mode == "around"
+                self._delete_with_text_object(obj_char, around)
+
+        self.push_screen(TextObjectMenuScreen(mode), handle_result)
 
     def _delete_with_motion(self: QueryMixinHost, motion_key: str, char: str | None = None) -> None:
         """Execute delete with a motion."""

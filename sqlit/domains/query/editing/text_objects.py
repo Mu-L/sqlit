@@ -117,13 +117,16 @@ def text_object_WORD(
 def text_object_quote(
     text: str, row: int, col: int, around: bool = False, quote: str = '"'
 ) -> Range | None:
-    """Select quoted string (i"/a", i'/a', i`/a`)."""
+    """Select quoted string (i"/a", i'/a', i`/a`).
+
+    If cursor is inside quotes, selects that quoted string.
+    Otherwise, finds first quoted string on the line starting from cursor.
+    """
     lines, row, col = _normalize(text, row, col)
     line = lines[row]
 
-    # Find opening and closing quotes
-    start = None
-    end = None
+    # Find all quote pairs on the line
+    pairs: list[tuple[int, int]] = []
     in_quote = False
     quote_start = -1
 
@@ -133,18 +136,28 @@ def text_object_quote(
                 quote_start = i
                 in_quote = True
             else:
-                # Found closing quote
-                if quote_start <= col <= i or (start is None and i > col):
-                    start = quote_start
-                    end = i
-                    if quote_start <= col <= i:
-                        break
+                pairs.append((quote_start, i))
                 in_quote = False
                 quote_start = -1
 
-    if start is None or end is None:
+    if not pairs:
         return None
 
+    # First try to find a pair that contains the cursor
+    for start, end in pairs:
+        if start <= col <= end:
+            return _make_quote_range(row, start, end, around)
+
+    # If not inside any quotes, find first pair that starts at or after cursor
+    for start, end in pairs:
+        if start >= col:
+            return _make_quote_range(row, start, end, around)
+
+    return None
+
+
+def _make_quote_range(row: int, start: int, end: int, around: bool) -> Range:
+    """Create a Range for a quote text object."""
     if around:
         return Range(
             Position(row, start), Position(row, end), MotionType.CHARWISE, inclusive=True
@@ -183,23 +196,16 @@ BRACKET_PAIRS = {
 }
 
 
-def text_object_bracket(
-    text: str, row: int, col: int, around: bool = False, open_bracket: str = "("
-) -> Range | None:
-    """Select bracket pair contents (i(/a(, i[/a[, i{/a{)."""
-    lines, row, col = _normalize(text, row, col)
+def _find_bracket_pair_from_cursor(
+    lines: list[str], row: int, col: int, open_bracket: str, close_bracket: str
+) -> tuple[tuple[int, int], tuple[int, int]] | None:
+    """Find matching bracket pair starting from cursor position.
 
-    # Normalize to opening bracket
-    if open_bracket in ")]}>" and open_bracket in BRACKET_PAIRS:
-        open_bracket = BRACKET_PAIRS[open_bracket]
-
-    close_bracket = BRACKET_PAIRS.get(open_bracket, ")")
-
-    # Search backward for opening bracket
-    start_row, start_col = row, col
+    First checks if cursor is inside brackets (searching backward for opener).
+    If not found, searches forward on current line for first bracket pair.
+    """
+    # First, try searching backward from cursor for opening bracket (cursor inside brackets)
     depth = 0
-    found_start = False
-
     r, c = row, col
     while r >= 0:
         while c >= 0:
@@ -208,25 +214,34 @@ def text_object_bracket(
                 depth += 1
             elif ch == open_bracket:
                 if depth == 0:
+                    # Found opening bracket, now find closing
                     start_row, start_col = r, c
-                    found_start = True
-                    break
+                    close_pos = _find_closing_bracket(lines, r, c, open_bracket, close_bracket)
+                    if close_pos:
+                        return ((start_row, start_col), close_pos)
+                    return None
                 depth -= 1
             c -= 1
-        if found_start:
-            break
         r -= 1
         if r >= 0:
             c = len(lines[r]) - 1
 
-    if not found_start:
-        return None
+    # Not inside brackets - search forward on current line for first bracket pair
+    line = lines[row]
+    for c in range(col, len(line)):
+        if line[c] == open_bracket:
+            close_pos = _find_closing_bracket(lines, row, c, open_bracket, close_bracket)
+            if close_pos:
+                return ((row, c), close_pos)
 
-    # Search forward for closing bracket
-    end_row, end_col = row, col
+    return None
+
+
+def _find_closing_bracket(
+    lines: list[str], start_row: int, start_col: int, open_bracket: str, close_bracket: str
+) -> tuple[int, int] | None:
+    """Find the matching closing bracket starting from an opening bracket."""
     depth = 0
-    found_end = False
-
     r, c = start_row, start_col
     while r < len(lines):
         while c < len(lines[r]):
@@ -236,17 +251,34 @@ def text_object_bracket(
             elif ch == close_bracket:
                 depth -= 1
                 if depth == 0:
-                    end_row, end_col = r, c
-                    found_end = True
-                    break
+                    return (r, c)
             c += 1
-        if found_end:
-            break
         r += 1
         c = 0
+    return None
 
-    if not found_end:
+
+def text_object_bracket(
+    text: str, row: int, col: int, around: bool = False, open_bracket: str = "("
+) -> Range | None:
+    """Select bracket pair contents (i(/a(, i[/a[, i{/a{).
+
+    If cursor is inside brackets, selects that pair.
+    Otherwise, finds first bracket pair on the line starting from cursor.
+    """
+    lines, row, col = _normalize(text, row, col)
+
+    # Normalize to opening bracket
+    if open_bracket in ")]}>" and open_bracket in BRACKET_PAIRS:
+        open_bracket = BRACKET_PAIRS[open_bracket]
+
+    close_bracket = BRACKET_PAIRS.get(open_bracket, ")")
+
+    result = _find_bracket_pair_from_cursor(lines, row, col, open_bracket, close_bracket)
+    if not result:
         return None
+
+    (start_row, start_col), (end_row, end_col) = result
 
     if around:
         return Range(

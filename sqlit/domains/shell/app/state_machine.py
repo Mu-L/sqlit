@@ -23,11 +23,9 @@ from sqlit.domains.explorer.ui.key_states import (
 )
 from sqlit.domains.query.ui.key_states import (
     AutocompleteActiveState,
-    CharPendingState,
     QueryFocusedState,
     QueryInsertModeState,
     QueryNormalModeState,
-    TextObjectPendingState,
 )
 from sqlit.domains.results.ui.key_states import (
     ResultsFilterActiveState,
@@ -92,8 +90,6 @@ class UIStateMachine:
         self.query_normal = QueryNormalModeState(parent=self.query_focused)
         self.query_insert = QueryInsertModeState(parent=self.query_focused)
         self.autocomplete_active = AutocompleteActiveState(parent=self.query_focused)
-        self.char_pending = CharPendingState(parent=self.query_normal)
-        self.text_object_pending = TextObjectPendingState(parent=self.query_normal)
 
         self.results_focused = ResultsFocusedState(parent=self.main_screen)
         self.results_filter_active = ResultsFilterActiveState(parent=self.main_screen)
@@ -111,8 +107,6 @@ class UIStateMachine:
             self.tree_on_object,  # For index/trigger/sequence nodes
             self.tree_focused,
             self.autocomplete_active,  # Before query_insert (more specific)
-            self.char_pending,  # Before query_normal (waiting for char after d+f/F/t/T)
-            self.text_object_pending,  # Before query_normal (waiting for object after d+i/a)
             self.query_insert,
             self.query_normal,
             self.query_focused,
