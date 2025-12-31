@@ -280,6 +280,9 @@ class QueryMixin:
         if not result.range:
             return
 
+        # Push undo state before delete
+        self._push_undo_state()
+
         op_result = operator_delete(text, result.range)
         self.query_input.text = op_result.text
         self.query_input.cursor_location = (op_result.row, op_result.col)
@@ -299,6 +302,9 @@ class QueryMixin:
         if not range_obj:
             return
 
+        # Push undo state before delete
+        self._push_undo_state()
+
         op_result = operator_delete(text, range_obj)
         self.query_input.text = op_result.text
         self.query_input.cursor_location = (op_result.row, op_result.col)
@@ -314,6 +320,8 @@ class QueryMixin:
             cancel()
 
     def _apply_edit_result(self: QueryMixinHost, result: edit_delete.EditResult) -> None:
+        # Push undo state before applying changes
+        self._push_undo_state()
         self.query_input.text = result.text
         self.query_input.cursor_location = (max(0, result.row), max(0, result.col))
 
@@ -373,6 +381,9 @@ class QueryMixin:
         if not clipboard:
             return
 
+        # Push undo state before paste
+        self._push_undo_state()
+
         text = self.query_input.text
         row, col = self.query_input.cursor_location
 
@@ -412,6 +423,48 @@ class QueryMixin:
             return pyperclip.paste() or ""
         except Exception:
             return ""
+
+    # ========================================================================
+    # Undo/Redo actions
+    # ========================================================================
+
+    def _get_undo_history(self: QueryMixinHost) -> Any:
+        """Get or create the undo history instance."""
+        from sqlit.domains.query.editing import UndoHistory
+
+        if self._undo_history is None:
+            self._undo_history = UndoHistory()
+        return self._undo_history
+
+    def _push_undo_state(self: QueryMixinHost) -> None:
+        """Push current state to undo history."""
+        history = self._get_undo_history()
+        text = self.query_input.text
+        row, col = self.query_input.cursor_location
+        history.push(text, row, col)
+
+    def action_undo(self: QueryMixinHost) -> None:
+        """Undo the last edit."""
+        history = self._get_undo_history()
+        if not history.can_undo():
+            return
+
+        state = history.undo()
+        if state:
+            self.query_input.text = state.text
+            self.query_input.cursor_location = (state.cursor_row, state.cursor_col)
+
+    def action_redo(self: QueryMixinHost) -> None:
+        """Redo the last undone edit."""
+        history = self._get_undo_history()
+        if not history.can_redo():
+            return
+
+        state = history.redo()
+        if state:
+            self.query_input.text = state.text
+            self.query_input.cursor_location = (state.cursor_row, state.cursor_col)
+
     def _execute_query_common(self: QueryMixinHost, keep_insert_mode: bool) -> None:
         """Common query execution logic."""
         if not self.current_connection or not self.current_provider:

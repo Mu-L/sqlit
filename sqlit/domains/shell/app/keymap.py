@@ -231,6 +231,12 @@ class DefaultKeymapProvider(KeymapProvider):
             ActionKeyDef("ctrl+a", "select_all", "query"),
             ActionKeyDef("ctrl+c", "copy_selection", "query"),
             ActionKeyDef("ctrl+v", "paste", "query"),
+            # Query undo/redo (both modes)
+            ActionKeyDef("ctrl+z", "undo", "query"),
+            ActionKeyDef("ctrl+y", "redo", "query"),
+            # Query undo/redo vim style (normal mode only)
+            ActionKeyDef("u", "undo", "query_normal"),
+            ActionKeyDef("ctrl+r", "redo", "query_normal"),
             # Results
             ActionKeyDef("v", "view_cell", "results"),
             ActionKeyDef("V", "view_cell_full", "results"),

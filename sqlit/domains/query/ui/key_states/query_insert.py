@@ -21,6 +21,9 @@ class QueryInsertModeState(State):
         self.allows("select_all", help="Select all text")
         self.allows("copy_selection", help="Copy selection")
         self.allows("paste", help="Paste")
+        # Undo/redo
+        self.allows("undo", help="Undo")
+        self.allows("redo", help="Redo")
         self.forbids(
             "focus_explorer",
             "focus_results",

@@ -35,6 +35,9 @@ from .operators import operator_yank
 from .text_objects import TEXT_OBJECT_CHARS
 from .text_objects import get_text_object
 
+from .undo_history import UndoHistory
+from .undo_history import UndoState
+
 __all__ = [
     # Deletion
     "EditResult",
@@ -70,4 +73,7 @@ __all__ = [
     # Text objects
     "TEXT_OBJECT_CHARS",
     "get_text_object",
+    # Undo/redo
+    "UndoHistory",
+    "UndoState",
 ]

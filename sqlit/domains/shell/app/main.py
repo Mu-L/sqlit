@@ -293,6 +293,8 @@ class SSMSTUI(
         self._last_result_row_count: int = 0
         self._results_table_counter: int = 0
         self._internal_clipboard: str = ""
+        # Undo/redo history for query editor
+        self._undo_history: Any = None  # Lazy init UndoHistory
         self._fullscreen_mode: str = "none"
         self._last_notification: str = ""
         self._last_notification_severity: str = "information"

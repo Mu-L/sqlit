@@ -23,6 +23,9 @@ class QueryNormalModeState(State):
         self.allows("select_all", help="Select all text")
         self.allows("copy_selection", help="Copy selection")
         self.allows("paste", help="Paste")
+        # Undo/redo
+        self.allows("undo", help="Undo")
+        self.allows("redo", help="Redo")
 
     def get_display_bindings(self, app: UIContext) -> tuple[list[DisplayBinding], list[DisplayBinding]]:
         left: list[DisplayBinding] = []
