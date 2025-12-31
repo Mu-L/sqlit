@@ -7,8 +7,8 @@ datetimeoffset values (timezone-aware datetime columns).
 from __future__ import annotations
 
 import os
-import pytest
 
+import pytest
 
 MSSQL_HOST = os.environ.get("MSSQL_HOST", "localhost")
 MSSQL_PORT = int(os.environ.get("MSSQL_PORT", "1433"))

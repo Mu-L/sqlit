@@ -6,9 +6,6 @@ from unittest.mock import MagicMock, patch
 
 import pytest
 
-from sqlit.domains.connections.providers.catalog import get_provider
-from sqlit.domains.connections.providers.docker import DockerCredentials
-from sqlit.domains.connections.providers.registry import get_default_port
 from sqlit.domains.connections.app.mock_settings import set_mock_docker_containers
 from sqlit.domains.connections.discovery.docker_detector import (
     DetectedContainer,
@@ -19,6 +16,9 @@ from sqlit.domains.connections.discovery.docker_detector import (
     detect_database_containers,
     get_docker_status,
 )
+from sqlit.domains.connections.providers.catalog import get_provider
+from sqlit.domains.connections.providers.docker import DockerCredentials
+from sqlit.domains.connections.providers.registry import get_default_port
 
 
 def _get_container_credentials(db_type: str, env_vars: dict[str, str]) -> DockerCredentials:

@@ -4,8 +4,8 @@ import subprocess
 import threading
 from unittest.mock import MagicMock, patch
 
-from sqlit.domains.connections.providers.exceptions import MissingDriverError
 from sqlit.domains.connections.app.installer import Installer
+from sqlit.domains.connections.providers.exceptions import MissingDriverError
 
 
 class _FakeProcess:

@@ -9,6 +9,7 @@ from __future__ import annotations
 from typing import TYPE_CHECKING, Any, Protocol, runtime_checkable
 
 if TYPE_CHECKING:
+    from sqlit.domains.connections.app.credentials import CredentialsService
     from sqlit.domains.connections.domain.config import ConnectionConfig
 
 
@@ -93,6 +94,10 @@ class ConnectionStoreProtocol(Protocol):
 
     def save_all(self, connections: list[ConnectionConfig]) -> None:
         """Save connections."""
+        ...
+
+    def set_credentials_service(self, service: CredentialsService) -> None:
+        """Attach a credentials service for loading stored secrets."""
         ...
 
 

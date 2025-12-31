@@ -4,9 +4,9 @@ from __future__ import annotations
 
 import pytest
 
-from sqlit.domains.shell.app.main import SSMSTUI
-from sqlit.domains.shell.app.keymap import get_keymap
 from sqlit.domains.connections.ui.screens.connection_picker import ConnectionPickerScreen
+from sqlit.domains.shell.app.keymap import get_keymap
+from sqlit.domains.shell.app.main import SSMSTUI
 from sqlit.domains.shell.ui.screens.help import HelpScreen
 
 from ..mocks import MockConnectionStore, MockSettingsStore, build_test_services

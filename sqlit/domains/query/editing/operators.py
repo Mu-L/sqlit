@@ -6,7 +6,7 @@ then perform an action (delete, yank, change).
 
 from __future__ import annotations
 
-from typing import Callable
+from collections.abc import Callable
 
 from .types import MotionType, OperatorResult, Range
 

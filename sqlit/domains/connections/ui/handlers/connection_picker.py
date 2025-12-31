@@ -3,7 +3,7 @@
 from __future__ import annotations
 
 from dataclasses import dataclass
-from typing import Any, Protocol, TYPE_CHECKING
+from typing import TYPE_CHECKING, Any, Protocol
 
 from textual.widgets import Tree
 
@@ -49,7 +49,7 @@ def _select_saved_connection(host: ConnectionPickerHost, config: ConnectionConfi
 
 
 def _find_matching_saved_connection(
-    host: ConnectionPickerHost, container: "DetectedContainer"
+    host: ConnectionPickerHost, container: DetectedContainer
 ) -> ConnectionConfig | None:
     for conn in host.connections:
         if conn.name == container.container_name:

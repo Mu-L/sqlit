@@ -2,7 +2,6 @@
 
 from sqlit.domains.connections.providers.schema_helpers import ConnectionSchema, FieldType, SchemaField
 
-
 SCHEMA = ConnectionSchema(
     db_type="d1",
     display_name="Cloudflare D1",

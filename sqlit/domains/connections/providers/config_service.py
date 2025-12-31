@@ -5,7 +5,6 @@ from __future__ import annotations
 from typing import Any
 
 from sqlit.domains.connections.domain.config import ConnectionConfig
-
 from sqlit.domains.connections.providers.catalog import get_provider
 
 

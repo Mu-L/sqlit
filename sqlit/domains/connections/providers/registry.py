@@ -17,6 +17,10 @@ from sqlit.domains.connections.providers.catalog import (
     iter_provider_schemas,
     register_provider,
 )
+from sqlit.domains.connections.providers.config_service import (
+    normalize_connection_config,
+    validate_database_required,
+)
 from sqlit.domains.connections.providers.metadata import (
     get_badge_label,
     get_connection_display_info,
@@ -26,10 +30,6 @@ from sqlit.domains.connections.providers.metadata import (
     is_file_based,
     requires_auth,
     supports_ssh,
-)
-from sqlit.domains.connections.providers.config_service import (
-    normalize_connection_config,
-    validate_database_required,
 )
 
 __all__ = [

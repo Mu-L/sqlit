@@ -7,7 +7,6 @@ from sqlit.domains.connections.providers.schema_helpers import (
     _get_aws_region_options,
 )
 
-
 SCHEMA = ConnectionSchema(
     db_type="supabase",
     display_name="Supabase",

@@ -2,20 +2,18 @@
 
 from __future__ import annotations
 
+from collections.abc import Callable
 from dataclasses import dataclass
-from typing import Any, Callable, TypeVar
+from typing import Any, TypeVar
 
+from sqlit.domains.connections.app.session import ConnectionSession
+from sqlit.domains.connections.providers.adapters.base import ColumnInfo
 from sqlit.domains.connections.providers.model import (
     IndexInspector,
     ProcedureInspector,
     SequenceInspector,
     TriggerInspector,
 )
-
-from sqlit.domains.connections.providers.adapters.base import ColumnInfo
-
-from sqlit.domains.connections.app.session import ConnectionSession
-
 
 DbArgResolver = Callable[[str | None], str | None]
 ResultT = TypeVar("ResultT")

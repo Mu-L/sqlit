@@ -10,7 +10,7 @@ from pathlib import Path
 from typing import TYPE_CHECKING
 
 if TYPE_CHECKING:
-    from .provider import AWSRDSInstance, AWSRedshiftCluster, RegionResources
+    from .provider import RegionResources
 
 # Cache configuration
 AWS_CACHE_TTL_SECONDS = 300  # 5 minutes
@@ -53,7 +53,7 @@ def load_aws_cache() -> AWSCache | None:
 
 
 def save_aws_cache(
-    regions_with_resources: list["RegionResources"],
+    regions_with_resources: list[RegionResources],
     account_username: str | None = None,
     account_display_name: str | None = None,
     account_tenant: str | None = None,
@@ -107,7 +107,7 @@ def save_aws_cache(
         pass  # Best effort caching
 
 
-def load_cached_data() -> tuple[list["RegionResources"], dict] | None:
+def load_cached_data() -> tuple[list[RegionResources], dict] | None:
     """Load cached regions with resources and account info.
 
     Returns a tuple of (regions, account_info) or None if no valid cache.
@@ -162,7 +162,7 @@ def load_cached_data() -> tuple[list["RegionResources"], dict] | None:
     return regions, account_info
 
 
-def load_cached_regions() -> list["RegionResources"] | None:
+def load_cached_regions() -> list[RegionResources] | None:
     """Load cached regions with resources."""
     from .provider import AWSRDSInstance, AWSRedshiftCluster, RegionResources
 

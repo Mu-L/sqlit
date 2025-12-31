@@ -11,8 +11,8 @@ from dataclasses import dataclass
 from rich.markup import escape as escape_markup
 
 from sqlit.domains.connections.providers.model import SchemaCapabilities
-from sqlit.domains.explorer.ui.mixins.tree import TreeMixin
 from sqlit.domains.explorer.domain.tree_nodes import SchemaNode, TableNode
+from sqlit.domains.explorer.ui.mixins.tree import TreeMixin
 
 
 @dataclass

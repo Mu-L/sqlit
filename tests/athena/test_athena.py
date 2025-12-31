@@ -15,10 +15,10 @@ Environment variables (Terraform mode):
     AWS_PROFILE            - AWS profile name (default: default)
 """
 
-import json
 import os
 import time
 import uuid
+
 import pytest
 
 # Check for required dependencies
@@ -30,8 +30,8 @@ except ImportError:
     HAS_BOTO3 = False
 
 try:
-    from tests.helpers import ConnectionConfig
     from sqlit.domains.connections.providers.athena.adapter import AthenaAdapter
+    from tests.helpers import ConnectionConfig
     HAS_ADAPTER = True
 except ImportError:
     HAS_ADAPTER = False

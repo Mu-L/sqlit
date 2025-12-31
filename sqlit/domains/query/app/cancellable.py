@@ -15,8 +15,8 @@ from sqlit.domains.query.app.query_service import KeywordQueryAnalyzer, QueryKin
 if TYPE_CHECKING:
     from sqlit.domains.connections.domain.config import ConnectionConfig
     from sqlit.domains.connections.providers.model import DatabaseProvider
-    from .query_service import QueryAnalyzer
-    from .query_service import NonQueryResult, QueryResult
+
+    from .query_service import NonQueryResult, QueryAnalyzer, QueryResult
 
 
 @dataclass
@@ -82,6 +82,7 @@ class CancellableQuery:
             Any database-specific errors from connection or query execution.
         """
         from sqlit.domains.connections.app.tunnel import create_ssh_tunnel
+
         from .query_service import NonQueryResult, QueryResult
 
         with self._lock:

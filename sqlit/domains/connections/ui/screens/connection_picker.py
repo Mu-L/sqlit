@@ -13,18 +13,17 @@ from textual.widgets import OptionList, Tree
 from textual.widgets.option_list import Option
 from textual.widgets.tree import TreeNode
 
-from sqlit.domains.connections.providers.metadata import get_connection_display_info
 from sqlit.domains.connections.discovery.cloud import ProviderState, ProviderStatus, get_providers
+from sqlit.domains.connections.providers.metadata import get_connection_display_info
 from sqlit.shared.core.utils import fuzzy_match, highlight_matches
-from sqlit.shared.ui.widgets import Dialog, FilterInput
 from sqlit.shared.ui.protocols import AppProtocol
+from sqlit.shared.ui.widgets import Dialog, FilterInput
 
 if TYPE_CHECKING:
-    from sqlit.domains.connections.domain.config import ConnectionConfig
     from sqlit.domains.connections.discovery.cloud import CloudProvider
     from sqlit.domains.connections.discovery.cloud_detector import AzureSqlServer
-    from sqlit.domains.connections.discovery.docker_detector import DockerStatus
-    from sqlit.domains.connections.discovery.docker_detector import DetectedContainer
+    from sqlit.domains.connections.discovery.docker_detector import DetectedContainer, DockerStatus
+    from sqlit.domains.connections.domain.config import ConnectionConfig
 
 
 class AzureAuthChoiceScreen(ModalScreen):
@@ -53,7 +52,7 @@ class AzureAuthChoiceScreen(ModalScreen):
         Binding("enter", "select", "Select"),
     ]
 
-    def __init__(self, server: "AzureSqlServer", database: str):
+    def __init__(self, server: AzureSqlServer, database: str):
         super().__init__()
         self.server = server
         self.database = database
@@ -1240,7 +1239,7 @@ class ConnectionPickerScreen(ModalScreen):
     def _add_provider_to_tree(
         self,
         parent: TreeNode,
-        provider: "CloudProvider",
+        provider: CloudProvider,
         state: ProviderState,
     ) -> None:
         """Add a cloud provider's resources to the tree."""
@@ -1288,7 +1287,7 @@ class ConnectionPickerScreen(ModalScreen):
     def _add_azure_resources_to_tree(
         self,
         parent: TreeNode,
-        provider: "CloudProvider",
+        provider: CloudProvider,
         state: ProviderState,
     ) -> None:
         """Add Azure-specific resources to the tree."""
@@ -1340,7 +1339,7 @@ class ConnectionPickerScreen(ModalScreen):
     def _add_aws_resources_to_tree(
         self,
         parent: TreeNode,
-        provider: "CloudProvider",
+        provider: CloudProvider,
         state: ProviderState,
     ) -> None:
         """Add AWS-specific resources to the tree."""
@@ -1399,7 +1398,7 @@ class ConnectionPickerScreen(ModalScreen):
     def _add_gcp_resources_to_tree(
         self,
         parent: TreeNode,
-        provider: "CloudProvider",
+        provider: CloudProvider,
         state: ProviderState,
     ) -> None:
         """Add GCP-specific resources to the tree."""
@@ -1432,7 +1431,7 @@ class ConnectionPickerScreen(ModalScreen):
             else:
                 project_node.add_leaf("[dim](no Cloud SQL instances)[/]")
 
-    def _is_azure_connection_saved(self, server: "AzureSqlServer", database: str, use_sql_auth: bool) -> bool:
+    def _is_azure_connection_saved(self, server: AzureSqlServer, database: str, use_sql_auth: bool) -> bool:
         """Check if an Azure connection is already saved with specific auth type."""
         for conn in self.connections:
             if conn.source != "azure":
@@ -1444,7 +1443,7 @@ class ConnectionPickerScreen(ModalScreen):
                     return True
         return False
 
-    def _is_azure_db_saved(self, server: "AzureSqlServer", database: str) -> bool:
+    def _is_azure_db_saved(self, server: AzureSqlServer, database: str) -> bool:
         """Check if an Azure database is saved with any auth type."""
         for conn in self.connections:
             if conn.source != "azure":
@@ -1755,7 +1754,7 @@ class ConnectionPickerScreen(ModalScreen):
         except Exception:
             pass
 
-    def _prompt_azure_auth_choice(self, server: "AzureSqlServer", database: str) -> None:
+    def _prompt_azure_auth_choice(self, server: AzureSqlServer, database: str) -> None:
         """Prompt user to choose authentication method for Azure SQL connection."""
         def handle_auth_choice(use_sql_auth: bool | None) -> None:
             if use_sql_auth is not None:
@@ -1770,7 +1769,7 @@ class ConnectionPickerScreen(ModalScreen):
             handle_auth_choice,
         )
 
-    def _prompt_azure_auth_choice_for_save(self, server: "AzureSqlServer", database: str) -> None:
+    def _prompt_azure_auth_choice_for_save(self, server: AzureSqlServer, database: str) -> None:
         """Prompt user to choose authentication method for saving Azure SQL connection."""
         def handle_auth_choice(use_sql_auth: bool | None) -> None:
             if use_sql_auth is not None:

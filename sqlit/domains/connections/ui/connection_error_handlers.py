@@ -3,7 +3,7 @@
 from __future__ import annotations
 
 from dataclasses import dataclass
-from typing import Protocol, TYPE_CHECKING, cast
+from typing import TYPE_CHECKING, Protocol, cast
 
 from sqlit.shared.ui.protocols import ConnectionsProtocol, TextualAppProtocol
 
@@ -35,8 +35,9 @@ class MissingDriverHandler:
         return isinstance(error, MissingDriverError)
 
     def handle(self, app: ConnectionErrorApp, error: Exception, config: ConnectionConfig) -> None:
-        from .screens import PackageSetupScreen
         from sqlit.domains.connections.providers.exceptions import MissingDriverError
+
+        from .screens import PackageSetupScreen
 
         # No on_success callback - uses default "Restart to apply" behavior
         app.push_screen(PackageSetupScreen(cast(MissingDriverError, error)))
@@ -57,6 +58,7 @@ class AzureFirewallHandler:
             parse_ip_from_firewall_error,
             parse_server_name_from_hostname,
         )
+
         from .screens import AzureFirewallScreen
 
         ip_address = parse_ip_from_firewall_error(str(error))

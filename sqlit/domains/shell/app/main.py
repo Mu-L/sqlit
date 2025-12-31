@@ -7,7 +7,7 @@ import sys
 import time
 from collections.abc import Awaitable, Callable
 from pathlib import Path
-from typing import Any, TYPE_CHECKING, cast, ClassVar
+from typing import TYPE_CHECKING, Any, ClassVar, cast
 
 from textual.app import App, ComposeResult
 from textual.containers import Container, Horizontal, Vertical
@@ -19,6 +19,7 @@ from textual.worker import Worker
 
 from sqlit.domains.connections.domain.config import ConnectionConfig
 from sqlit.domains.connections.providers.model import DatabaseProvider
+from sqlit.domains.connections.ui.mixins.connection import ConnectionMixin
 from sqlit.domains.explorer.ui.mixins.tree import TreeMixin
 from sqlit.domains.explorer.ui.mixins.tree_filter import TreeFilterMixin
 from sqlit.domains.query.ui.mixins.autocomplete import AutocompleteMixin
@@ -31,7 +32,8 @@ from sqlit.domains.shell.app.startup_flow import run_on_mount
 from sqlit.domains.shell.app.state_machine import UIStateMachine, get_app_bindings
 from sqlit.domains.shell.app.theme_manager import ThemeManager
 from sqlit.domains.shell.ui.mixins.ui_navigation import UINavigationMixin
-from sqlit.domains.connections.ui.mixins.connection import ConnectionMixin
+from sqlit.shared.app import AppServices, RuntimeConfig, build_app_services
+from sqlit.shared.ui.protocols import AppProtocol
 from sqlit.shared.ui.widgets import (
     AutocompleteDropdown,
     ContextFooter,
@@ -42,8 +44,6 @@ from sqlit.shared.ui.widgets import (
     TreeFilterInput,
     VimMode,
 )
-from sqlit.shared.app import AppServices, RuntimeConfig, build_app_services
-from sqlit.shared.ui.protocols import AppProtocol
 
 if TYPE_CHECKING:
     from sqlit.domains.connections.app.session import ConnectionSession

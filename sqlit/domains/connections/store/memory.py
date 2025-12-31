@@ -3,8 +3,12 @@
 from __future__ import annotations
 
 import copy
+from typing import TYPE_CHECKING
 
 from sqlit.domains.connections.domain.config import ConnectionConfig
+
+if TYPE_CHECKING:
+    from sqlit.domains.connections.app.credentials import CredentialsService
 
 
 class InMemoryConnectionStore:
@@ -20,6 +24,10 @@ class InMemoryConnectionStore:
 
     def save_all(self, connections: list[ConnectionConfig]) -> None:
         self._connections = copy.deepcopy(connections)
+
+    def set_credentials_service(self, service: CredentialsService) -> None:
+        """No-op for in-memory store."""
+        return None
 
     def get_by_name(self, name: str) -> ConnectionConfig | None:
         for conn in self._connections:

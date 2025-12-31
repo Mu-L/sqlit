@@ -12,6 +12,7 @@ from typing import TYPE_CHECKING, Any
 if TYPE_CHECKING:
     from sqlit.domains.connections.domain.config import ConnectionConfig
     from sqlit.domains.connections.providers.model import DatabaseProvider
+
     from .executor import DatabaseExecutor
 
 

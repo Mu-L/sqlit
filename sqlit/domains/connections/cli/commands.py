@@ -5,7 +5,11 @@ from __future__ import annotations
 import sys
 from typing import Any
 
-from .helpers import build_connection_config_from_args
+from sqlit.domains.connections.app.credentials import (
+    ALLOW_PLAINTEXT_CREDENTIALS_SETTING,
+    build_credentials_service,
+    is_keyring_usable,
+)
 from sqlit.domains.connections.domain.config import (
     AUTH_TYPE_LABELS,
     AuthType,
@@ -14,14 +18,11 @@ from sqlit.domains.connections.domain.config import (
     get_database_type_labels,
 )
 from sqlit.domains.connections.providers.catalog import get_provider_schema
-
-from sqlit.domains.connections.app.credentials import (
-    ALLOW_PLAINTEXT_CREDENTIALS_SETTING,
-    build_credentials_service,
-    is_keyring_usable,
-)
 from sqlit.shared.app.runtime import RuntimeConfig
 from sqlit.shared.app.services import AppServices, build_app_services
+
+from .helpers import build_connection_config_from_args
+
 
 def _maybe_prompt_plaintext_credentials(services: AppServices) -> bool:
     """Ensure plaintext credential storage preference is set when keyring isn't usable.

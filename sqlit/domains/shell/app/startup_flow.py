@@ -7,7 +7,6 @@ import sys
 import tempfile
 import time
 from pathlib import Path
-from typing import Any
 
 from sqlit.domains.connections.domain.config import ConnectionConfig
 from sqlit.domains.shell.app.idle_scheduler import init_idle_scheduler

@@ -8,6 +8,7 @@ from __future__ import annotations
 
 import time
 from contextlib import contextmanager
+
 import pytest
 
 try:
@@ -18,7 +19,6 @@ except ImportError:
 from sqlit.domains.shell.app.main import SSMSTUI
 
 from ..ui.mocks import MockConnectionStore, MockSettingsStore, build_test_services, create_test_connection
-
 
 # Skip all tests if Faker not installed
 pytestmark = pytest.mark.skipif(Faker is None, reason="Faker not installed (pip install Faker)")

@@ -4,7 +4,6 @@ from __future__ import annotations
 
 from typing import TYPE_CHECKING, Any
 
-from sqlit.domains.connections.providers.registry import get_default_port
 from sqlit.domains.connections.providers.adapters.base import (
     ColumnInfo,
     DatabaseAdapter,
@@ -14,6 +13,7 @@ from sqlit.domains.connections.providers.adapters.base import (
     TriggerInfo,
 )
 from sqlit.domains.connections.providers.driver import import_driver_module
+from sqlit.domains.connections.providers.registry import get_default_port
 
 if TYPE_CHECKING:
     from sqlit.domains.connections.domain.config import ConnectionConfig

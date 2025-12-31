@@ -13,17 +13,15 @@ from textual.app import ComposeResult
 from textual.binding import Binding
 from textual.containers import Container, Horizontal
 from textual.events import ScreenResume, ScreenSuspend
-from textual.widget import Widget
 from textual.screen import ModalScreen
+from textual.widget import Widget
 from textual.widgets import (
-    Button,
     Input,
     OptionList,
     Select,
     Static,
     TabbedContent,
     TabPane,
-    TextArea,
 )
 from textual.widgets.option_list import Option
 
@@ -34,8 +32,8 @@ from sqlit.domains.connections.domain.config import (
 )
 from sqlit.domains.connections.providers.catalog import get_provider_schema
 from sqlit.domains.connections.providers.driver import ensure_provider_driver_available
-from sqlit.domains.connections.providers.metadata import has_advanced_auth, is_file_based, supports_ssh
 from sqlit.domains.connections.providers.exceptions import MissingDriverError
+from sqlit.domains.connections.providers.metadata import has_advanced_auth, is_file_based, supports_ssh
 from sqlit.domains.connections.ui.fields import (
     FieldDefinition,
     FieldGroup,
@@ -43,9 +41,9 @@ from sqlit.domains.connections.ui.fields import (
     schema_to_field_definitions,
 )
 from sqlit.domains.connections.ui.validation import ValidationState, validate_connection_form
-from sqlit.shared.ui.widgets import Dialog
 from sqlit.shared.ui.protocols import AppProtocol
-from sqlit.shared.ui.spinner import Spinner, SPINNER_FRAMES
+from sqlit.shared.ui.spinner import SPINNER_FRAMES, Spinner
+from sqlit.shared.ui.widgets import Dialog
 
 
 class ConnectionScreen(ModalScreen):
@@ -658,7 +656,6 @@ class ConnectionScreen(ModalScreen):
             yield Static("", id="test-status")
 
     def on_mount(self) -> None:
-        import os
         import sys
         import time
 
@@ -715,7 +712,6 @@ class ConnectionScreen(ModalScreen):
 
     def _deferred_driver_check(self) -> None:
         """Check driver availability after screen is visible."""
-        import os
         import sys
         import time
 
@@ -1456,7 +1452,6 @@ class ConnectionScreen(ModalScreen):
 
         def on_test_success() -> None:
             """Handle successful connection test on main thread."""
-            import time
 
             self._stop_test_spinner()
             elapsed = time.perf_counter() - self._test_start_time
@@ -1475,7 +1470,6 @@ class ConnectionScreen(ModalScreen):
 
         def on_test_error(error: Exception) -> None:
             """Handle connection test error on main thread."""
-            import time
 
             self._stop_test_spinner()
             elapsed = time.perf_counter() - self._test_start_time

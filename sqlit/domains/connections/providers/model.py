@@ -7,10 +7,11 @@ from typing import TYPE_CHECKING, Any, Protocol, runtime_checkable
 
 if TYPE_CHECKING:
     from collections.abc import Callable
+
     from sqlit.domains.connections.domain.config import ConnectionConfig
+    from sqlit.domains.connections.providers.docker import DockerDetector
     from sqlit.domains.connections.providers.driver import DriverDescriptor
     from sqlit.domains.connections.providers.explorer_nodes import ExplorerNodeProvider
-    from sqlit.domains.connections.providers.docker import DockerDetector
     from sqlit.domains.connections.providers.schema_helpers import ConnectionSchema
 
 
@@ -126,9 +127,9 @@ class ProviderSpec:
     requires_auth: bool = True
     badge_label: str = ""
     url_schemes: tuple[str, ...] = ()
-    docker_detector: "DockerDetector | None" = None
-    display_info: Callable[["ConnectionConfig"], str] | None = None
-    provider_factory: Callable[["ProviderSpec"], "DatabaseProvider"] | None = None
+    docker_detector: DockerDetector | None = None
+    display_info: Callable[[ConnectionConfig], str] | None = None
+    provider_factory: Callable[[ProviderSpec], DatabaseProvider] | None = None
 
 
 @dataclass
@@ -142,7 +143,7 @@ class DatabaseProvider:
     schema_inspector: SchemaInspector
     dialect: Dialect
     config_validator: ConfigValidator
-    docker_detector: "DockerDetector | None"
+    docker_detector: DockerDetector | None
     explorer_nodes: ExplorerNodeProvider
     display_info: Callable[[ConnectionConfig], str]
     apply_database_override: Callable[[ConnectionConfig, str | None], ConnectionConfig]

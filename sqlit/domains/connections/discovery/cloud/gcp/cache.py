@@ -52,7 +52,7 @@ def load_gcp_cache() -> GCPCache | None:
 
 def save_gcp_cache(
     project: str,
-    instances: list["GCPCloudSQLInstance"],
+    instances: list[GCPCloudSQLInstance],
     account_username: str | None = None,
 ) -> None:
     """Save GCP discovery data to cache."""
@@ -83,7 +83,7 @@ def save_gcp_cache(
         pass  # Best effort caching
 
 
-def load_cached_data() -> tuple[str, list["GCPCloudSQLInstance"], str | None] | None:
+def load_cached_data() -> tuple[str, list[GCPCloudSQLInstance], str | None] | None:
     """Load cached project, instances, and account info.
 
     Returns a tuple of (project, instances, account_username) or None if no valid cache.
@@ -110,7 +110,7 @@ def load_cached_data() -> tuple[str, list["GCPCloudSQLInstance"], str | None] | 
     return cache.project, instances, cache.account_username
 
 
-def load_cached_instances(project: str) -> list["GCPCloudSQLInstance"] | None:
+def load_cached_instances(project: str) -> list[GCPCloudSQLInstance] | None:
     """Load cached instances for a project."""
     from .provider import GCPCloudSQLInstance
 

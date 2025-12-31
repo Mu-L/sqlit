@@ -4,8 +4,8 @@ from __future__ import annotations
 
 import pytest
 
-from tests.helpers import ConnectionConfig
 from sqlit.domains.connections.domain.config import FileEndpoint
+from tests.helpers import ConnectionConfig
 
 from .conftest import ConnectionScreenTestApp
 

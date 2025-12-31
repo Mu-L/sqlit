@@ -6,7 +6,6 @@ from abc import ABC, abstractmethod
 from collections.abc import Callable
 from dataclasses import dataclass
 from enum import Enum, auto
-from typing import Any
 
 from sqlit.domains.shell.app.state_context import UIContext
 

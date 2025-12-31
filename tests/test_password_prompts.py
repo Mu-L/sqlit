@@ -2,14 +2,11 @@
 
 from __future__ import annotations
 
-from dataclasses import replace
 from unittest.mock import MagicMock, patch
 
-import pytest
-
 from sqlit.domains.connections.cli.prompts import prompt_for_password
-from tests.helpers import ConnectionConfig
 from sqlit.domains.connections.ui.mixins.connection import _needs_db_password, _needs_ssh_password
+from tests.helpers import ConnectionConfig
 
 
 class TestNeedsDbPassword:
@@ -351,8 +348,8 @@ class TestPasswordPromptIntegration:
     @patch("sqlit.domains.connections.cli.prompts.getpass.getpass", return_value="test123")
     def test_cli_query_with_none_password(self, mock_getpass: MagicMock) -> None:
         """CLI query command prompts for password when config has None password."""
-        from sqlit.domains.query.cli.commands import cmd_query
         from sqlit.domains.connections.store.connections import save_connections
+        from sqlit.domains.query.cli.commands import cmd_query
 
         # Create a test connection with None password (not set)
         config = ConnectionConfig(

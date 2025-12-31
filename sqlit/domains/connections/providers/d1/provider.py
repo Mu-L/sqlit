@@ -2,8 +2,8 @@
 
 from sqlit.domains.connections.providers.adapter_provider import build_adapter_provider
 from sqlit.domains.connections.providers.catalog import register_provider
-from sqlit.domains.connections.providers.model import DatabaseProvider, ProviderSpec
 from sqlit.domains.connections.providers.d1.schema import SCHEMA
+from sqlit.domains.connections.providers.model import DatabaseProvider, ProviderSpec
 
 
 def _provider_factory(spec: ProviderSpec) -> DatabaseProvider:

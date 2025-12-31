@@ -2,9 +2,9 @@
 
 from __future__ import annotations
 
+from sqlit.domains.explorer.domain.tree_nodes import ConnectionNode
 from sqlit.domains.shell.app.key_states import QueryExecutingState
 from sqlit.domains.shell.app.state_machine import UIStateMachine
-from sqlit.domains.explorer.domain.tree_nodes import ConnectionNode
 from sqlit.shared.ui.widgets import VimMode
 
 

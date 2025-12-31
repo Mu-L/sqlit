@@ -4,7 +4,7 @@ from __future__ import annotations
 
 import re
 
-from .core import Suggestion, SuggestionType, RESERVED_WORDS, TableRef
+from .core import RESERVED_WORDS, Suggestion, SuggestionType, TableRef
 
 
 def get_delete_context(before_cursor: str) -> list[Suggestion] | None:

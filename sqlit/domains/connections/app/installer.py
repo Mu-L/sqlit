@@ -10,8 +10,8 @@ import time
 from collections.abc import Callable
 from typing import Any, Protocol
 
-from sqlit.domains.connections.providers.exceptions import MissingDriverError
 from sqlit.domains.connections.app.install_strategy import detect_strategy
+from sqlit.domains.connections.providers.exceptions import MissingDriverError
 
 
 class InstallerApp(Protocol):

@@ -2,13 +2,11 @@
 
 from __future__ import annotations
 
-from typing import TYPE_CHECKING, Any
+from typing import TYPE_CHECKING, Any, cast
 
 from rich.markup import escape as escape_markup
 from textual.widgets import Tree
 
-from sqlit.shared.ui.protocols import TreeMixinHost
-from sqlit.shared.ui.spinner import SPINNER_FRAMES
 from sqlit.domains.connections.providers.metadata import get_badge_label, get_connection_display_info
 from sqlit.domains.explorer.domain.tree_nodes import (
     ColumnNode,
@@ -24,6 +22,8 @@ from sqlit.domains.explorer.domain.tree_nodes import (
     TriggerNode,
     ViewNode,
 )
+from sqlit.shared.ui.protocols import TreeMixinHost
+from sqlit.shared.ui.spinner import SPINNER_FRAMES
 
 if TYPE_CHECKING:
     from sqlit.domains.connections.app.session import ConnectionSession
@@ -55,9 +55,13 @@ class TreeMixin:
         if not self._session:
             return None
         if self._schema_service is None or self._schema_service_session is not self._session:
-            from sqlit.domains.explorer.app.schema_service import ExplorerSchemaService
+            from sqlit.domains.explorer.app.schema_service import DbArgResolver, ExplorerSchemaService
 
-            db_arg_resolver = self._get_metadata_db_arg if hasattr(self, "_get_metadata_db_arg") else None
+            db_arg_resolver = getattr(self, "_get_metadata_db_arg", None)
+            if not callable(db_arg_resolver):
+                db_arg_resolver = None
+            else:
+                db_arg_resolver = cast(DbArgResolver, db_arg_resolver)
             self._schema_service = ExplorerSchemaService(
                 session=self._session,
                 object_cache=self._get_object_cache(),

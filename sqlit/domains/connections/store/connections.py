@@ -7,8 +7,8 @@ from typing import TYPE_CHECKING
 from sqlit.shared.core.store import CONFIG_DIR, JSONFileStore
 
 if TYPE_CHECKING:
-    from sqlit.domains.connections.domain.config import ConnectionConfig
     from sqlit.domains.connections.app.credentials import CredentialsService
+    from sqlit.domains.connections.domain.config import ConnectionConfig
 
 
 class ConnectionStore(JSONFileStore):

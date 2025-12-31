@@ -5,10 +5,11 @@ from __future__ import annotations
 from dataclasses import dataclass
 from typing import Any
 
-from sqlit.domains.connections.domain.config import ConnectionConfig
-from sqlit.domains.connections.providers.adapters.base import ColumnInfo
 from sqlit.domains.connections.app.mocks import MockDatabaseAdapter, MockProfile, get_mock_profile
 from sqlit.domains.connections.discovery.docker_detector import ContainerStatus, DetectedContainer
+from sqlit.domains.connections.domain.config import ConnectionConfig
+from sqlit.domains.connections.providers.adapters.base import ColumnInfo
+
 
 @dataclass
 class MockSettings:

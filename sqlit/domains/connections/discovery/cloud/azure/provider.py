@@ -2,7 +2,6 @@
 
 from __future__ import annotations
 
-from dataclasses import replace
 from typing import TYPE_CHECKING, Any
 
 from textual.widgets.option_list import Option
@@ -44,7 +43,7 @@ class AzureProvider:
 
     def get_status(self) -> ProviderStatus:
         """Check if Azure CLI is available and logged in."""
-        from ...cloud_detector import get_azure_status, AzureStatus
+        from ...cloud_detector import AzureStatus, get_azure_status
 
         status = get_azure_status()
         return {

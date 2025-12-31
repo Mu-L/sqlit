@@ -4,7 +4,14 @@ from __future__ import annotations
 
 from typing import TYPE_CHECKING, Any
 
-from sqlit.domains.connections.providers.adapters.base import ColumnInfo, DatabaseAdapter, IndexInfo, SequenceInfo, TableInfo, TriggerInfo
+from sqlit.domains.connections.providers.adapters.base import (
+    ColumnInfo,
+    DatabaseAdapter,
+    IndexInfo,
+    SequenceInfo,
+    TableInfo,
+    TriggerInfo,
+)
 
 if TYPE_CHECKING:
     from sqlit.domains.connections.domain.config import ConnectionConfig

@@ -9,17 +9,13 @@ from textual.timer import Timer
 from textual.widgets import TextArea
 from textual.worker import Worker
 
+from sqlit.domains.connections.providers.model import ProcedureInspector
 from sqlit.domains.query.completion import (
-    SQL_OPERATORS,
     SuggestionType,
     extract_table_refs,
-    fuzzy_match,
-    get_all_functions,
-    get_all_keywords,
     get_completions,
     get_context,
 )
-from sqlit.domains.connections.providers.model import ProcedureInspector
 from sqlit.shared.ui.protocols import AutocompleteMixinHost
 from sqlit.shared.ui.spinner import Spinner
 
@@ -312,8 +308,8 @@ class AutocompleteMixin:
 
     def on_text_area_changed(self: AutocompleteMixinHost, event: TextArea.Changed) -> None:
         """Handle text changes in the query editor for autocomplete."""
-        from sqlit.shared.ui.widgets import VimMode
         from sqlit.domains.shell.app.idle_scheduler import on_user_activity
+        from sqlit.shared.ui.widgets import VimMode
 
         # Track user activity for idle scheduler
         on_user_activity()
@@ -353,7 +349,7 @@ class AutocompleteMixin:
 
     def _trigger_autocomplete(self: AutocompleteMixinHost, text_area: TextArea) -> None:
         """Actually trigger autocomplete after debounce delay."""
-        from sqlit.domains.shell.app.idle_scheduler import get_idle_scheduler, Priority
+        from sqlit.domains.shell.app.idle_scheduler import Priority, get_idle_scheduler
 
         self._autocomplete_debounce_timer = None
 
@@ -422,8 +418,8 @@ class AutocompleteMixin:
 
     def on_key(self: AutocompleteMixinHost, event: Any) -> None:
         """Handle key events for autocomplete navigation."""
-        from sqlit.shared.ui.widgets import VimMode
         from sqlit.domains.shell.app.idle_scheduler import on_user_activity
+        from sqlit.shared.ui.widgets import VimMode
 
         # Track user activity for idle scheduler
         on_user_activity()

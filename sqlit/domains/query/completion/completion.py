@@ -28,12 +28,12 @@ from .core import (
 
 # Special keywords for SELECT clause (before FROM)
 SELECT_CLAUSE_KEYWORDS = ["*", "DISTINCT", "TOP", "ALL"]
-from .alter_table import get_alter_table_completions, get_alter_table_context
+from .alter_table import get_alter_table_completions
 from .create_index import get_create_index_completions
-from .create_table import get_create_table_completions, get_create_table_context
+from .create_table import get_create_table_completions
 from .create_view import get_create_view_completions
 from .delete import extract_delete_table_refs, get_delete_context
-from .drop import get_drop_completions, get_drop_context
+from .drop import get_drop_completions
 from .insert import get_insert_context
 from .truncate import get_truncate_completions
 from .update import get_update_context

@@ -1,7 +1,5 @@
 """Test autocomplete behavior with different database selection modes."""
 
-import pytest
-from unittest.mock import MagicMock, PropertyMock, patch
 
 
 class TestAutocompleteDatabaseModes:

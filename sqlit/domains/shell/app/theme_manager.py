@@ -7,9 +7,10 @@ import os
 import shlex
 import subprocess
 import sys
+from collections.abc import Mapping
 from contextlib import AbstractContextManager
 from pathlib import Path
-from typing import Any, Mapping, Protocol
+from typing import Any, Protocol
 
 from rich.style import Style
 from textual.theme import Theme
@@ -18,6 +19,7 @@ from textual.widgets.text_area import TextAreaTheme
 
 from sqlit.domains.shell.store.settings import SettingsStore
 from sqlit.shared.core.protocols import SettingsStoreProtocol
+
 from .omarchy import (
     DEFAULT_THEME,
     get_current_theme_name,

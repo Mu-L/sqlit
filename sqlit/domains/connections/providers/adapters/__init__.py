@@ -8,6 +8,7 @@ from .base import (
     TableInfo,
     TriggerInfo,
 )
+
 __all__ = [
     "ColumnInfo",
     "DatabaseAdapter",

@@ -16,6 +16,7 @@ if TYPE_CHECKING:
     from collections.abc import Callable
 
     from textual.widget import Widget
+
     from sqlit.shared.ui.protocols import AutocompleteProtocol, UINavigationProtocol
 
 

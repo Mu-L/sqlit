@@ -13,13 +13,13 @@ from sqlit.domains.connections.providers.catalog import (
     iter_provider_schemas,
     register_provider,
 )
+from sqlit.domains.connections.providers.docker import DockerCredentials, DockerDetector
 from sqlit.domains.connections.providers.driver import (
     DriverDescriptor,
     ensure_driver_available,
     ensure_provider_driver_available,
     import_driver_module,
 )
-from sqlit.domains.connections.providers.docker import DockerCredentials, DockerDetector
 from sqlit.domains.connections.providers.metadata import (
     get_badge_label,
     get_connection_display_info,

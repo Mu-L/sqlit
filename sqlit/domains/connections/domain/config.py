@@ -2,9 +2,10 @@
 
 from __future__ import annotations
 
+from collections.abc import Mapping
 from dataclasses import dataclass, field
 from enum import Enum
-from typing import Any, Mapping
+from typing import Any
 
 
 class DatabaseType(str, Enum):
@@ -93,7 +94,7 @@ class ConnectionConfig:
     options: dict[str, Any] = field(default_factory=dict)
 
     @classmethod
-    def from_dict(cls, data: Mapping[str, Any]) -> "ConnectionConfig":
+    def from_dict(cls, data: Mapping[str, Any]) -> ConnectionConfig:
         payload = dict(data)
 
         db_type = payload.get("db_type")
@@ -296,7 +297,7 @@ class ConnectionConfig:
 
         return data
 
-    def with_endpoint(self, **kwargs: Any) -> "ConnectionConfig":
+    def with_endpoint(self, **kwargs: Any) -> ConnectionConfig:
         from dataclasses import replace
 
         if not isinstance(self.endpoint, TcpEndpoint):
@@ -304,7 +305,7 @@ class ConnectionConfig:
         endpoint = replace(self.endpoint, **kwargs)
         return replace(self, endpoint=endpoint)
 
-    def with_tunnel(self, **kwargs: Any) -> "ConnectionConfig":
+    def with_tunnel(self, **kwargs: Any) -> ConnectionConfig:
         from dataclasses import replace
 
         if self.tunnel is None:

@@ -7,7 +7,6 @@ from enum import Enum
 from typing import TYPE_CHECKING, Any, Protocol
 
 if TYPE_CHECKING:
-    from textual.widgets import OptionList
     from textual.widgets.option_list import Option
 
     from sqlit.domains.connections.domain.config import ConnectionConfig

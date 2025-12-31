@@ -9,8 +9,8 @@ from textual.binding import Binding
 from textual.screen import ModalScreen
 from textual.widgets import Static
 
-from sqlit.shared.ui.widgets import Dialog
 from sqlit.domains.shell.app.leader_commands import get_leader_commands
+from sqlit.shared.ui.widgets import Dialog
 
 if TYPE_CHECKING:
     from sqlit.domains.shell.app.main import SSMSTUI

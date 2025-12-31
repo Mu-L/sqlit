@@ -2,10 +2,11 @@
 
 from __future__ import annotations
 
-from functools import lru_cache
-from importlib import import_module
 import pkgutil
-from typing import Iterable, cast
+from collections.abc import Iterable
+from functools import cache, lru_cache
+from importlib import import_module
+from typing import cast
 
 from sqlit.domains.connections.providers.model import DatabaseProvider, ProviderSpec
 from sqlit.domains.connections.providers.schema_helpers import ConnectionSchema
@@ -77,7 +78,7 @@ def get_all_schemas() -> dict[str, ConnectionSchema]:
     return {k: get_provider_schema(k) for k in _PROVIDERS.keys()}
 
 
-@lru_cache(maxsize=None)
+@cache
 def get_provider(db_type: str) -> DatabaseProvider:
     spec = get_provider_spec(db_type)
     if not spec.provider_factory:

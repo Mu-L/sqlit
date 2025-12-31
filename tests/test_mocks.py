@@ -2,8 +2,6 @@
 
 from __future__ import annotations
 
-from tests.helpers import ConnectionConfig
-from sqlit.domains.connections.providers.adapters.base import ColumnInfo
 from sqlit.domains.connections.app.mocks import (
     MockConnection,
     MockDatabaseAdapter,
@@ -11,6 +9,8 @@ from sqlit.domains.connections.app.mocks import (
     get_default_mock_adapter,
     get_mock_profile,
 )
+from sqlit.domains.connections.providers.adapters.base import ColumnInfo
+from tests.helpers import ConnectionConfig
 
 
 class TestMockDatabaseAdapter:

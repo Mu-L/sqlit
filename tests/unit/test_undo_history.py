@@ -1,6 +1,6 @@
 """Tests for the UndoHistory class."""
 
-from sqlit.domains.query.editing import UndoHistory, UndoState
+from sqlit.domains.query.editing import UndoHistory
 
 
 class TestUndoHistory:

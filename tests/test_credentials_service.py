@@ -7,19 +7,16 @@ import tempfile
 from pathlib import Path
 from unittest.mock import MagicMock, patch
 
-import pytest
-
-from tests.helpers import ConnectionConfig
 from sqlit.domains.connections.app.credentials import (
     KEYRING_SERVICE_NAME,
-    CredentialsService,
     KeyringCredentialsService,
-    PlaintextFileCredentialsService,
     PlaintextCredentialsService,
+    PlaintextFileCredentialsService,
     get_credentials_service,
     reset_credentials_service,
     set_credentials_service,
 )
+from tests.helpers import ConnectionConfig
 
 
 class TestPlaintextCredentialsService:
@@ -350,10 +347,10 @@ class TestConnectionStoreWithCredentials:
         import shutil
         shutil.rmtree(self.tmpdir, ignore_errors=True)
 
-    def _create_store(self) -> "ConnectionStore":
+    def _create_store(self) -> ConnectionStore:
         """Create a ConnectionStore with the temp directory."""
-        from sqlit.shared.core.store import JSONFileStore
         from sqlit.domains.connections.store.connections import ConnectionStore
+        from sqlit.shared.core.store import JSONFileStore
 
         # Create a subclass that uses our temp path
         class TempConnectionStore(ConnectionStore):

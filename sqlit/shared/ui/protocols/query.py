@@ -8,9 +8,10 @@ from typing import TYPE_CHECKING, Any, Protocol
 if TYPE_CHECKING:
     from textual.timer import Timer
     from textual.worker import Worker
+
     from sqlit.domains.query.app.query_service import QueryService
-    from sqlit.shared.ui.spinner import Spinner
     from sqlit.domains.query.editing.deletion import EditResult
+    from sqlit.shared.ui.spinner import Spinner
 
 
 class QueryStateProtocol(Protocol):
@@ -113,7 +114,7 @@ class QueryActionsProtocol(Protocol):
     def _push_undo_state(self) -> None:
         ...
 
-    def _apply_edit_result(self, result: "EditResult") -> None:
+    def _apply_edit_result(self, result: EditResult) -> None:
         ...
 
 

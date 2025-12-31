@@ -25,8 +25,6 @@ from typing import Any
 
 import pytest
 
-from sqlit.domains.shell.app.main import SSMSTUI
-from tests.helpers import ConnectionConfig
 from sqlit.domains.explorer.domain.tree_nodes import (
     ConnectionNode,
     DatabaseNode,
@@ -35,6 +33,8 @@ from sqlit.domains.explorer.domain.tree_nodes import (
     SchemaNode,
     TableNode,
 )
+from sqlit.domains.shell.app.main import SSMSTUI
+from tests.helpers import ConnectionConfig
 
 # ==============================================================================
 # Test Helpers

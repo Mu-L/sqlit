@@ -4,8 +4,6 @@ import pytest
 
 from sqlit.domains.query.completion import (
     ALTER_OPERATIONS,
-    SQL_CONSTRAINTS,
-    SQL_DATA_TYPES,
     get_completions,
 )
 

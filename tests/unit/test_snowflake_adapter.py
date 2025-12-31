@@ -2,9 +2,7 @@
 
 from __future__ import annotations
 
-from unittest.mock import MagicMock, patch, ANY
-
-import pytest
+from unittest.mock import MagicMock, patch
 
 from tests.helpers import ConnectionConfig
 

@@ -4,7 +4,14 @@ from __future__ import annotations
 
 from typing import TYPE_CHECKING, Any
 
-from sqlit.domains.connections.providers.adapters.base import ColumnInfo, DatabaseAdapter, IndexInfo, SequenceInfo, TableInfo, TriggerInfo
+from sqlit.domains.connections.providers.adapters.base import (
+    ColumnInfo,
+    DatabaseAdapter,
+    IndexInfo,
+    SequenceInfo,
+    TableInfo,
+    TriggerInfo,
+)
 from sqlit.domains.connections.providers.driver import import_driver_module
 
 if TYPE_CHECKING:
@@ -56,7 +63,7 @@ class SQLServerAdapter(DatabaseAdapter):
     def build_connection_string(self, config: ConnectionConfig) -> str:
         return self._build_connection_string(config)
 
-    def get_auth_type(self, config: ConnectionConfig) -> "AuthType":
+    def get_auth_type(self, config: ConnectionConfig) -> AuthType:
         from sqlit.domains.connections.domain.config import AuthType
 
         auth_type = config.get_option("auth_type", "sql")

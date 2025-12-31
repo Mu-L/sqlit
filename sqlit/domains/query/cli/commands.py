@@ -11,14 +11,14 @@ from typing import Any
 from sqlit.domains.connections.app.session import ConnectionSession
 from sqlit.domains.connections.cli.prompts import prompt_for_password
 from sqlit.domains.connections.domain.config import ConnectionConfig
-from sqlit.shared.app.runtime import RuntimeConfig
-from sqlit.shared.app.services import AppServices, build_app_services
 from sqlit.domains.query.app.query_service import (
     DialectQueryAnalyzer,
     QueryKind,
     QueryResult,
     QueryService,
 )
+from sqlit.shared.app.runtime import RuntimeConfig
+from sqlit.shared.app.services import AppServices, build_app_services
 
 
 def _stream_csv_output(cursor: Any, columns: list[str]) -> int:

@@ -1,6 +1,5 @@
 """Unit tests for adapter system_databases property."""
 
-import pytest
 
 
 class TestSystemDatabasesProperty:

@@ -3,11 +3,13 @@
 from __future__ import annotations
 
 import argparse
+from collections.abc import Iterable
 from functools import lru_cache
-from typing import Any, Iterable
+from typing import Any
 
 from sqlit.domains.connections.domain.config import ConnectionConfig
 from sqlit.domains.connections.providers.schema_helpers import ConnectionSchema, FieldType
+
 
 @lru_cache(maxsize=1)
 def _get_connection_arg_names() -> set[str]:

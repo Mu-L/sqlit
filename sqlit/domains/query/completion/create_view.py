@@ -4,8 +4,6 @@ from __future__ import annotations
 
 import re
 
-from .core import Suggestion, SuggestionType
-
 
 def get_create_view_completions(
     before_cursor: str, tables: list[str], columns: dict[str, list[str]]

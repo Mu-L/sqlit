@@ -5,8 +5,8 @@ from __future__ import annotations
 import pytest
 
 from sqlit.domains.shell.app.main import SSMSTUI
-from sqlit.shared.ui.screens.confirm import ConfirmScreen
 from sqlit.domains.shell.ui.screens.leader_menu import LeaderMenuScreen
+from sqlit.shared.ui.screens.confirm import ConfirmScreen
 
 from .mocks import MockSettingsStore, build_test_services
 

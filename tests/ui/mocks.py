@@ -8,10 +8,10 @@ from __future__ import annotations
 from dataclasses import dataclass, field
 from typing import Any
 
-from tests.helpers import ConnectionConfig
+from sqlit.domains.connections.providers.adapters.base import ColumnInfo, DatabaseAdapter
 from sqlit.shared.app.runtime import RuntimeConfig
 from sqlit.shared.app.services import AppServices, build_app_services
-from sqlit.domains.connections.providers.adapters.base import ColumnInfo, DatabaseAdapter
+from tests.helpers import ConnectionConfig
 
 
 class MockConnectionStore:

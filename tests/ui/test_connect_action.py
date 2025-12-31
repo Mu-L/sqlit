@@ -6,11 +6,11 @@ from unittest.mock import patch
 
 import pytest
 
-from sqlit.domains.shell.app.main import SSMSTUI
 from sqlit.domains.connections.discovery.docker_detector import DetectedContainer, DockerStatus
 from sqlit.domains.connections.ui.screens import ConnectionPickerScreen
 from sqlit.domains.connections.ui.screens.connection_picker import DockerConnectionResult
 from sqlit.domains.explorer.domain.tree_nodes import ConnectionNode
+from sqlit.domains.shell.app.main import SSMSTUI
 
 from .mocks import MockConnectionStore, MockSettingsStore, build_test_services, create_test_connection
 

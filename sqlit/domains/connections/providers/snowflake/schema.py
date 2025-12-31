@@ -8,7 +8,6 @@ from sqlit.domains.connections.providers.schema_helpers import (
     _username_field,
 )
 
-
 SCHEMA = ConnectionSchema(
     db_type="snowflake",
     display_name="Snowflake",

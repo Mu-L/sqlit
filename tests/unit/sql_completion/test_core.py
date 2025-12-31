@@ -1,6 +1,5 @@
 """Tests for core SQL completion utilities."""
 
-import pytest
 
 from sqlit.domains.query.completion import (
     RESERVED_WORDS,

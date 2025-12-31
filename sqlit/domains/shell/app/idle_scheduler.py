@@ -6,12 +6,12 @@ during idle periods to avoid UI hiccups.
 
 from __future__ import annotations
 
-import asyncio
 import time
 from collections import deque
+from collections.abc import Callable, Coroutine
 from dataclasses import dataclass, field
 from enum import Enum, auto
-from typing import Any, Callable, Coroutine, TYPE_CHECKING, cast
+from typing import TYPE_CHECKING, Any, cast
 
 if TYPE_CHECKING:
     from sqlit.shared.ui.protocols import AppProtocol
@@ -33,7 +33,7 @@ class IdleJob:
     name: str = ""
     created_at: float = field(default_factory=time.time)
 
-    def __lt__(self, other: "IdleJob") -> bool:
+    def __lt__(self, other: IdleJob) -> bool:
         # Higher priority first, then older jobs first
         if self.priority != other.priority:
             return self.priority.value > other.priority.value
@@ -59,7 +59,7 @@ class IdleScheduler:
 
     def __init__(
         self,
-        app: "AppProtocol",
+        app: AppProtocol,
         idle_threshold_ms: float = 500,      # Consider idle after 500ms of no activity
         max_work_chunk_ms: float = 16,       # Max time to work before checking for activity (~1 frame)
         check_interval_ms: float = 150,      # How often to check if we should work
@@ -283,7 +283,7 @@ def get_idle_scheduler() -> IdleScheduler | None:
     return _global_scheduler
 
 
-def init_idle_scheduler(app: "AppProtocol", **kwargs: Any) -> IdleScheduler:
+def init_idle_scheduler(app: AppProtocol, **kwargs: Any) -> IdleScheduler:
     """Initialize the global idle scheduler."""
     global _global_scheduler
     _global_scheduler = IdleScheduler(app, **kwargs)

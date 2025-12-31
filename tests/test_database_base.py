@@ -66,11 +66,11 @@ class BaseDatabaseTests(ABC):
         if is_file_based(self.config.db_type):
             pytest.skip(f"{self.config.display_name} is file-based, no Docker container")
 
-        from sqlit.domains.connections.providers.catalog import get_provider
         from sqlit.domains.connections.discovery.docker_detector import (
             DockerStatus,
             detect_database_containers,
         )
+        from sqlit.domains.connections.providers.catalog import get_provider
 
         # Skip if this database type has no Docker image patterns defined
         provider = get_provider(self.config.db_type)
@@ -171,12 +171,12 @@ class BaseDatabaseTests(ABC):
         if is_file_based(self.config.db_type):
             pytest.skip(f"{self.config.display_name} is file-based, no Docker container")
 
-        from sqlit.domains.connections.providers.registry import get_adapter
         from sqlit.domains.connections.discovery.docker_detector import (
             DockerStatus,
             container_to_connection_config,
             detect_database_containers,
         )
+        from sqlit.domains.connections.providers.registry import get_adapter
 
         status, containers = detect_database_containers()
 
@@ -362,8 +362,8 @@ class BaseDatabaseTests(ABC):
         This tests the async query path that the TUI uses, which is different
         from the CLI path tested by other tests.
         """
-        from sqlit.domains.connections.store.connections import load_connections
         from sqlit.domains.connections.providers.registry import get_adapter
+        from sqlit.domains.connections.store.connections import load_connections
         from sqlit.domains.query.app.cancellable import CancellableQuery
         from sqlit.domains.query.app.query_service import QueryResult
 
@@ -392,8 +392,8 @@ class BaseDatabaseTests(ABC):
 
     def test_cancellable_query_insert(self, request):
         """Test CancellableQuery non-SELECT execution (used by TUI)."""
-        from sqlit.domains.connections.store.connections import load_connections
         from sqlit.domains.connections.providers.registry import get_adapter
+        from sqlit.domains.connections.store.connections import load_connections
         from sqlit.domains.query.app.cancellable import CancellableQuery
         from sqlit.domains.query.app.query_service import NonQueryResult
 
@@ -502,10 +502,10 @@ class BaseDatabaseTests(ABC):
         This tests the standard query execution path through QueryService
         which should use adapter methods.
         """
-        from sqlit.domains.connections.store.connections import load_connections
-        from sqlit.domains.connections.providers.registry import get_adapter
-        from sqlit.domains.query.app.query_service import QueryResult, QueryService
         from sqlit.domains.connections.app.session import ConnectionSession
+        from sqlit.domains.connections.providers.registry import get_adapter
+        from sqlit.domains.connections.store.connections import load_connections
+        from sqlit.domains.query.app.query_service import QueryResult, QueryService
 
         connection_name = request.getfixturevalue(self.config.connection_fixture)
         connections = load_connections()
@@ -536,9 +536,9 @@ class BaseDatabaseTests(ABC):
         This tests that get_columns returns ColumnInfo with is_primary_key=True
         for primary key columns. The test_users table has 'id' as PRIMARY KEY.
         """
-        from sqlit.domains.connections.store.connections import load_connections
-        from sqlit.domains.connections.providers.registry import get_adapter
         from sqlit.domains.connections.app.session import ConnectionSession
+        from sqlit.domains.connections.providers.registry import get_adapter
+        from sqlit.domains.connections.store.connections import load_connections
 
         connection_name = request.getfixturevalue(self.config.connection_fixture)
         connections = load_connections()
@@ -561,7 +561,7 @@ class BaseDatabaseTests(ABC):
                 None,
             )
             assert id_column is not None, f"Column 'id' not found. Columns: {[c.name for c in columns]}"
-            assert id_column.is_primary_key, f"Column 'id' should be marked as primary key"
+            assert id_column.is_primary_key, "Column 'id' should be marked as primary key"
 
             # Non-PK columns should not be marked as primary key
             non_pk_columns = [col for col in columns if col.name.lower() != "id"]
@@ -575,10 +575,10 @@ class BaseDatabaseTests(ABC):
         created on the test tables. The test fixture should create an index
         named 'idx_test_users_email' on the test_users table.
         """
-        from sqlit.domains.connections.store.connections import load_connections
-        from sqlit.domains.connections.providers.registry import get_adapter
-        from sqlit.domains.connections.providers.adapters.base import IndexInfo
         from sqlit.domains.connections.app.session import ConnectionSession
+        from sqlit.domains.connections.providers.adapters.base import IndexInfo
+        from sqlit.domains.connections.providers.registry import get_adapter
+        from sqlit.domains.connections.store.connections import load_connections
 
         connection_name = request.getfixturevalue(self.config.connection_fixture)
         connections = load_connections()
@@ -619,10 +619,10 @@ class BaseDatabaseTests(ABC):
         created on the test tables. The test fixture should create a trigger
         named 'trg_test_users_audit' on the test_users table.
         """
-        from sqlit.domains.connections.store.connections import load_connections
-        from sqlit.domains.connections.providers.registry import get_adapter
-        from sqlit.domains.connections.providers.adapters.base import TriggerInfo
         from sqlit.domains.connections.app.session import ConnectionSession
+        from sqlit.domains.connections.providers.adapters.base import TriggerInfo
+        from sqlit.domains.connections.providers.registry import get_adapter
+        from sqlit.domains.connections.store.connections import load_connections
 
         connection_name = request.getfixturevalue(self.config.connection_fixture)
         connections = load_connections()
@@ -663,10 +663,10 @@ class BaseDatabaseTests(ABC):
         created in the database. The test fixture should create a sequence
         named 'test_sequence' (for databases that support sequences).
         """
-        from sqlit.domains.connections.store.connections import load_connections
-        from sqlit.domains.connections.providers.registry import get_adapter
-        from sqlit.domains.connections.providers.adapters.base import SequenceInfo
         from sqlit.domains.connections.app.session import ConnectionSession
+        from sqlit.domains.connections.providers.adapters.base import SequenceInfo
+        from sqlit.domains.connections.providers.registry import get_adapter
+        from sqlit.domains.connections.store.connections import load_connections
 
         connection_name = request.getfixturevalue(self.config.connection_fixture)
         connections = load_connections()
@@ -703,9 +703,9 @@ class BaseDatabaseTests(ABC):
         This tests the code path used when a user clicks on a trigger
         in the TUI tree view to see its details.
         """
-        from sqlit.domains.connections.store.connections import load_connections
-        from sqlit.domains.connections.providers.registry import get_adapter
         from sqlit.domains.connections.app.session import ConnectionSession
+        from sqlit.domains.connections.providers.registry import get_adapter
+        from sqlit.domains.connections.store.connections import load_connections
 
         connection_name = request.getfixturevalue(self.config.connection_fixture)
         connections = load_connections()
@@ -746,9 +746,9 @@ class BaseDatabaseTests(ABC):
         This tests the code path used when a user clicks on a sequence
         in the TUI tree view to see its details.
         """
-        from sqlit.domains.connections.store.connections import load_connections
-        from sqlit.domains.connections.providers.registry import get_adapter
         from sqlit.domains.connections.app.session import ConnectionSession
+        from sqlit.domains.connections.providers.registry import get_adapter
+        from sqlit.domains.connections.store.connections import load_connections
 
         connection_name = request.getfixturevalue(self.config.connection_fixture)
         connections = load_connections()
@@ -788,9 +788,9 @@ class BaseDatabaseTests(ABC):
         This tests the code path used when a user clicks on an index
         in the TUI tree view to see its details.
         """
-        from sqlit.domains.connections.store.connections import load_connections
-        from sqlit.domains.connections.providers.registry import get_adapter
         from sqlit.domains.connections.app.session import ConnectionSession
+        from sqlit.domains.connections.providers.registry import get_adapter
+        from sqlit.domains.connections.store.connections import load_connections
 
         connection_name = request.getfixturevalue(self.config.connection_fixture)
         connections = load_connections()
@@ -835,9 +835,9 @@ class BaseDatabaseTests(ABC):
         if self.config.timezone_datetime_type is None:
             pytest.skip(f"{self.config.display_name} does not have a timezone-aware datetime type")
 
-        from sqlit.domains.connections.store.connections import load_connections
-        from sqlit.domains.connections.providers.registry import get_adapter
         from sqlit.domains.connections.app.session import ConnectionSession
+        from sqlit.domains.connections.providers.registry import get_adapter
+        from sqlit.domains.connections.store.connections import load_connections
 
         connection_name = request.getfixturevalue(self.config.connection_fixture)
         connections = load_connections()

@@ -38,6 +38,6 @@ def requires_auth(db_type: str) -> bool:
     return get_provider(db_type).metadata.requires_auth
 
 
-def get_connection_display_info(config: "ConnectionConfig") -> str:
+def get_connection_display_info(config: ConnectionConfig) -> str:
     provider = get_provider(config.db_type)
     return provider.display_info(config)

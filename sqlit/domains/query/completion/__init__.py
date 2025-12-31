@@ -8,6 +8,7 @@ Provides intelligent SQL autocompletion with:
 - Statement-specific handling (INSERT, UPDATE, DELETE)
 """
 
+from .alter_table import ALTER_OPERATIONS, get_alter_table_completions, get_alter_table_context
 from .completion import get_completions, get_context
 from .core import (
     RESERVED_WORDS,
@@ -31,7 +32,6 @@ from .core import (
     remove_comments,
     remove_string_literals,
 )
-from .alter_table import ALTER_OPERATIONS, get_alter_table_completions, get_alter_table_context
 from .create_index import get_create_index_completions
 from .create_table import (
     SQL_CONSTRAINTS,

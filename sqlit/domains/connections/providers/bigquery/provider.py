@@ -1,9 +1,9 @@
 """Provider registration."""
 
 from sqlit.domains.connections.providers.adapter_provider import build_adapter_provider
+from sqlit.domains.connections.providers.bigquery.schema import SCHEMA
 from sqlit.domains.connections.providers.catalog import register_provider
 from sqlit.domains.connections.providers.model import DatabaseProvider, ProviderSpec
-from sqlit.domains.connections.providers.bigquery.schema import SCHEMA
 
 
 def _provider_factory(spec: ProviderSpec) -> DatabaseProvider:

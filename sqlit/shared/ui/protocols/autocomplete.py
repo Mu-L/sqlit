@@ -8,6 +8,7 @@ from typing import TYPE_CHECKING, Any, Protocol
 if TYPE_CHECKING:
     from textual.timer import Timer
     from textual.worker import Worker
+
     from sqlit.shared.ui.spinner import Spinner
 
 

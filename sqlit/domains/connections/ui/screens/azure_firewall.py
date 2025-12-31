@@ -7,8 +7,8 @@ from textual.binding import Binding
 from textual.screen import ModalScreen
 from textual.widgets import Static
 
-from sqlit.shared.ui.widgets import Dialog
 from sqlit.shared.ui.spinner import Spinner
+from sqlit.shared.ui.widgets import Dialog
 
 
 class AzureFirewallScreen(ModalScreen[bool]):

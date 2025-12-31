@@ -2,8 +2,9 @@
 
 from __future__ import annotations
 
+from collections.abc import Callable
 from dataclasses import dataclass
-from typing import Any, Callable
+from typing import TYPE_CHECKING, Any
 
 from sqlit.shared.app.runtime import RuntimeConfig
 from sqlit.shared.core.protocols import (
@@ -13,6 +14,9 @@ from sqlit.shared.core.protocols import (
     SettingsStoreProtocol,
     TunnelFactoryProtocol,
 )
+
+if TYPE_CHECKING:
+    pass
 
 
 @dataclass
@@ -29,17 +33,16 @@ class AppServices:
     tunnel_factory: TunnelFactoryProtocol
     session_factory: Callable[[Any], Any]
     docker_detector: Callable[[], tuple[Any, list[Any]]]
-    cloud_discovery: "CloudDiscovery"
-    install_strategy: "InstallStrategyProvider"
+    cloud_discovery: CloudDiscovery
+    install_strategy: InstallStrategyProvider
 
     def apply_mock_profile(self, profile: Any | None) -> None:
         """Switch services into/out of mock profile mode."""
         from sqlit.domains.connections.app.credentials import PlaintextCredentialsService
-        from sqlit.domains.connections.store.memory import InMemoryConnectionStore
         from sqlit.domains.connections.app.session import ConnectionSession
         from sqlit.domains.connections.app.tunnel import create_noop_tunnel
-        from sqlit.domains.query.store.memory import InMemoryHistoryStore
-        from sqlit.domains.query.store.memory import InMemoryStarredStore
+        from sqlit.domains.connections.store.memory import InMemoryConnectionStore
+        from sqlit.domains.query.store.memory import InMemoryHistoryStore, InMemoryStarredStore
 
         self.runtime.mock.profile = profile
         self.runtime.mock.enabled = bool(profile)
@@ -108,6 +111,8 @@ def build_app_services(
 
     settings_store = settings_store or SettingsStore(file_path=runtime.settings_path)
     credentials_service = credentials_service or build_credentials_service(settings_store)
+    if credentials_service is None:
+        raise RuntimeError("Credentials service is not available.")
     connection_store = connection_store or ConnectionStore(credentials_service=credentials_service)
     history_store = history_store or HistoryStore()
     starred_store = starred_store or StarredStore()

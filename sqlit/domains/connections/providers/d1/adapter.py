@@ -6,7 +6,14 @@ import os
 from dataclasses import dataclass
 from typing import TYPE_CHECKING, Any, cast
 
-from sqlit.domains.connections.providers.adapters.base import ColumnInfo, DatabaseAdapter, IndexInfo, SequenceInfo, TableInfo, TriggerInfo
+from sqlit.domains.connections.providers.adapters.base import (
+    ColumnInfo,
+    DatabaseAdapter,
+    IndexInfo,
+    SequenceInfo,
+    TableInfo,
+    TriggerInfo,
+)
 from sqlit.domains.connections.providers.driver import import_driver_module
 
 if TYPE_CHECKING:

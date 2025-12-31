@@ -10,10 +10,10 @@ import json
 import os
 import subprocess
 import time
-from dataclasses import asdict, dataclass, field
+from dataclasses import dataclass, field
 from enum import Enum
 from pathlib import Path
-from typing import TYPE_CHECKING, Any
+from typing import TYPE_CHECKING
 
 if TYPE_CHECKING:
     from sqlit.domains.connections.domain.config import ConnectionConfig
@@ -776,7 +776,7 @@ def azure_server_to_connection_config(
     server: AzureSqlServer,
     database: str | None = None,
     use_sql_auth: bool = False,
-) -> "ConnectionConfig":
+) -> ConnectionConfig:
     """Convert an AzureSqlServer to a ConnectionConfig.
 
     Args:

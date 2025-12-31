@@ -2,14 +2,15 @@
 
 from __future__ import annotations
 
-from typing import TYPE_CHECKING, Callable, Protocol
+from collections.abc import Callable
+from typing import TYPE_CHECKING, Protocol
 
 if TYPE_CHECKING:
     from textual.timer import Timer
 
 
 class SpinnerHost(Protocol):
-    def set_interval(self, interval: float, callback: Callable[[], None]) -> "Timer": ...
+    def set_interval(self, interval: float, callback: Callable[[], None]) -> Timer: ...
 
 SPINNER_FRAMES = ["⠋", "⠙", "⠹", "⠸", "⠼", "⠴", "⠦", "⠧", "⠇", "⠏"]
 

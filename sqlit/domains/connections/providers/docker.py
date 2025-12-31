@@ -2,8 +2,9 @@
 
 from __future__ import annotations
 
+from collections.abc import Callable
 from dataclasses import dataclass
-from typing import TYPE_CHECKING, Callable
+from typing import TYPE_CHECKING
 
 if TYPE_CHECKING:
     from collections.abc import Mapping
@@ -24,7 +25,7 @@ class DockerDetector:
     default_database: str | None = None
     preferred_host: str = "localhost"
     default_user_requires_password: bool = False
-    post_process: Callable[[DockerCredentials, "Mapping[str, str]"], DockerCredentials] | None = None
+    post_process: Callable[[DockerCredentials, Mapping[str, str]], DockerCredentials] | None = None
 
     def match_image(self, image_name: str) -> bool:
         image_lower = image_name.lower()

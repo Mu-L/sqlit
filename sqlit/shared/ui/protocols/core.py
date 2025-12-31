@@ -100,6 +100,9 @@ class TextualAppProtocol(Protocol):
     def exit(self, result: Any = None, return_code: int = 0, message: Any | None = None) -> None:
         ...
 
+    def _refresh_app_bindings(self) -> None:
+        ...
+
     @property
     def screen(self) -> Screen[Any]:
         ...

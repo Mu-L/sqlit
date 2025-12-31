@@ -1,15 +1,14 @@
 """Connection schema for Firebird."""
 
 from sqlit.domains.connections.providers.schema_helpers import (
-    ConnectionSchema,
     SSH_FIELDS,
+    ConnectionSchema,
     SchemaField,
     _database_field,
     _password_field,
     _port_field,
     _username_field,
 )
-
 
 SCHEMA = ConnectionSchema(
     db_type="firebird",

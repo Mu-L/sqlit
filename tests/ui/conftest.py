@@ -7,8 +7,8 @@ from unittest.mock import patch
 import pytest
 from textual.app import App
 
-from tests.helpers import ConnectionConfig
 from sqlit.domains.connections.ui.screens import ConnectionScreen
+from tests.helpers import ConnectionConfig
 
 from .mocks import (
     MockAdapterRegistry,

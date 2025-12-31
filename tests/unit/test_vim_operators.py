@@ -2,18 +2,16 @@
 
 from __future__ import annotations
 
-import pytest
-
+from sqlit.domains.query.editing.operators import (
+    OPERATORS,
+    operator_change,
+    operator_delete,
+    operator_yank,
+)
 from sqlit.domains.query.editing.types import (
     MotionType,
     Position,
     Range,
-)
-from sqlit.domains.query.editing.operators import (
-    operator_delete,
-    operator_yank,
-    operator_change,
-    OPERATORS,
 )
 
 

@@ -6,6 +6,8 @@ from typing import TYPE_CHECKING, Any, cast
 
 from sqlit.domains.connections.domain.passwords import (
     needs_db_password as _needs_db_password,
+)
+from sqlit.domains.connections.domain.passwords import (
     needs_ssh_password as _needs_ssh_password,
 )
 from sqlit.shared.ui.protocols import ConnectionMixinHost
@@ -64,7 +66,6 @@ class ConnectionMixin:
         If the connection requires a password that is not stored (empty),
         the user will be prompted to enter the password before connecting.
         """
-        from dataclasses import replace
 
         from ..screens import PasswordInputScreen
 
@@ -88,7 +89,6 @@ class ConnectionMixin:
 
     def _connect_with_db_password_check(self: ConnectionMixinHost, config: ConnectionConfig) -> None:
         """Check for database password and prompt if needed, then connect."""
-        from dataclasses import replace
 
         from ..screens import PasswordInputScreen
 
@@ -207,8 +207,9 @@ class ConnectionMixin:
                 return
 
             self._set_connecting_state(None, refresh=True)
-            from ..connection_error_handlers import handle_connection_error
             from sqlit.shared.ui.screens.error import ErrorScreen
+
+            from ..connection_error_handlers import handle_connection_error
 
             self._connection_failed = True
             self._update_status_bar()
@@ -327,9 +328,9 @@ class ConnectionMixin:
     def handle_connection_result(self: ConnectionMixinHost, result: tuple | None) -> None:
         from sqlit.domains.connections.app.credentials import (
             ALLOW_PLAINTEXT_CREDENTIALS_SETTING,
+            build_credentials_service,
             is_keyring_usable,
             reset_credentials_service,
-            build_credentials_service,
         )
         from sqlit.shared.ui.screens.confirm import ConfirmScreen
 

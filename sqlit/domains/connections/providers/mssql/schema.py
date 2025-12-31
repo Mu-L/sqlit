@@ -1,9 +1,9 @@
 """Connection schema for SQL Server."""
 
 from sqlit.domains.connections.providers.schema_helpers import (
+    SSH_FIELDS,
     ConnectionSchema,
     FieldType,
-    SSH_FIELDS,
     SchemaField,
     SelectOption,
     _database_field,

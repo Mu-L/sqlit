@@ -2,17 +2,15 @@
 
 from __future__ import annotations
 
-import pytest
-
-from sqlit.domains.query.editing.types import Position
 from sqlit.domains.query.editing.text_objects import (
-    text_object_word,
-    text_object_WORD,
-    text_object_quote,
-    text_object_bracket,
-    get_text_object,
     TEXT_OBJECT_CHARS,
+    get_text_object,
+    text_object_bracket,
+    text_object_quote,
+    text_object_WORD,
+    text_object_word,
 )
+from sqlit.domains.query.editing.types import Position
 
 
 class TestWordTextObjects:

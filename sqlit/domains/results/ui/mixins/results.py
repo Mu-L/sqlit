@@ -4,9 +4,8 @@ from __future__ import annotations
 
 from typing import Any
 
-from sqlit.shared.ui.widgets import SqlitDataTable
-
 from sqlit.shared.ui.protocols import ResultsMixinHost
+from sqlit.shared.ui.widgets import SqlitDataTable
 
 
 class ResultsMixin:

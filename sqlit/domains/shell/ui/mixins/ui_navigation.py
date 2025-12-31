@@ -187,8 +187,8 @@ class UINavigationMixin:
 
     def _update_status_bar(self: UINavigationMixinHost) -> None:
         """Update status bar with connection and vim mode info."""
-        from sqlit.shared.ui.widgets import VimMode
         from sqlit.shared.ui.spinner import SPINNER_FRAMES
+        from sqlit.shared.ui.widgets import VimMode
 
         try:
             status = self.status_bar

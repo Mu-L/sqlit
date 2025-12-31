@@ -2,34 +2,32 @@
 
 from __future__ import annotations
 
-import pytest
-
+from sqlit.domains.query.editing.motions import (
+    CHAR_MOTIONS,
+    MOTIONS,
+    motion_down,
+    motion_find_char,
+    motion_find_char_back,
+    motion_last_line,
+    motion_left,
+    motion_line_end,
+    motion_line_start,
+    motion_matching_bracket,
+    motion_right,
+    motion_till_char,
+    motion_till_char_back,
+    motion_up,
+    motion_WORD,
+    motion_word,
+    motion_WORD_back,
+    motion_word_back,
+    motion_WORD_end,
+    motion_word_end,
+)
 from sqlit.domains.query.editing.types import (
     MotionType,
     Position,
     Range,
-)
-from sqlit.domains.query.editing.motions import (
-    motion_left,
-    motion_right,
-    motion_up,
-    motion_down,
-    motion_word,
-    motion_WORD,
-    motion_word_back,
-    motion_WORD_back,
-    motion_word_end,
-    motion_WORD_end,
-    motion_line_start,
-    motion_line_end,
-    motion_last_line,
-    motion_find_char,
-    motion_find_char_back,
-    motion_till_char,
-    motion_till_char_back,
-    motion_matching_bracket,
-    MOTIONS,
-    CHAR_MOTIONS,
 )
 
 

@@ -331,8 +331,8 @@ def main() -> int:
     runtime = _build_runtime(args, startup_mark)
     services = build_app_services(runtime)
     if args.command is None:
-        from sqlit.domains.shell.app.main import SSMSTUI
         from sqlit.domains.connections.app.url_parser import parse_connection_url
+        from sqlit.domains.shell.app.main import SSMSTUI
 
         if args.mock:
             from sqlit.domains.connections.app.mocks import get_mock_profile, list_mock_profiles

@@ -10,10 +10,10 @@ from textual.worker import Worker
 from textual_fastdatatable import ArrowBackend
 
 from sqlit.domains.query.editing import deletion as edit_delete
+from sqlit.shared.core.utils import format_duration_ms
 from sqlit.shared.ui.protocols import QueryMixinHost
 from sqlit.shared.ui.spinner import Spinner
 from sqlit.shared.ui.widgets import SqlitDataTable
-from sqlit.shared.core.utils import format_duration_ms
 
 if TYPE_CHECKING:
     from sqlit.domains.query.app.query_service import QueryService
@@ -396,8 +396,8 @@ class QueryMixin:
             if start > end:
                 start, end = end, start
             # Delete selection by replacing with paste content
-            from sqlit.domains.query.editing.types import MotionType, Position, Range
             from sqlit.domains.query.editing import operator_delete
+            from sqlit.domains.query.editing.types import MotionType, Position, Range
 
             range_obj = Range(
                 Position(start[0], start[1]),
@@ -419,7 +419,7 @@ class QueryMixin:
     def _get_clipboard_text(self: QueryMixinHost) -> str:
         """Get text from system clipboard."""
         try:
-            import pyperclip
+            import pyperclip  # pyright: ignore[reportMissingModuleSource]
             return pyperclip.paste() or ""
         except Exception:
             return ""
@@ -533,8 +533,7 @@ class QueryMixin:
         import time
 
         from sqlit.domains.query.app.cancellable import CancellableQuery
-        from sqlit.domains.query.app.query_service import QueryResult, QueryService
-        from sqlit.domains.query.app.query_service import parse_use_statement
+        from sqlit.domains.query.app.query_service import QueryResult, parse_use_statement
 
         provider = self.current_provider
         config = self.current_config

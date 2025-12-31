@@ -8,9 +8,7 @@ from typing import TYPE_CHECKING
 from .base import AccountInfo, ProviderState, ProviderStatus
 
 if TYPE_CHECKING:
-    from .aws.provider import AWSRDSInstance, AWSRedshiftCluster, RegionResources
-    from .azure.provider import AzureProvider
-    from .gcp.provider import GCPCloudSQLInstance
+    pass
 
 
 def is_mock_cloud_enabled() -> bool:
@@ -20,7 +18,7 @@ def is_mock_cloud_enabled() -> bool:
 
 def get_mock_azure_state() -> ProviderState:
     """Get mock Azure provider state with sample data."""
-    from ..cloud_detector import AzureSubscription, AzureSqlServer
+    from ..cloud_detector import AzureSqlServer, AzureSubscription
 
     # Mock account
     account = AccountInfo(

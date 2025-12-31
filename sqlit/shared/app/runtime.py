@@ -2,10 +2,10 @@
 
 from __future__ import annotations
 
+import os
 from dataclasses import dataclass, field
 from pathlib import Path
 from typing import Any
-import os
 
 
 @dataclass
@@ -38,7 +38,7 @@ class RuntimeConfig:
     mock: MockConfig = field(default_factory=MockConfig)
 
     @classmethod
-    def from_env(cls) -> "RuntimeConfig":
+    def from_env(cls) -> RuntimeConfig:
         def _parse_startup_mark(value: str | None) -> float | None:
             if not value:
                 return None

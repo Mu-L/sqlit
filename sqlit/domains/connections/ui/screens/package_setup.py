@@ -10,12 +10,12 @@ from textual.screen import ModalScreen
 from textual.widgets import OptionList, Static
 from textual.widgets.option_list import Option
 
-from sqlit.domains.connections.providers.exceptions import MissingDriverError
 from sqlit.domains.connections.app.install_strategy import (
     InstallOption,
     detect_install_method,
     get_install_options,
 )
+from sqlit.domains.connections.providers.exceptions import MissingDriverError
 from sqlit.shared.ui.widgets import Dialog
 
 

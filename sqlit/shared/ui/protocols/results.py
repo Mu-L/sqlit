@@ -6,6 +6,7 @@ from typing import TYPE_CHECKING, Any, Protocol
 
 if TYPE_CHECKING:
     from textual.timer import Timer
+
     from sqlit.shared.ui.widgets import SqlitDataTable
 
 
