@@ -109,6 +109,8 @@ def build_test_services(
     settings_store: MockSettingsStore | None = None,
     history_store: MockHistoryStore | None = None,
     docker_detector: Any | None = None,
+    system_probe: Any | None = None,
+    driver_resolver: Any | None = None,
     sync_process_runner: Any | None = None,
     async_process_runner: Any | None = None,
 ) -> AppServices:
@@ -120,6 +122,8 @@ def build_test_services(
         settings_store=settings_store,
         history_store=history_store,
         docker_detector=docker_detector,
+        system_probe=system_probe,
+        driver_resolver=driver_resolver,
         sync_process_runner=sync_process_runner,
         async_process_runner=async_process_runner,
     )

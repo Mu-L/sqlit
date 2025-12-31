@@ -364,16 +364,6 @@ class MockDatabaseAdapter(DatabaseAdapter):
         # Check if demo long text mode is enabled (for testing truncation)
         demo_long_text = self._demo_long_text
         demo_rows = self._demo_rows
-        if not demo_long_text:
-            import os
-
-            demo_long_text = bool(os.environ.get("SQLIT_DEMO_LONG_TEXT"))
-            if demo_long_text and demo_rows == 0:
-                demo_rows_env = os.environ.get("SQLIT_DEMO_ROWS", "10")
-                try:
-                    demo_rows = int(demo_rows_env)
-                except ValueError:
-                    demo_rows = 10
 
         if demo_long_text:
             demo_row_count = demo_rows or 10
@@ -383,15 +373,6 @@ class MockDatabaseAdapter(DatabaseAdapter):
             return cols, rows, False
 
         # Check if demo rows mode is enabled
-        if demo_rows == 0:
-            import os
-
-            demo_rows_env = os.environ.get("SQLIT_DEMO_ROWS", "")
-            if demo_rows_env:
-                try:
-                    demo_rows = int(demo_rows_env)
-                except ValueError:
-                    demo_rows = 0
         if demo_rows > 0:
             cols, rows = _generate_fake_data(demo_rows)
             if max_rows and len(rows) > max_rows:

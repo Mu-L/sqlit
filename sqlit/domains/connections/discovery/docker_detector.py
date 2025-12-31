@@ -8,7 +8,7 @@ from __future__ import annotations
 
 from dataclasses import dataclass
 from enum import Enum
-from typing import TYPE_CHECKING, Any, cast
+from typing import TYPE_CHECKING, Any, Protocol, cast
 
 if TYPE_CHECKING:
     from sqlit.domains.connections.domain.config import ConnectionConfig
@@ -62,6 +62,12 @@ class DetectedContainer:
         if label == self.db_type:
             label = self.db_type.upper()
         return f"{self.container_name} ({label})"
+
+
+class DockerScanProtocol(Protocol):
+    """Callable interface for docker container scanning."""
+
+    def __call__(self) -> tuple[DockerStatus, list[DetectedContainer]]: ...
 
 
 def _iter_docker_detectors() -> list[tuple[str, Any]]:
@@ -301,22 +307,13 @@ def _detect_containers_with_status(
     return detected
 
 
-def detect_database_containers(
-    mock_containers: list[DetectedContainer] | None = None,
-) -> tuple[DockerStatus, list[DetectedContainer]]:
+def detect_database_containers() -> tuple[DockerStatus, list[DetectedContainer]]:
     """Scan Docker containers for databases (running and exited).
 
     Returns:
         Tuple of (DockerStatus, list of DetectedContainer objects).
         Running containers are listed first, followed by exited containers.
     """
-    # Check for explicit mock containers first
-    if mock_containers is not None and mock_containers:
-        # Sort: running first, then exited
-        running = [c for c in mock_containers if c.status == ContainerStatus.RUNNING]
-        exited = [c for c in mock_containers if c.status == ContainerStatus.EXITED]
-        return DockerStatus.AVAILABLE, running + exited
-
     status = get_docker_status()
     if status != DockerStatus.AVAILABLE:
         return status, []
@@ -336,6 +333,25 @@ def detect_database_containers(
 
     # Return running first, then exited
     return DockerStatus.AVAILABLE, running + exited
+
+
+class DockerContainerScanner:
+    """Real docker container scanner."""
+
+    def __call__(self) -> tuple[DockerStatus, list[DetectedContainer]]:
+        return detect_database_containers()
+
+
+@dataclass(frozen=True)
+class StaticDockerContainerScanner:
+    """Static docker container scanner for injected results."""
+
+    containers: list[DetectedContainer]
+
+    def __call__(self) -> tuple[DockerStatus, list[DetectedContainer]]:
+        running = [c for c in self.containers if c.status == ContainerStatus.RUNNING]
+        exited = [c for c in self.containers if c.status == ContainerStatus.EXITED]
+        return DockerStatus.AVAILABLE, running + exited
 
 
 def container_to_connection_config(container: DetectedContainer) -> ConnectionConfig:

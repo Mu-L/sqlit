@@ -14,7 +14,6 @@ from sqlit.domains.connections.providers.adapters.base import (
     TableInfo,
     TriggerInfo,
 )
-from sqlit.domains.connections.providers.driver import import_driver_module
 
 if TYPE_CHECKING:
     import requests  # pyright: ignore[reportMissingModuleSource]
@@ -71,7 +70,7 @@ class D1Adapter(DatabaseAdapter):
 
     def connect(self, config: ConnectionConfig) -> D1Connection:
         """Establishes a 'connection' to D1 by preparing authenticated session."""
-        requests = import_driver_module(
+        requests = self._import_driver_module(
             "requests",
             driver_name=self.name,
             extra_name=self.install_extra,

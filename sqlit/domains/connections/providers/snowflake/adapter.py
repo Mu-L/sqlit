@@ -12,7 +12,6 @@ from sqlit.domains.connections.providers.adapters.base import (
     TableInfo,
     TriggerInfo,
 )
-from sqlit.domains.connections.providers.driver import import_driver_module
 
 if TYPE_CHECKING:
     from sqlit.domains.connections.domain.config import ConnectionConfig
@@ -55,7 +54,7 @@ class SnowflakeAdapter(CursorBasedAdapter):
 
     def connect(self, config: ConnectionConfig) -> Any:
         """Connect to Snowflake database."""
-        sf = import_driver_module(
+        sf = self._import_driver_module(
             "snowflake.connector",
             driver_name=self.name,
             extra_name=self.install_extra,

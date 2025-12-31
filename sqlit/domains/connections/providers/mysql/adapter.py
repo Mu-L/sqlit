@@ -4,7 +4,6 @@ from __future__ import annotations
 
 from typing import TYPE_CHECKING, Any
 
-from sqlit.domains.connections.providers.driver import import_driver_module
 from sqlit.domains.connections.providers.mysql.base import MySQLBaseAdapter
 from sqlit.domains.connections.providers.registry import get_default_port
 
@@ -33,7 +32,7 @@ class MySQLAdapter(MySQLBaseAdapter):
 
     def connect(self, config: ConnectionConfig) -> Any:
         """Connect to MySQL database."""
-        pymysql = import_driver_module(
+        pymysql = self._import_driver_module(
             "pymysql",
             driver_name=self.name,
             extra_name=self.install_extra,

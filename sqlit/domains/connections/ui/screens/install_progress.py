@@ -109,14 +109,17 @@ class InstallProgressScreen(ModalScreen[bool]):
                 runner = AsyncSubprocessRunner()
 
             self._process = await runner.spawn(self.command)
+            process = self._process
+            if process is None:
+                raise RuntimeError("Install process failed to start.")
 
-            if self._process.stdout:
-                async for line in self._process.stdout:
+            if process.stdout:
+                async for line in process.stdout:
                     decoded = line.decode("utf-8", errors="replace").rstrip()
                     log.write(decoded)
 
-            await self._process.wait()
-            return_code = self._process.returncode
+            await process.wait()
+            return_code = process.returncode
 
             self._completed = True
             self._process = None

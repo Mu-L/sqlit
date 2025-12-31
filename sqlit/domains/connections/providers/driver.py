@@ -3,8 +3,8 @@
 from __future__ import annotations
 
 import importlib
-from dataclasses import dataclass
-from typing import Any
+from dataclasses import dataclass, field
+from typing import Any, Protocol, runtime_checkable
 
 
 @dataclass(frozen=True)
@@ -15,32 +15,75 @@ class DriverDescriptor:
     package_name: str | None
 
 
+@runtime_checkable
+class DriverResolver(Protocol):
+    def import_module(self, module_name: str) -> Any: ...
+    def should_skip(self, provider: Any) -> bool: ...
+    def is_missing(self, provider: Any) -> bool: ...
+
+
+@dataclass
+class DefaultDriverResolver:
+    def import_module(self, module_name: str) -> Any:
+        return importlib.import_module(module_name)
+
+    def should_skip(self, provider: Any) -> bool:  # noqa: ARG002
+        return False
+
+    def is_missing(self, provider: Any) -> bool:  # noqa: ARG002
+        return False
+
+
+@dataclass
+class ConfigurableDriverResolver:
+    missing_db_types: set[str] = field(default_factory=set)
+    force_import_error: bool = False
+    skip_checks: bool = False
+
+    def __post_init__(self) -> None:
+        self._missing_db_types = {item.strip().lower() for item in self.missing_db_types if item and item.strip()}
+
+    def import_module(self, module_name: str) -> Any:
+        if self.force_import_error:
+            raise ImportError(f"No module named '{module_name}'")
+        return importlib.import_module(module_name)
+
+    def should_skip(self, provider: Any) -> bool:  # noqa: ARG002
+        return self.skip_checks
+
+    def is_missing(self, provider: Any) -> bool:
+        db_type = getattr(getattr(provider, "metadata", None), "db_type", "")
+        db_type = db_type.lower() if db_type else ""
+        return db_type in self._missing_db_types
+
+
+def attach_driver_resolver(provider: Any, resolver: DriverResolver) -> None:
+    adapter = getattr(provider, "connection_factory", None)
+    if adapter is None:
+        return
+    setter = getattr(adapter, "set_driver_resolver", None)
+    if callable(setter):
+        setter(resolver)
+    else:
+        setattr(adapter, "_driver_resolver", resolver)
+
+
 def import_driver_module(
     module_name: str,
     *,
     driver_name: str,
     extra_name: str | None,
     package_name: str | None,
-    runtime: Any | None = None,
+    resolver: DriverResolver | None = None,
 ) -> Any:
     """Import a driver module, raising MissingDriverError with detail if it fails."""
-    mock_driver_error = bool(getattr(getattr(runtime, "mock", None), "driver_error", False))
-    if mock_driver_error and extra_name and package_name:
-        from sqlit.domains.connections.providers.exceptions import MissingDriverError
-
-        raise MissingDriverError(
-            driver_name,
-            extra_name,
-            package_name,
-            module_name=module_name,
-            import_error=f"No module named '{module_name}'",
-        )
+    loader = resolver.import_module if resolver else importlib.import_module
 
     if not extra_name or not package_name:
-        return importlib.import_module(module_name)
+        return loader(module_name)
 
     try:
-        return importlib.import_module(module_name)
+        return loader(module_name)
     except ImportError as e:
         from sqlit.domains.connections.providers.exceptions import MissingDriverError
 
@@ -53,7 +96,7 @@ def import_driver_module(
         ) from e
 
 
-def ensure_driver_available(driver: DriverDescriptor, runtime: Any | None = None) -> None:
+def ensure_driver_available(driver: DriverDescriptor, resolver: DriverResolver | None = None) -> None:
     if not driver.import_names:
         return
     for module_name in driver.import_names:
@@ -62,19 +105,21 @@ def ensure_driver_available(driver: DriverDescriptor, runtime: Any | None = None
             driver_name=driver.driver_name,
             extra_name=driver.extra_name,
             package_name=driver.package_name,
-            runtime=runtime,
+            resolver=resolver,
         )
 
 
-def ensure_provider_driver_available(provider: Any, runtime: Any | None = None) -> None:
+def ensure_provider_driver_available(provider: Any, resolver: DriverResolver | None = None) -> None:
     driver = getattr(provider, "driver", None)
     if driver is None:
         return
 
-    mock_missing = getattr(getattr(runtime, "mock", None), "missing_drivers", None)
-    requested = {item.strip().lower() for item in mock_missing or [] if item.strip()}
-    db_type = getattr(getattr(provider, "metadata", None), "db_type", "").lower()
-    if db_type and db_type in requested:
+    resolver = resolver or DefaultDriverResolver()
+    attach_driver_resolver(provider, resolver)
+    if resolver.should_skip(provider):
+        return
+
+    if resolver.is_missing(provider):
         from sqlit.domains.connections.providers.exceptions import MissingDriverError
 
         raise MissingDriverError(
@@ -85,4 +130,4 @@ def ensure_provider_driver_available(provider: Any, runtime: Any | None = None) 
             import_error=None,
         )
 
-    ensure_driver_available(driver, runtime=runtime)
+    ensure_driver_available(driver, resolver=resolver)

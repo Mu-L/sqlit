@@ -445,7 +445,7 @@ class ConnectionScreen(ModalScreen):
         self._missing_driver_error = None
         try:
             provider = self._app().services.provider_factory(db_type.value)
-            ensure_provider_driver_available(provider, runtime=self._app().services.runtime)
+            ensure_provider_driver_available(provider, resolver=self._app().services.driver_resolver)
         except MissingDriverError as e:
             self._missing_driver_error = e
 
@@ -1556,11 +1556,10 @@ class ConnectionScreen(ModalScreen):
             return
 
         try:
-            if not self._app().services.runtime.mock.enabled:
-                ensure_provider_driver_available(
-                    self._app().services.provider_factory(config.db_type),
-                    runtime=self._app().services.runtime,
-                )
+            ensure_provider_driver_available(
+                self._app().services.provider_factory(config.db_type),
+                resolver=self._app().services.driver_resolver,
+            )
         except MissingDriverError as e:
             self._prompt_install_missing_driver(e)
             return

@@ -2,13 +2,15 @@ from __future__ import annotations
 
 from sqlit.domains.connections.app.install_strategy import detect_strategy
 from sqlit.shared.core.system_probe import SystemProbe
+from sqlit.shared.core.system_probe_fake import FakeSystemProbe
 
 
 def test_detect_strategy_pipx_override():
+    probe = FakeSystemProbe(install_method="pipx")
     strategy = detect_strategy(
         extra_name="postgres",
         package_name="psycopg2-binary",
-        mock_pipx="pipx",
+        probe=probe,
     )
     assert strategy.kind == "pipx"
     assert strategy.can_auto_install is True

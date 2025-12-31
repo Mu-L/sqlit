@@ -12,7 +12,6 @@ from sqlit.domains.connections.providers.adapters.base import (
     TableInfo,
     TriggerInfo,
 )
-from sqlit.domains.connections.providers.driver import import_driver_module
 from sqlit.domains.connections.providers.mysql.base import MySQLBaseAdapter
 from sqlit.domains.connections.providers.registry import get_default_port
 
@@ -58,7 +57,7 @@ class MariaDBAdapter(MySQLBaseAdapter):
 
     def connect(self, config: ConnectionConfig) -> Any:
         """Connect to MariaDB database."""
-        mariadb = import_driver_module(
+        mariadb = self._import_driver_module(
             "mariadb",
             driver_name=self.name,
             extra_name=self.install_extra,

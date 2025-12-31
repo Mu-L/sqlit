@@ -95,6 +95,30 @@ class DatabaseAdapter(ABC):
         """Name of the package for pipx inject."""
         return None
 
+    def set_driver_resolver(self, resolver: Any) -> None:
+        self._driver_resolver = resolver
+
+    def _get_driver_resolver(self) -> Any | None:
+        return getattr(self, "_driver_resolver", None)
+
+    def _import_driver_module(
+        self,
+        module_name: str,
+        *,
+        driver_name: str,
+        extra_name: str | None,
+        package_name: str | None,
+    ) -> Any:
+        from sqlit.domains.connections.providers.driver import import_driver_module
+
+        return import_driver_module(
+            module_name,
+            driver_name=driver_name,
+            extra_name=extra_name,
+            package_name=package_name,
+            resolver=self._get_driver_resolver(),
+        )
+
     @property
     @abstractmethod
     def name(self) -> str:

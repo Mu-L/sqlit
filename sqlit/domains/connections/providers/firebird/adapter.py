@@ -10,7 +10,6 @@ from sqlit.domains.connections.providers.adapters.base import (
     TableInfo,
     TriggerInfo,
 )
-from sqlit.domains.connections.providers.driver import import_driver_module
 
 if TYPE_CHECKING:
     from sqlit.domains.connections.domain.config import ConnectionConfig
@@ -63,7 +62,7 @@ class FirebirdAdapter(CursorBasedAdapter):
 
     def connect(self, config: "ConnectionConfig") -> Any:
         """Connect to a Firebird database."""
-        firebirdsql = import_driver_module(
+        firebirdsql = self._import_driver_module(
             "firebirdsql",
             driver_name=self.name,
             extra_name=self.install_extra,

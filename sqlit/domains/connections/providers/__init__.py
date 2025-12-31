@@ -15,7 +15,11 @@ from sqlit.domains.connections.providers.catalog import (
 )
 from sqlit.domains.connections.providers.docker import DockerCredentials, DockerDetector
 from sqlit.domains.connections.providers.driver import (
+    ConfigurableDriverResolver,
+    DefaultDriverResolver,
     DriverDescriptor,
+    DriverResolver,
+    attach_driver_resolver,
     ensure_driver_available,
     ensure_provider_driver_available,
     import_driver_module,
@@ -38,6 +42,10 @@ __all__ = [
     "DatabaseAdapter",
     "TableInfo",
     "DriverDescriptor",
+    "DriverResolver",
+    "DefaultDriverResolver",
+    "ConfigurableDriverResolver",
+    "attach_driver_resolver",
     "ensure_driver_available",
     "ensure_provider_driver_available",
     "import_driver_module",

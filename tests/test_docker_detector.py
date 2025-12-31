@@ -7,8 +7,10 @@ from unittest.mock import MagicMock, patch
 import pytest
 
 from sqlit.domains.connections.discovery.docker_detector import (
+    ContainerStatus,
     DetectedContainer,
     DockerStatus,
+    StaticDockerContainerScanner,
     _get_db_type_from_image,
     _get_host_port,
     container_to_connection_config,
@@ -439,3 +441,39 @@ class TestDefaultPorts:
         assert int(get_default_port("oracle")) == 1521
         assert int(get_default_port("turso")) == 8080
         assert int(get_default_port("firebird")) == 3050
+
+
+class TestStaticDockerContainerScanner:
+    def test_static_scanner_sorts_running_first(self):
+        """Test static scanners preserve running-first ordering."""
+        containers = [
+            DetectedContainer(
+                container_id="exited",
+                container_name="db-exited",
+                db_type="postgresql",
+                host="localhost",
+                port=None,
+                username=None,
+                password=None,
+                database=None,
+                status=ContainerStatus.EXITED,
+            ),
+            DetectedContainer(
+                container_id="running",
+                container_name="db-running",
+                db_type="mysql",
+                host="localhost",
+                port=3306,
+                username="root",
+                password="pass",
+                database="db",
+                status=ContainerStatus.RUNNING,
+            ),
+        ]
+        scanner = StaticDockerContainerScanner(containers)
+        status, detected = scanner()
+        assert status == DockerStatus.AVAILABLE
+        assert [item.status for item in detected] == [
+            ContainerStatus.RUNNING,
+            ContainerStatus.EXITED,
+        ]

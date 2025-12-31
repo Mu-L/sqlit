@@ -12,7 +12,6 @@ from sqlit.domains.connections.providers.adapters.base import (
     TableInfo,
     TriggerInfo,
 )
-from sqlit.domains.connections.providers.driver import import_driver_module
 
 if TYPE_CHECKING:
     from sqlit.domains.connections.domain.config import AuthType, ConnectionConfig
@@ -156,7 +155,7 @@ class SQLServerAdapter(DatabaseAdapter):
 
     def connect(self, config: ConnectionConfig) -> Any:
         """Connect to SQL Server using the mssql-python driver."""
-        mssql_python = import_driver_module(
+        mssql_python = self._import_driver_module(
             "mssql_python",
             driver_name=self.name,
             extra_name=self.install_extra,

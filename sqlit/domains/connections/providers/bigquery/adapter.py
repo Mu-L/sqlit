@@ -12,7 +12,6 @@ from sqlit.domains.connections.providers.adapters.base import (
     TableInfo,
     TriggerInfo,
 )
-from sqlit.domains.connections.providers.driver import import_driver_module
 
 if TYPE_CHECKING:
     from sqlit.domains.connections.domain.config import ConnectionConfig
@@ -70,7 +69,7 @@ class BigQueryAdapter(CursorBasedAdapter):
     def connect(self, config: ConnectionConfig) -> Any:
         """Connect to Google BigQuery."""
         # Import sqlalchemy for creating engine
-        sqlalchemy = import_driver_module(
+        sqlalchemy = self._import_driver_module(
             "sqlalchemy",
             driver_name=self.name,
             extra_name=self.install_extra,
@@ -78,7 +77,7 @@ class BigQueryAdapter(CursorBasedAdapter):
         )
 
         # Ensure sqlalchemy-bigquery is available
-        import_driver_module(
+        self._import_driver_module(
             "sqlalchemy_bigquery",
             driver_name=self.name,
             extra_name=self.install_extra,

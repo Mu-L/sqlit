@@ -4,7 +4,6 @@ from __future__ import annotations
 
 from typing import TYPE_CHECKING, Any
 
-from sqlit.domains.connections.providers.driver import import_driver_module
 from sqlit.domains.connections.providers.postgresql.base import PostgresBaseAdapter
 from sqlit.domains.connections.providers.registry import get_default_port
 
@@ -33,7 +32,7 @@ class PostgreSQLAdapter(PostgresBaseAdapter):
 
     def connect(self, config: ConnectionConfig) -> Any:
         """Connect to PostgreSQL database."""
-        psycopg2 = import_driver_module(
+        psycopg2 = self._import_driver_module(
             "psycopg2",
             driver_name=self.name,
             extra_name=self.install_extra,

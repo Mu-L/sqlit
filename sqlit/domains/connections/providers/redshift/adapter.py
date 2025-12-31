@@ -12,7 +12,6 @@ from sqlit.domains.connections.providers.adapters.base import (
     TableInfo,
     TriggerInfo,
 )
-from sqlit.domains.connections.providers.driver import import_driver_module
 
 if TYPE_CHECKING:
     from sqlit.domains.connections.domain.config import ConnectionConfig
@@ -67,7 +66,7 @@ class RedshiftAdapter(CursorBasedAdapter):
 
     def connect(self, config: ConnectionConfig) -> Any:
         """Connect to Amazon Redshift."""
-        redshift_connector = import_driver_module(
+        redshift_connector = self._import_driver_module(
             "redshift_connector",
             driver_name=self.name,
             extra_name=self.install_extra,

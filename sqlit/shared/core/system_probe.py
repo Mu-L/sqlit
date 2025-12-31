@@ -8,7 +8,7 @@ import site
 import sys
 import sysconfig
 from pathlib import Path
-from typing import Callable, Mapping
+from typing import Callable, Mapping, Protocol, runtime_checkable
 
 
 def _safe_sysconfig_paths() -> dict[str, str]:
@@ -120,6 +120,9 @@ class SystemProbe:
         content = (self._os_release_content or "").lower()
         return "arch" in content or "manjaro" in content or "endeavouros" in content
 
+    def install_method_hint(self) -> str | None:
+        return None
+
     def install_paths_writable(self) -> bool:
         for key in ("purelib", "platlib"):
             value = self._sysconfig_paths.get(key)
@@ -130,3 +133,21 @@ class SystemProbe:
             if probe.exists() and self._path_writable(probe):
                 return True
         return False
+
+
+@runtime_checkable
+class SystemProbeProtocol(Protocol):
+    @property
+    def executable(self) -> str: ...
+
+    def in_venv(self) -> bool: ...
+    def is_pipx(self) -> bool: ...
+    def is_uvx(self) -> bool: ...
+    def is_uv_run(self) -> bool: ...
+    def is_conda(self) -> bool: ...
+    def pep668_externally_managed(self) -> bool: ...
+    def pip_available(self) -> bool: ...
+    def user_site_enabled(self) -> bool: ...
+    def is_arch_linux(self) -> bool: ...
+    def install_method_hint(self) -> str | None: ...
+    def install_paths_writable(self) -> bool: ...

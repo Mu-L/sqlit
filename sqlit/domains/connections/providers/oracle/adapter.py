@@ -12,7 +12,6 @@ from sqlit.domains.connections.providers.adapters.base import (
     TableInfo,
     TriggerInfo,
 )
-from sqlit.domains.connections.providers.driver import import_driver_module
 from sqlit.domains.connections.providers.registry import get_default_port
 
 if TYPE_CHECKING:
@@ -62,7 +61,7 @@ class OracleAdapter(DatabaseAdapter):
 
     def connect(self, config: ConnectionConfig) -> Any:
         """Connect to Oracle database."""
-        oracledb = import_driver_module(
+        oracledb = self._import_driver_module(
             "oracledb",
             driver_name=self.name,
             extra_name=self.install_extra,

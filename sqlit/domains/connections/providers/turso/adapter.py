@@ -12,7 +12,6 @@ from sqlit.domains.connections.providers.adapters.base import (
     TableInfo,
     TriggerInfo,
 )
-from sqlit.domains.connections.providers.driver import import_driver_module
 
 if TYPE_CHECKING:
     from sqlit.domains.connections.domain.config import ConnectionConfig
@@ -79,7 +78,7 @@ class TursoAdapter(DatabaseAdapter):
         Accepts libsql://, https://, and http:// URLs (libsql:// is converted to https://).
         Uses direct HTTP mode for immediate read/write operations.
         """
-        libsql = import_driver_module(
+        libsql = self._import_driver_module(
             "libsql",
             driver_name=self.name,
             extra_name=self.install_extra,

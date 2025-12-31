@@ -13,7 +13,6 @@ from sqlit.domains.connections.providers.adapters.base import (
     TriggerInfo,
     resolve_file_path,
 )
-from sqlit.domains.connections.providers.driver import import_driver_module
 
 if TYPE_CHECKING:
     from sqlit.domains.connections.domain.config import ConnectionConfig
@@ -67,7 +66,7 @@ class DuckDBAdapter(DatabaseAdapter):
         serialized via exclusive workers to ensure only one thread accesses
         the connection at a time.
         """
-        duckdb = import_driver_module(
+        duckdb = self._import_driver_module(
             "duckdb",
             driver_name=self.name,
             extra_name=self.install_extra,

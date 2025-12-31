@@ -72,13 +72,6 @@ class Installer:
         Determines the command and executes it.
         """
         services = getattr(self.app, "services", None)
-        mock_install = None
-        if services is not None:
-            mock_install = services.runtime.mock.install_result
-        if mock_install in {"success", "ok", "pass"}:
-            return True, "Mocked success (install_result=success)", error
-        if mock_install in {"fail", "error"}:
-            return False, "Mocked failure (install_result=fail)", error
 
         if services is not None:
             strategy = services.install_strategy.detect(
@@ -105,6 +98,9 @@ class Installer:
                 runner = SubprocessRunner()
 
             self._active_process = runner.spawn(command, cwd=cwd)
+            process = self._active_process
+            if process is None:
+                return False, "Installation failed to start.", error
 
             stdout = ""
             stderr = ""
@@ -112,28 +108,28 @@ class Installer:
             while True:
                 if cancel_event.is_set():
                     try:
-                        self._active_process.terminate()
-                        self._active_process.wait(timeout=5)
+                        process.terminate()
+                        process.wait(timeout=5)
                     except Exception:
                         try:
-                            self._active_process.kill()
-                            self._active_process.wait(timeout=5)
+                            process.kill()
+                            process.wait(timeout=5)
                         except Exception:
                             pass
                     try:
-                        stdout, stderr = self._active_process.communicate(timeout=1)
+                        stdout, stderr = process.communicate(timeout=1)
                     except Exception:
                         pass
                     return False, "Installation cancelled by user.", error
 
                 try:
-                    stdout, stderr = self._active_process.communicate(timeout=0.1)
+                    stdout, stderr = process.communicate(timeout=0.1)
                     break
                 except subprocess.TimeoutExpired:
                     time.sleep(0.05)
                     continue
 
-            rc = self._active_process.returncode
+            rc = process.returncode
             if rc == 0:
                 return True, stdout, error
             return False, stderr or stdout, error

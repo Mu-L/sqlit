@@ -417,11 +417,11 @@ class ConnectionPickerScreen(ModalScreen):
 
     def _load_cloud_providers_async(self) -> None:
         """Start async loading of all cloud providers."""
-        mock_states = self._app().services.cloud_discovery.load_mock_states(self._cloud_providers)
-        if mock_states is not None:
+        seed_states = self._app().services.cloud_discovery.load_seed_states(self._cloud_providers)
+        if seed_states is not None:
             for provider in self._cloud_providers:
-                if provider.id in mock_states:
-                    self._cloud_states[provider.id] = mock_states[provider.id]
+                if provider.id in seed_states:
+                    self._cloud_states[provider.id] = seed_states[provider.id]
             self._rebuild_list()
             if self._current_tab == self.TAB_CLOUD:
                 self._rebuild_cloud_tree()
