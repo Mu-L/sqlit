@@ -10,11 +10,11 @@ from sqlit.domains.connections.domain.passwords import (
 from sqlit.domains.connections.domain.passwords import (
     needs_ssh_password as _needs_ssh_password,
 )
+from sqlit.domains.connections.app.session import ConnectionSession
 from sqlit.shared.ui.protocols import ConnectionMixinHost
 from sqlit.shared.ui.spinner import Spinner
 
 if TYPE_CHECKING:
-    from sqlit.domains.connections.app.session import ConnectionSession
     from sqlit.domains.connections.domain.config import ConnectionConfig
     from sqlit.domains.connections.providers.model import DatabaseProvider
 
@@ -32,6 +32,9 @@ class ConnectionMixin:
 
     def _populate_credentials_if_missing(self: ConnectionMixinHost, config: ConnectionConfig) -> None:
         """Populate missing credentials from the credentials service."""
+        if hasattr(self, "_connection_manager"):
+            self._connection_manager.populate_credentials(config)
+            return
         endpoint = config.tcp_endpoint
         if endpoint and endpoint.password is not None and (not config.tunnel or config.tunnel.password is not None):
             return
@@ -168,6 +171,8 @@ class ConnectionMixin:
         attempt_id = self._connection_attempt_id
 
         def work() -> ConnectionSession:
+            if hasattr(self, "_connection_manager"):
+                return cast(ConnectionSession, self._connection_manager.connect(config))
             return cast(ConnectionSession, self.services.session_factory(config))
 
         def on_success(session: ConnectionSession) -> None:

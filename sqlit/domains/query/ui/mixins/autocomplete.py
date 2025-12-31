@@ -309,7 +309,7 @@ class AutocompleteMixin:
     def on_text_area_changed(self: AutocompleteMixinHost, event: TextArea.Changed) -> None:
         """Handle text changes in the query editor for autocomplete."""
         from sqlit.domains.shell.app.idle_scheduler import on_user_activity
-        from sqlit.shared.ui.widgets import VimMode
+        from sqlit.core.vim import VimMode
 
         # Track user activity for idle scheduler
         on_user_activity()
@@ -419,7 +419,7 @@ class AutocompleteMixin:
     def on_key(self: AutocompleteMixinHost, event: Any) -> None:
         """Handle key events for autocomplete navigation."""
         from sqlit.domains.shell.app.idle_scheduler import on_user_activity
-        from sqlit.shared.ui.widgets import VimMode
+        from sqlit.core.vim import VimMode
 
         # Track user activity for idle scheduler
         on_user_activity()

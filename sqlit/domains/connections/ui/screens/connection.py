@@ -1521,31 +1521,14 @@ class ConnectionScreen(ModalScreen):
 
         def do_test() -> None:
             """Run the connection test in a background thread."""
-            tunnel = None
             try:
-                tunnel, host, port = self._app().services.tunnel_factory(config)
-                if tunnel:
-                    connect_config = config.with_endpoint(host=host, port=str(port))
+                result = self._app()._connection_manager.test_connection(config)
+                if result.ok:
+                    self.app.call_from_thread(on_test_success)
                 else:
-                    connect_config = config
-                provider = self._app().services.provider_factory(config.db_type)
-
-                conn = provider.connection_factory.connect(connect_config)
-                conn.close()
-
-                if tunnel:
-                    tunnel.stop()
-                    tunnel = None
-
-                self.app.call_from_thread(on_test_success)
+                    self.app.call_from_thread(on_test_error, result.error)
             except Exception as e:
                 self.app.call_from_thread(on_test_error, e)
-            finally:
-                if tunnel:
-                    try:
-                        tunnel.stop()
-                    except Exception:
-                        pass
 
         self._start_test_spinner()
         self.run_worker(do_test, name="test-connection", thread=True, exclusive=True)

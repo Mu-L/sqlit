@@ -4,7 +4,7 @@ from __future__ import annotations
 
 import pytest
 
-from sqlit.domains.shell.app.keymap import get_keymap
+from sqlit.core.keymap import get_keymap
 from sqlit.domains.shell.app.main import SSMSTUI
 from sqlit.domains.shell.ui.screens.help import HelpScreen
 from sqlit.shared.ui.screens.confirm import ConfirmScreen

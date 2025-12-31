@@ -9,7 +9,7 @@ from textual.binding import Binding
 from textual.screen import ModalScreen
 from textual.widgets import Static
 
-from sqlit.domains.shell.app.leader_commands import get_leader_commands
+from sqlit.core.leader_commands import get_leader_commands
 from sqlit.shared.ui.widgets import Dialog
 
 if TYPE_CHECKING:
@@ -57,6 +57,7 @@ class LeaderMenuScreen(ModalScreen):
         lines = []
         leader_commands = get_leader_commands(self._menu)
         app = cast("SSMSTUI", self.app)
+        ctx = app._get_input_context()
 
         categories: dict[str, list] = {}
         for cmd in leader_commands:
@@ -67,7 +68,7 @@ class LeaderMenuScreen(ModalScreen):
         for category, commands in categories.items():
             lines.append(f"[bold $text-muted]{category}[/]")
             for cmd in commands:
-                if cmd.is_allowed(app):
+                if cmd.is_allowed(ctx):
                     lines.append(f"  [bold $warning]{cmd.key}[/] {cmd.label}")
             lines.append("")
 
@@ -100,7 +101,8 @@ class LeaderMenuScreen(ModalScreen):
                 cmd = self._cmd_actions[action]
 
                 def handler() -> None:
-                    if cmd.is_allowed(cast("SSMSTUI", self.app)):
+                    app = cast("SSMSTUI", self.app)
+                    if cmd.is_allowed(app._get_input_context()):
                         self._run_and_dismiss(cmd.binding_action)
 
                 return handler

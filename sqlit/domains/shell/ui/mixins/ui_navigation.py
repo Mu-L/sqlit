@@ -145,7 +145,7 @@ class UINavigationMixin:
 
     def action_focus_query(self: UINavigationMixinHost) -> None:
         """Focus the Query pane (in NORMAL mode)."""
-        from sqlit.shared.ui.widgets import VimMode
+        from sqlit.core.vim import VimMode
 
         if self._fullscreen_mode != "none":
             self._set_fullscreen_mode("none")
@@ -166,7 +166,7 @@ class UINavigationMixin:
 
     def action_enter_insert_mode(self: UINavigationMixinHost) -> None:
         """Enter INSERT mode for query editing."""
-        from sqlit.shared.ui.widgets import VimMode
+        from sqlit.core.vim import VimMode
 
         if self.query_input.has_focus and self.vim_mode == VimMode.NORMAL:
             self.vim_mode = VimMode.INSERT
@@ -176,7 +176,7 @@ class UINavigationMixin:
 
     def action_exit_insert_mode(self: UINavigationMixinHost) -> None:
         """Exit INSERT mode, return to NORMAL mode."""
-        from sqlit.shared.ui.widgets import VimMode
+        from sqlit.core.vim import VimMode
 
         if self.vim_mode == VimMode.INSERT:
             self.vim_mode = VimMode.NORMAL
@@ -188,7 +188,7 @@ class UINavigationMixin:
     def _update_status_bar(self: UINavigationMixinHost) -> None:
         """Update status bar with connection and vim mode info."""
         from sqlit.shared.ui.spinner import SPINNER_FRAMES
-        from sqlit.shared.ui.widgets import VimMode
+        from sqlit.core.vim import VimMode
 
         try:
             status = self.status_bar
@@ -480,10 +480,12 @@ class UINavigationMixin:
         except Exception:
             return
 
-        if hasattr(self, "_refresh_app_bindings"):
-            self._refresh_app_bindings()
+        if hasattr(self, "_get_input_context"):
+            ctx = self._get_input_context()
+        else:
+            return
 
-        left_display, right_display = self._state_machine.get_display_bindings(self)
+        left_display, right_display = self._state_machine.get_display_bindings(ctx)
 
         left_bindings = [KeyBinding(b.key, b.label, b.action) for b in left_display]
         right_bindings = [KeyBinding(b.key, b.label, b.action) for b in right_display]
@@ -507,7 +509,7 @@ class UINavigationMixin:
 
     def _start_leader_pending(self: UINavigationMixinHost, menu: str) -> None:
         """Start a leader-style pending state and show menu if no follow-up key."""
-        from sqlit.shared.ui.widgets import VimMode
+        from sqlit.core.vim import VimMode
 
         # Don't trigger in INSERT mode
         if self.vim_mode == VimMode.INSERT:
@@ -598,7 +600,7 @@ class UINavigationMixin:
 
     def on_descendant_focus(self: UINavigationMixinHost, event: Any) -> None:
         """Handle focus changes to update section labels and footer."""
-        from sqlit.shared.ui.widgets import VimMode
+        from sqlit.core.vim import VimMode
 
         self._update_section_labels()
         try:

@@ -207,7 +207,7 @@ class TestMotionRegistry:
         expected = {
             "h", "j", "k", "l",
             "w", "W", "b", "B", "e", "E",
-            "0", "$", "G",
+            "0", "$", "G", "gg", "ge", "gE", "_",
             "f", "F", "t", "T",
             "%",
         }
@@ -215,6 +215,45 @@ class TestMotionRegistry:
 
     def test_char_motions_identified(self) -> None:
         assert CHAR_MOTIONS == {"f", "F", "t", "T"}
+
+
+class TestGMotions:
+    """Tests for g prefix motions (gg, ge, gE)."""
+
+    def test_gg_goes_to_first_line(self) -> None:
+        """gg should go to first line."""
+        text = "line1\nline2\nline3"
+        result = MOTIONS["gg"](text, 2, 3, None)
+        assert result.position.row == 0
+        assert result.position.col == 0
+
+    def test_gg_on_first_line_stays(self) -> None:
+        """gg on first line should stay at first line."""
+        text = "line1\nline2\nline3"
+        result = MOTIONS["gg"](text, 0, 5, None)
+        assert result.position.row == 0
+        assert result.position.col == 0
+
+    def test_ge_goes_to_end_of_previous_word(self) -> None:
+        """ge should go to end of previous word."""
+        text = "hello world"
+        result = MOTIONS["ge"](text, 0, 7, None)  # Cursor on 'o' in 'world'
+        assert result.position.row == 0
+        assert result.position.col == 4  # End of 'hello'
+
+    def test_ge_from_start_of_word(self) -> None:
+        """ge from start of word should go to end of previous word."""
+        text = "hello world"
+        result = MOTIONS["ge"](text, 0, 6, None)  # Cursor at start of 'world'
+        assert result.position.row == 0
+        assert result.position.col == 4  # End of 'hello'
+
+    def test_gE_goes_to_end_of_previous_WORD(self) -> None:
+        """gE should go to end of previous WORD."""
+        text = "hello-world foo"
+        result = MOTIONS["gE"](text, 0, 13, None)  # Cursor in 'foo'
+        assert result.position.row == 0
+        assert result.position.col == 10  # End of 'hello-world'
 
 
 class TestRangeHelpers:

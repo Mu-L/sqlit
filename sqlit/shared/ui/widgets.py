@@ -2,7 +2,6 @@
 
 from __future__ import annotations
 
-from enum import Enum
 from typing import TYPE_CHECKING, Any, cast
 
 from textual.app import ComposeResult
@@ -69,6 +68,9 @@ class QueryTextArea(TextArea):
             event.stop()
             return
 
+        # Note: Shift+Arrow selection is handled natively by TextArea
+        # (shift+left/right/up/down, shift+home/end)
+
         # Handle Enter key when autocomplete is visible
         if event.key == "enter":
             app = cast("AutocompleteProtocol", self.app)
@@ -104,7 +106,7 @@ class QueryTextArea(TextArea):
 class SqlitDataTable(FastDataTable):
     """FastDataTable with correct header behavior when show_header is False.
 
-    Disables hover tooltips - use 'v' key to preview cell values instead.
+    Disables hover tooltips - use 'v' to view cell values.
     """
 
     # Track if a manual tooltip is being shown (via 'v' key)
@@ -195,13 +197,6 @@ def flash_widget(
             on_complete()
 
     widget.set_timer(duration, cleanup)
-
-
-class VimMode(Enum):
-    """Vim editing modes."""
-
-    NORMAL = "NORMAL"
-    INSERT = "INSERT"
 
 
 class KeyBinding:

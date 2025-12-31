@@ -53,18 +53,21 @@ class TextObjectMenuScreen(ModalScreen[str | None]):
     }
     """
 
-    def __init__(self, mode: str) -> None:
+    def __init__(self, mode: str, operator: str = "delete") -> None:
         """Initialize the text object menu.
 
         Args:
             mode: Either "inner" or "around"
+            operator: The operator context ("delete", "yank", or "change")
         """
         super().__init__()
         self._mode = mode
+        self._operator = operator
 
     def compose(self) -> ComposeResult:
         prefix = "inner" if self._mode == "inner" else "around"
-        title = f"Delete {prefix}..."
+        op_name = self._operator.capitalize()
+        title = f"{op_name} {prefix}..."
 
         content = f"""[bold $text-muted]{title}[/]
 

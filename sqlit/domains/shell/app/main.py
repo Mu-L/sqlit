@@ -11,6 +11,7 @@ from typing import TYPE_CHECKING, Any, ClassVar, cast
 
 from textual.app import App, ComposeResult
 from textual.containers import Container, Horizontal, Vertical
+from textual.events import Key
 from textual.lazy import Lazy
 from textual.screen import ModalScreen
 from textual.timer import Timer
@@ -29,8 +30,11 @@ from sqlit.domains.results.ui.mixins.results_filter import ResultsFilterMixin
 from sqlit.domains.shell.app.idle_scheduler import IdleScheduler
 from sqlit.domains.shell.app.omarchy import DEFAULT_THEME
 from sqlit.domains.shell.app.startup_flow import run_on_mount
-from sqlit.domains.shell.app.state_machine import UIStateMachine, get_app_bindings
+from sqlit.domains.shell.state import UIStateMachine
 from sqlit.domains.shell.app.theme_manager import ThemeManager
+from sqlit.core.input_context import InputContext
+from sqlit.core.key_router import resolve_action
+from sqlit.core.vim import VimMode
 from sqlit.domains.shell.ui.mixins.ui_navigation import UINavigationMixin
 from sqlit.shared.app import AppServices, RuntimeConfig, build_app_services
 from sqlit.shared.ui.protocols import AppProtocol
@@ -42,7 +46,6 @@ from sqlit.shared.ui.widgets import (
     ResultsFilterInput,
     SqlitDataTable,
     TreeFilterInput,
-    VimMode,
 )
 
 if TYPE_CHECKING:
@@ -257,8 +260,9 @@ class SSMSTUI(
     ):
         super().__init__()
         self.services = services or build_app_services(runtime or RuntimeConfig.from_env())
-        self._base_bindings = self._bindings.copy()
-        self._refresh_app_bindings()
+        from sqlit.core.connection_manager import ConnectionManager
+
+        self._connection_manager = ConnectionManager(self.services)
         self._startup_connection = startup_connection
         self._startup_connect_config: ConnectionConfig | None = None
         self._debug_mode = self.services.runtime.debug_mode
@@ -290,6 +294,7 @@ class SSMSTUI(
         self._autocomplete_index: int = 0
         self._autocomplete_filter: str = ""
         self._autocomplete_just_applied: bool = False
+        self._value_view_active: bool = False
         self._last_result_columns: list[str] = []
         self._last_result_rows: list[tuple[Any, ...]] = []
         self._last_result_row_count: int = 0
@@ -328,23 +333,88 @@ class SSMSTUI(
         self._idle_scheduler: IdleScheduler | None = None
         self._startup_stamp("init_end")
 
-    def _refresh_app_bindings(self) -> None:
-        """Refresh dynamic keymap bindings based on current focus context."""
-        from sqlit.domains.shell.app.bindings_context import get_binding_contexts
+    def _get_focus_pane(self) -> str:
+        """Infer which pane currently has focus."""
+        focused = getattr(self, "focused", None)
+        widget = focused
+        while widget:
+            widget_id = getattr(widget, "id", None)
+            if widget_id in ("object-tree", "sidebar"):
+                return "explorer"
+            if widget_id in ("query-input", "query-area"):
+                return "query"
+            if widget_id in ("results-table", "results-area", "value-view"):
+                return "results"
+            widget = getattr(widget, "parent", None)
+        return "none"
 
-        contexts = get_binding_contexts(self)
-        bindings = get_app_bindings(contexts)
-        merged = self._base_bindings.copy()
-        for binding in bindings:
-            merged.bind(
-                binding.key,
-                binding.action,
-                binding.description,
-                show=binding.show,
-                key_display=binding.key_display,
-                priority=binding.priority,
+    def _get_input_context(self) -> InputContext:
+        """Build a UI-agnostic input context snapshot."""
+        tree_node_kind = None
+        tree_node_connection_name = None
+        try:
+            node = self.object_tree.cursor_node
+            if node is not None:
+                kind = ""
+                if hasattr(self, "_get_node_kind"):
+                    kind = getattr(self, "_get_node_kind")(node)
+                tree_node_kind = kind or None
+                if tree_node_kind == "connection":
+                    data = getattr(node, "data", None)
+                    config = getattr(data, "config", None)
+                    if config is not None:
+                        tree_node_connection_name = config.name
+        except Exception:
+            pass
+
+        last_result_is_error = self._last_result_columns == ["Error"]
+        current_connection_name = self.current_config.name if self.current_config else None
+
+        return InputContext(
+            focus=self._get_focus_pane(),
+            vim_mode=self.vim_mode,
+            leader_pending=self._leader_pending,
+            leader_menu=self._leader_pending_menu,
+            tree_filter_active=getattr(self, "_tree_filter_visible", False),
+            autocomplete_visible=self._autocomplete_visible,
+            results_filter_active=getattr(self, "_results_filter_visible", False),
+            value_view_active=self._value_view_active,
+            query_executing=self._query_executing,
+            modal_open=self._dialog_open,
+            has_connection=self.current_connection is not None,
+            current_connection_name=current_connection_name,
+            tree_node_kind=tree_node_kind,
+            tree_node_connection_name=tree_node_connection_name,
+            last_result_is_error=last_result_is_error,
+        )
+
+    def on_key(self, event: Key) -> None:
+        """Route key presses through the core key router."""
+        ctx = self._get_input_context()
+        if ctx.modal_open:
+            return
+
+        action = resolve_action(
+            event.key,
+            ctx,
+            is_allowed=lambda name: self._state_machine.check_action(ctx, name),
+        )
+
+        if action is None and ctx.leader_pending and hasattr(self, "_cancel_leader_pending"):
+            self._cancel_leader_pending()
+            ctx = self._get_input_context()
+            action = resolve_action(
+                event.key,
+                ctx,
+                is_allowed=lambda name: self._state_machine.check_action(ctx, name),
             )
-        self._bindings = merged
+
+        if action:
+            handler = getattr(self, f"action_{action}", None)
+            if handler:
+                handler()
+                event.prevent_default()
+                event.stop()
 
 
     @property
@@ -437,7 +507,7 @@ class SSMSTUI(
         This method is pure - it only checks, never mutates state.
         State transitions happen in the action methods themselves.
         """
-        return self._state_machine.check_action(self, action)
+        return self._state_machine.check_action(self._get_input_context(), action)
 
     def _compute_restart_argv(self) -> list[str]:
         """Compute a best-effort argv to restart the app."""

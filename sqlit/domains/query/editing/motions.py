@@ -368,6 +368,153 @@ def motion_last_line(
     )
 
 
+def motion_first_line(
+    text: str, row: int, col: int, char: str | None = None
+) -> MotionResult:
+    """Move to first line (gg)."""
+    lines, row, col = _normalize(text, row, col)
+    return MotionResult(
+        position=Position(0, 0),
+        range=Range(
+            Position(0, 0),
+            Position(row, len(lines[row])),
+            MotionType.LINEWISE,
+        ),
+    )
+
+
+def motion_word_end_back(
+    text: str, row: int, col: int, char: str | None = None
+) -> MotionResult:
+    """Move to end of previous word (ge).
+
+    This is like 'e' motion but in reverse - moves to the last character
+    of the previous word.
+    """
+    lines, row, col = _normalize(text, row, col)
+    end_pos = Position(row, col)
+    line = lines[row]
+
+    # Move at least one character back
+    if col > 0:
+        col -= 1
+    elif row > 0:
+        row -= 1
+        line = lines[row]
+        col = len(line) - 1 if line else 0
+    else:
+        return MotionResult(
+            position=Position(0, 0),
+            range=Range(Position(0, 0), end_pos, MotionType.CHARWISE, inclusive=True),
+        )
+
+    # Skip through current word backwards to get before it
+    if 0 <= col < len(line):
+        ch = line[col]
+        if _is_word_char(ch):
+            # Skip word characters backwards to start of word
+            while col > 0 and _is_word_char(line[col - 1]):
+                col -= 1
+            col -= 1  # Move to character before the word
+        elif not ch.isspace():
+            # On punctuation - skip punctuation backwards
+            while col > 0 and not _is_word_char(line[col - 1]) and not line[col - 1].isspace():
+                col -= 1
+            col -= 1  # Move to character before the punctuation
+
+    # Handle going past start of line
+    if col < 0:
+        if row > 0:
+            row -= 1
+            line = lines[row]
+            col = len(line) - 1 if line else 0
+        else:
+            col = 0
+
+    # Skip whitespace backwards
+    while 0 <= col < len(line) and line[col].isspace():
+        col -= 1
+        if col < 0 and row > 0:
+            row -= 1
+            line = lines[row]
+            col = len(line) - 1 if line else 0
+
+    start_pos = Position(row, max(0, col))
+    return MotionResult(
+        position=start_pos,
+        range=Range(start_pos, end_pos, MotionType.CHARWISE, inclusive=True),
+    )
+
+
+def motion_WORD_end_back(
+    text: str, row: int, col: int, char: str | None = None
+) -> MotionResult:
+    """Move to end of previous WORD (gE).
+
+    Like ge but for WORDs (whitespace-separated).
+    """
+    lines, row, col = _normalize(text, row, col)
+    end_pos = Position(row, col)
+    line = lines[row]
+
+    # Move at least one character back
+    if col > 0:
+        col -= 1
+    elif row > 0:
+        row -= 1
+        line = lines[row]
+        col = len(line) - 1 if line else 0
+    else:
+        return MotionResult(
+            position=Position(0, 0),
+            range=Range(Position(0, 0), end_pos, MotionType.CHARWISE, inclusive=True),
+        )
+
+    # Skip through current WORD backwards (non-whitespace) to get before it
+    if 0 <= col < len(line) and _is_WORD_char(line[col]):
+        while col > 0 and _is_WORD_char(line[col - 1]):
+            col -= 1
+        col -= 1  # Move to character before the WORD
+
+    # Handle going past start of line
+    if col < 0:
+        if row > 0:
+            row -= 1
+            line = lines[row]
+            col = len(line) - 1 if line else 0
+        else:
+            col = 0
+
+    # Skip whitespace backwards
+    while 0 <= col < len(line) and line[col].isspace():
+        col -= 1
+        if col < 0 and row > 0:
+            row -= 1
+            line = lines[row]
+            col = len(line) - 1 if line else 0
+
+    start_pos = Position(row, max(0, col))
+    return MotionResult(
+        position=start_pos,
+        range=Range(start_pos, end_pos, MotionType.CHARWISE, inclusive=True),
+    )
+
+
+def motion_current_line(
+    text: str, row: int, col: int, char: str | None = None
+) -> MotionResult:
+    """Operate on current line (_). Used for dd, yy, cc."""
+    lines, row, col = _normalize(text, row, col)
+    return MotionResult(
+        position=Position(row, 0),
+        range=Range(
+            Position(row, 0),
+            Position(row, len(lines[row])),
+            MotionType.LINEWISE,
+        ),
+    )
+
+
 # ============================================================================
 # Character search motions: f, F, t, T
 # ============================================================================
@@ -563,6 +710,10 @@ MOTIONS: dict[str, MotionFunc] = {
     "0": motion_line_start,
     "$": motion_line_end,
     "G": motion_last_line,
+    "gg": motion_first_line,  # Go to first line
+    "ge": motion_word_end_back,  # End of previous word
+    "gE": motion_WORD_end_back,  # End of previous WORD
+    "_": motion_current_line,  # Current line (dd, yy, cc)
     "f": motion_find_char,  # Requires char argument
     "F": motion_find_char_back,  # Requires char argument
     "t": motion_till_char,  # Requires char argument
