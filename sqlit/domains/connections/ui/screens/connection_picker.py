@@ -1152,7 +1152,7 @@ class ConnectionPickerScreen(ModalScreen):
         )
 
         try:
-            status, servers = detect_azure_sql_resources(subscription_id, use_cache=True)
+            _status, servers = detect_azure_sql_resources(subscription_id, use_cache=True)
 
             # Get current state to preserve subscriptions
             current_state = self._cloud_states.get(provider.id, ProviderState())

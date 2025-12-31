@@ -38,7 +38,7 @@ def motion_left(
     text: str, row: int, col: int, char: str | None = None
 ) -> MotionResult:
     """Move cursor left (h)."""
-    lines, row, col = _normalize(text, row, col)
+    _lines, row, col = _normalize(text, row, col)
     new_col = max(0, col - 1)
     return MotionResult(
         position=Position(row, new_col),
@@ -323,7 +323,7 @@ def motion_line_start(
     text: str, row: int, col: int, char: str | None = None
 ) -> MotionResult:
     """Move to start of line (0)."""
-    lines, row, col = _normalize(text, row, col)
+    _lines, row, col = _normalize(text, row, col)
     return MotionResult(
         position=Position(row, 0),
         range=Range(
@@ -425,7 +425,7 @@ def motion_till_char(
     text: str, row: int, col: int, char: str | None = None
 ) -> MotionResult:
     """Move to just before next occurrence of char (t{char})."""
-    lines, row, col = _normalize(text, row, col)
+    _lines, row, col = _normalize(text, row, col)
     start_pos = Position(row, col)
 
     if not char:
@@ -446,7 +446,7 @@ def motion_till_char_back(
     text: str, row: int, col: int, char: str | None = None
 ) -> MotionResult:
     """Move to just after previous occurrence of char (T{char})."""
-    lines, row, col = _normalize(text, row, col)
+    _lines, row, col = _normalize(text, row, col)
     end_pos = Position(row, col)
 
     if not char:

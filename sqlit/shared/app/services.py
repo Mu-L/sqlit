@@ -124,12 +124,13 @@ def build_app_services(
     tunnel_factory = tunnel_factory or create_ssh_tunnel
 
     if session_factory is None:
-        def session_factory(config: Any) -> Any:
+        def _default_session_factory(config: Any) -> Any:
             return ConnectionSession.create(
                 config,
                 provider_factory=provider_factory,
                 tunnel_factory=tunnel_factory,
             )
+        session_factory = _default_session_factory
 
     services = AppServices(
         runtime=runtime,

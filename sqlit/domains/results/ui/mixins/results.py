@@ -147,7 +147,7 @@ class ResultsMixin:
             self.notify("No results", severity="warning")
             return
         try:
-            cursor_row, cursor_col = table.cursor_coordinate
+            _cursor_row, cursor_col = table.cursor_coordinate
             value = table.get_cell_at(table.cursor_coordinate)
         except Exception:
             return

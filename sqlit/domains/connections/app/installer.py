@@ -154,7 +154,7 @@ class Installer:
 
         from sqlit.shared.ui.screens.message import MessageScreen
 
-        success, output, error = result
+        success, _output, error = result
         self.app.pop_screen()  # Pop the LoadingScreen
 
         try:
