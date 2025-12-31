@@ -267,7 +267,6 @@ class ResultsMixin:
 
         try:
             cursor_row, cursor_col = table.cursor_coordinate
-            value = table.get_cell_at(table.cursor_coordinate)
             row_values = table.get_row_at(cursor_row)
         except Exception:
             return

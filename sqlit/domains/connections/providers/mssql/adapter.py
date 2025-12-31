@@ -289,7 +289,10 @@ class SQLServerAdapter(DatabaseAdapter):
             "columns": columns,
             "is_unique": is_unique,
             "type": index_type,
-            "definition": f"CREATE {'UNIQUE ' if is_unique else ''}{index_type} INDEX [{index_name}] ON [{table_name}] ({', '.join(f'[{c}]' for c in columns)})",
+            "definition": (
+                f"CREATE {'UNIQUE ' if is_unique else ''}{index_type} INDEX "
+                f"[{index_name}] ON [{table_name}] ({', '.join(f'[{c}]' for c in columns)})"
+            ),
         }
 
     def get_trigger_definition(

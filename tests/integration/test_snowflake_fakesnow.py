@@ -4,10 +4,10 @@ from __future__ import annotations
 
 import pytest
 
-fakesnow = pytest.importorskip("fakesnow")
-
 from sqlit.domains.connections.domain.config import ConnectionConfig, TcpEndpoint
 from sqlit.domains.connections.providers.snowflake.adapter import SnowflakeAdapter
+
+fakesnow = pytest.importorskip("fakesnow")
 
 
 class TestSnowflakeFakeSnow:

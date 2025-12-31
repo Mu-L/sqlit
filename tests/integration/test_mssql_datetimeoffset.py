@@ -63,9 +63,9 @@ class TestMSSQLDatetimeOffset:
         """Skip tests if SQL Server is not available."""
         if not is_mssql_available():
             pytest.skip("SQL Server is not available")
-        try:
-            import mssql_python  # type: ignore[import]
-        except ImportError:
+        import importlib.util
+
+        if importlib.util.find_spec("mssql_python") is None:
             pytest.skip("mssql-python is not installed")
 
     def test_query_datetimeoffset_column(self, mssql_adapter, mssql_config):

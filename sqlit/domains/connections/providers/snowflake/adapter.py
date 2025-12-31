@@ -100,7 +100,12 @@ class SnowflakeAdapter(CursorBasedAdapter):
         """Fallback or alternative to get tables."""
         cursor = conn.cursor()
         db_prefix = f"{self.quote_identifier(database)}." if database else ""
-        sql = f"SELECT table_schema, table_name FROM {db_prefix}information_schema.tables WHERE table_type = 'BASE TABLE' AND table_schema != 'INFORMATION_SCHEMA' ORDER BY table_schema, table_name"
+        sql = (
+            "SELECT table_schema, table_name FROM "
+            f"{db_prefix}information_schema.tables "
+            "WHERE table_type = 'BASE TABLE' AND table_schema != 'INFORMATION_SCHEMA' "
+            "ORDER BY table_schema, table_name"
+        )
         cursor.execute(sql)
         return [(row[0], row[1]) for row in cursor.fetchall()]
 
@@ -178,7 +183,12 @@ class SnowflakeAdapter(CursorBasedAdapter):
         """Get stored procedures."""
         cursor = conn.cursor()
         db_prefix = f"{self.quote_identifier(database)}." if database else ""
-        sql = f"SELECT routine_name FROM {db_prefix}information_schema.routines WHERE routine_type = 'PROCEDURE' AND routine_schema != 'INFORMATION_SCHEMA' ORDER BY routine_name"
+        sql = (
+            "SELECT routine_name FROM "
+            f"{db_prefix}information_schema.routines "
+            "WHERE routine_type = 'PROCEDURE' AND routine_schema != 'INFORMATION_SCHEMA' "
+            "ORDER BY routine_name"
+        )
         cursor.execute(sql)
         # deduplicate
         return sorted(list({row[0] for row in cursor.fetchall()}))

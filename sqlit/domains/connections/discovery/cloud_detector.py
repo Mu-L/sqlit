@@ -478,9 +478,16 @@ def get_azure_sql_servers(subscription_id: str | None = None) -> list[AzureSqlSe
         List of AzureSqlServer objects.
     """
     args = [
-        "sql", "server", "list",
-        "--query", "[].{name:name, fqdn:fullyQualifiedDomainName, resourceGroup:resourceGroup, location:location, adminLogin:administratorLogin, state:state}",
-        "-o", "json",
+        "sql",
+        "server",
+        "list",
+        "--query",
+        (
+            "[].{name:name, fqdn:fullyQualifiedDomainName, resourceGroup:resourceGroup, "
+            "location:location, adminLogin:administratorLogin, state:state}"
+        ),
+        "-o",
+        "json",
     ]
     if subscription_id:
         args.extend(["--subscription", subscription_id])

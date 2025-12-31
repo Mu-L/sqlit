@@ -486,10 +486,6 @@ class AutocompleteMixin:
             self._stop_schema_spinner()
             return
         caps = provider.capabilities
-        supports_procedures = caps.supports_stored_procedures and isinstance(
-            provider.schema_inspector,
-            ProcedureInspector,
-        )
 
         # Track pending database loads
         self._schema_pending_dbs = []
@@ -615,7 +611,6 @@ class AutocompleteMixin:
         if not isinstance(inspector, ProcedureInspector):
             self._schema_job_complete()
             return
-        procedure_inspector = cast(ProcedureInspector, inspector)
 
         cache_key = database or "__default__"
 
@@ -700,7 +695,6 @@ class AutocompleteMixin:
         if not isinstance(inspector, ProcedureInspector):
             self._schema_job_complete()
             return
-        procedure_inspector = cast(ProcedureInspector, inspector)
 
         cache_key = database or "__default__"
 

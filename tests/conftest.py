@@ -1622,9 +1622,9 @@ def turso_db(turso_server_ready: bool) -> str:
     if not turso_server_ready:
         pytest.skip("Turso (libsql-server) is not available")
 
-    try:
-        import libsql
-    except ImportError:
+    import importlib.util
+
+    if importlib.util.find_spec("libsql") is None:
         pytest.skip("libsql is not installed")
 
     try:

@@ -5,6 +5,7 @@ from __future__ import annotations
 import json
 import tempfile
 from pathlib import Path
+from typing import TYPE_CHECKING
 from unittest.mock import MagicMock, patch
 
 from sqlit.domains.connections.app.credentials import (
@@ -17,6 +18,9 @@ from sqlit.domains.connections.app.credentials import (
     set_credentials_service,
 )
 from tests.helpers import ConnectionConfig
+
+if TYPE_CHECKING:
+    from sqlit.domains.connections.store.connections import ConnectionStore
 
 
 class TestPlaintextCredentialsService:

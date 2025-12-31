@@ -7,6 +7,7 @@ from __future__ import annotations
 
 import re
 
+from .alter_table import get_alter_table_completions
 from .core import (
     SQL_OPERATORS,
     Suggestion,
@@ -25,10 +26,6 @@ from .core import (
     remove_comments,
     remove_string_literals,
 )
-
-# Special keywords for SELECT clause (before FROM)
-SELECT_CLAUSE_KEYWORDS = ["*", "DISTINCT", "TOP", "ALL"]
-from .alter_table import get_alter_table_completions
 from .create_index import get_create_index_completions
 from .create_table import get_create_table_completions
 from .create_view import get_create_view_completions
@@ -37,6 +34,9 @@ from .drop import get_drop_completions
 from .insert import get_insert_context
 from .truncate import get_truncate_completions
 from .update import get_update_context
+
+# Special keywords for SELECT clause (before FROM)
+SELECT_CLAUSE_KEYWORDS = ["*", "DISTINCT", "TOP", "ALL"]
 
 
 def get_context(sql: str, cursor_pos: int) -> list[Suggestion]:

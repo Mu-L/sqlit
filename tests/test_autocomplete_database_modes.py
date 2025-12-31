@@ -192,10 +192,6 @@ class TestAutocompleteDatabaseModes:
         1. User selects a database -> unqualified names
         2. User unselects (clears) database -> qualified names (if multiple dbs)
         """
-        from sqlit.domains.connections.providers.mssql.adapter import SQLServerAdapter
-
-        adapter = SQLServerAdapter()
-
         all_user_dbs = ["AppDb1", "AppDb2"]
 
         # Phase 1: Database selected
