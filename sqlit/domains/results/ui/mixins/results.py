@@ -501,3 +501,90 @@ class ResultsMixin:
         self.query_input.read_only = False
         self._update_status_bar()
         self._update_footer_bindings()
+
+    # Stacked results navigation
+
+    def action_next_result_section(self: ResultsMixinHost) -> None:
+        """Navigate to the next result section (for multi-statement results)."""
+        from sqlit.shared.ui.widgets_stacked_results import ResultSection, StackedResultsContainer
+
+        try:
+            container = self.query_one("#stacked-results", StackedResultsContainer)
+        except Exception:
+            return
+
+        if not container.has_class("active"):
+            return
+
+        sections = list(container.query(ResultSection))
+        if not sections:
+            return
+
+        # Find current focused/expanded section and move to next
+        for i, section in enumerate(sections):
+            if not section.collapsed:
+                # Collapse current and expand next
+                if i + 1 < len(sections):
+                    section.collapsed = True
+                    sections[i + 1].collapsed = False
+                    sections[i + 1].scroll_visible()
+                return
+
+        # If no expanded section, expand the first one
+        sections[0].collapsed = False
+        sections[0].scroll_visible()
+
+    def action_prev_result_section(self: ResultsMixinHost) -> None:
+        """Navigate to the previous result section (for multi-statement results)."""
+        from sqlit.shared.ui.widgets_stacked_results import ResultSection, StackedResultsContainer
+
+        try:
+            container = self.query_one("#stacked-results", StackedResultsContainer)
+        except Exception:
+            return
+
+        if not container.has_class("active"):
+            return
+
+        sections = list(container.query(ResultSection))
+        if not sections:
+            return
+
+        # Find current focused/expanded section and move to prev
+        for i, section in enumerate(sections):
+            if not section.collapsed:
+                # Collapse current and expand previous
+                if i > 0:
+                    section.collapsed = True
+                    sections[i - 1].collapsed = False
+                    sections[i - 1].scroll_visible()
+                return
+
+        # If no expanded section, expand the last one
+        sections[-1].collapsed = False
+        sections[-1].scroll_visible()
+
+    def action_toggle_result_section(self: ResultsMixinHost) -> None:
+        """Toggle collapse/expand of the current result section."""
+        from sqlit.shared.ui.widgets_stacked_results import ResultSection, StackedResultsContainer
+
+        try:
+            container = self.query_one("#stacked-results", StackedResultsContainer)
+        except Exception:
+            return
+
+        if not container.has_class("active"):
+            return
+
+        sections = list(container.query(ResultSection))
+        if not sections:
+            return
+
+        # Find the first non-collapsed section and toggle it
+        for section in sections:
+            if not section.collapsed:
+                section.collapsed = True
+                return
+
+        # If all collapsed, expand the first one
+        sections[0].collapsed = False

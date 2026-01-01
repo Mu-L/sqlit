@@ -100,6 +100,9 @@ class QueryResultsMixin:
         self._last_result_rows = rows
         self._last_result_row_count = row_count
 
+        # Switch to single result mode (in case we were showing stacked results)
+        self._show_single_result_mode()
+
         self._replace_results_table(columns, rows)
 
         time_str = format_duration_ms(elapsed_ms)
@@ -114,6 +117,9 @@ class QueryResultsMixin:
         self._last_result_rows = [(f"{affected} row(s) affected",)]
         self._last_result_row_count = 1
 
+        # Switch to single result mode (in case we were showing stacked results)
+        self._show_single_result_mode()
+
         self._replace_results_table(["Result"], [(f"{affected} row(s) affected",)])
         time_str = format_duration_ms(elapsed_ms)
         self.notify(f"Query executed: {affected} row(s) affected in {time_str}")
@@ -122,3 +128,74 @@ class QueryResultsMixin:
         """Display query error (called on main thread)."""
         # notify(severity="error") handles displaying the error in results via _show_error_in_results
         self.notify(f"Query error: {error_message}", severity="error")
+
+    def _display_multi_statement_results(
+        self: QueryMixinHost,
+        multi_result: Any,
+        elapsed_ms: float,
+    ) -> None:
+        """Display stacked results for multi-statement query."""
+        from sqlit.shared.ui.widgets_stacked_results import (
+            AUTO_COLLAPSE_THRESHOLD,
+            StackedResultsContainer,
+        )
+
+        # Get or create stacked results container
+        container = self._get_stacked_results_container()
+        container.clear_results()
+
+        # Determine if we should auto-collapse
+        auto_collapse = len(multi_result.results) > AUTO_COLLAPSE_THRESHOLD
+
+        # Add each result section
+        for i, stmt_result in enumerate(multi_result.results):
+            container.add_result_section(stmt_result, i, auto_collapse=auto_collapse)
+
+        # Show the stacked results container, hide single result table
+        self._show_stacked_results_mode()
+
+        # Update notification
+        time_str = format_duration_ms(elapsed_ms)
+        success_count = multi_result.successful_count
+        total = len(multi_result.results)
+
+        if multi_result.has_error:
+            error_idx = multi_result.error_index + 1
+            self.notify(
+                f"Executed {success_count}/{total} statements in {time_str} (error at #{error_idx})",
+                severity="error",
+            )
+        else:
+            self.notify(f"Executed {total} statements in {time_str}")
+
+    def _get_stacked_results_container(self: QueryMixinHost) -> Any:
+        """Get the stacked results container."""
+        from textual.css.query import NoMatches
+
+        from sqlit.shared.ui.widgets_stacked_results import StackedResultsContainer
+
+        try:
+            return self.query_one("#stacked-results", StackedResultsContainer)
+        except NoMatches:
+            # Container should exist in layout, but create if missing
+            container = StackedResultsContainer(id="stacked-results")
+            self.results_area.mount(container)
+            return container
+
+    def _show_stacked_results_mode(self: QueryMixinHost) -> None:
+        """Switch to stacked results mode (hide single table, show stacked container)."""
+        self.results_area.add_class("stacked-mode")
+        try:
+            stacked = self.query_one("#stacked-results")
+            stacked.add_class("active")
+        except Exception:
+            pass
+
+    def _show_single_result_mode(self: QueryMixinHost) -> None:
+        """Switch to single result mode (show single table, hide stacked container)."""
+        self.results_area.remove_class("stacked-mode")
+        try:
+            stacked = self.query_one("#stacked-results")
+            stacked.remove_class("active")
+        except Exception:
+            pass

@@ -94,7 +94,7 @@ class TestCredentialExtraction:
         creds = _get_container_credentials("postgresql", {})
         assert creds.user == "postgres"
         assert creds.password is None
-        assert creds.database == "postgres"
+        assert creds.database is None
 
     def test_mysql_root_password(self):
         """Test MySQL with root password."""
@@ -121,7 +121,7 @@ class TestCredentialExtraction:
         creds = _get_container_credentials("mssql", env_vars)
         assert creds.user == "sa"
         assert creds.password == "StrongP@ssw0rd"
-        assert creds.database == "master"
+        assert creds.database is None
 
     def test_mariadb_fallback_to_mysql_vars(self):
         """Test MariaDB falls back to MYSQL_ vars."""

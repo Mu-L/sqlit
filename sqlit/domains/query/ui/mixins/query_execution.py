@@ -151,6 +151,10 @@ class QueryExecutionMixin:
         import asyncio
         import time
 
+        from sqlit.domains.query.app.multi_statement import (
+            MultiStatementExecutor,
+            split_statements,
+        )
         from sqlit.domains.query.app.query_service import QueryResult, parse_use_statement
 
         provider = self.current_provider
@@ -194,22 +198,41 @@ class QueryExecutionMixin:
         executor = self._get_transaction_executor(config, provider)
         service = self._get_query_service(provider)
 
+        # Check if this is a multi-statement query
+        statements = split_statements(query)
+        is_multi_statement = len(statements) > 1
+
         try:
             start_time = time.perf_counter()
             max_rows = self.services.runtime.max_rows or MAX_FETCH_ROWS
-            result = await asyncio.to_thread(
-                executor.execute,
-                query,
-                max_rows,
-            )
-            elapsed_ms = (time.perf_counter() - start_time) * 1000
 
-            service._save_to_history(config.name, query)
+            if is_multi_statement:
+                # Multi-statement execution with stacked results
+                multi_executor = MultiStatementExecutor(executor)
+                multi_result = await asyncio.to_thread(
+                    multi_executor.execute,
+                    query,
+                    max_rows,
+                )
+                elapsed_ms = (time.perf_counter() - start_time) * 1000
 
-            if isinstance(result, QueryResult):
-                self._display_query_results(result.columns, result.rows, result.row_count, result.truncated, elapsed_ms)
+                service._save_to_history(config.name, query)
+                self._display_multi_statement_results(multi_result, elapsed_ms)
             else:
-                self._display_non_query_result(result.rows_affected, elapsed_ms)
+                # Single statement - existing behavior
+                result = await asyncio.to_thread(
+                    executor.execute,
+                    query,
+                    max_rows,
+                )
+                elapsed_ms = (time.perf_counter() - start_time) * 1000
+
+                service._save_to_history(config.name, query)
+
+                if isinstance(result, QueryResult):
+                    self._display_query_results(result.columns, result.rows, result.row_count, result.truncated, elapsed_ms)
+                else:
+                    self._display_non_query_result(result.rows_affected, elapsed_ms)
 
             if keep_insert_mode:
                 self._restore_insert_mode()

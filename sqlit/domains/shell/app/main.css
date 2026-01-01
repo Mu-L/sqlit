@@ -126,6 +126,19 @@
         display: none;
     }
 
+    /* Hide single results table when showing stacked multi-statement results */
+    #results-area.stacked-mode #results-table {
+        display: none;
+    }
+
+    #results-area.stacked-mode #results-filter {
+        display: none;
+    }
+
+    #results-area.stacked-mode #stacked-results {
+        display: block;
+    }
+
     /* FastDataTable header styling */
     DataTable > .datatable--header {
         background: $surface-lighten-1;

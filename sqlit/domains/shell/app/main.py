@@ -47,6 +47,7 @@ from sqlit.shared.ui.widgets import (
     SqlitDataTable,
     TreeFilterInput,
 )
+from sqlit.shared.ui.widgets_stacked_results import StackedResultsContainer
 
 if TYPE_CHECKING:
     from sqlit.domains.connections.app.session import ConnectionSession
@@ -395,6 +396,7 @@ class SSMSTUI(
                     with Container(id="results-area"):
                         yield ResultsFilterInput(id="results-filter")
                         yield Lazy(SqlitDataTable(id="results-table", zebra_stripes=True, show_header=False))
+                        yield StackedResultsContainer(id="stacked-results")
                         yield InlineValueView(id="value-view")
 
             yield Static("", id="idle-scheduler-bar")
