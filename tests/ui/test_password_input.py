@@ -2,13 +2,14 @@
 
 from __future__ import annotations
 
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 from unittest.mock import MagicMock
 
 import pytest
 from textual.widgets import Input
 
 from sqlit.domains.connections.providers.model import SchemaCapabilities
+from sqlit.domains.connections.providers.explorer_nodes import DefaultExplorerNodeProvider
 from sqlit.domains.connections.ui.screens.password_input import PasswordInputScreen
 from sqlit.shared.app.runtime import MockConfig, RuntimeConfig
 from tests.helpers import ConnectionConfig
@@ -20,6 +21,7 @@ from .mocks import build_test_services
 class MockProvider:
     capabilities: SchemaCapabilities
     schema_inspector: object | None = None
+    explorer_nodes: object = field(default_factory=DefaultExplorerNodeProvider)
 
     def post_connect_warnings(self, _config: ConnectionConfig) -> list[str]:
         return []

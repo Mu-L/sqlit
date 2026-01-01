@@ -154,6 +154,13 @@ class SSMSTUI(
         self._idle_scheduler: IdleScheduler | None = None
         self._startup_stamp("init_end")
 
+    @property
+    def current_adapter(self) -> Any | None:
+        """Compatibility alias for the active adapter."""
+        if self.current_provider is None:
+            return None
+        return self.current_provider.connection_factory
+
     def _get_focus_pane(self) -> str:
         """Infer which pane currently has focus."""
         focused = getattr(self, "focused", None)

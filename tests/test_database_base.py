@@ -190,7 +190,7 @@ class BaseDatabaseTests(DockerDiscoveryTests, ABC):
         This tests the async query path that the TUI uses, which is different
         from the CLI path tested by other tests.
         """
-        from sqlit.domains.connections.providers.registry import get_adapter
+        from sqlit.domains.connections.providers.catalog import get_provider
         from sqlit.domains.connections.store.connections import load_connections
         from sqlit.domains.query.app.cancellable import CancellableQuery
         from sqlit.domains.query.app.query_service import QueryResult
@@ -201,13 +201,13 @@ class BaseDatabaseTests(DockerDiscoveryTests, ABC):
         config = next((c for c in connections if c.name == connection_name), None)
         assert config is not None, f"Connection {connection_name} not found"
 
-        adapter = get_adapter(self.config.db_type)
+        provider = get_provider(self.config.db_type)
 
         # Test SELECT query through CancellableQuery
         query = CancellableQuery(
             sql="SELECT * FROM test_users ORDER BY id",
             config=config,
-            adapter=adapter,
+            provider=provider,
         )
         result = query.execute(max_rows=100)
 
@@ -220,7 +220,7 @@ class BaseDatabaseTests(DockerDiscoveryTests, ABC):
 
     def test_cancellable_query_insert(self, request):
         """Test CancellableQuery non-SELECT execution (used by TUI)."""
-        from sqlit.domains.connections.providers.registry import get_adapter
+        from sqlit.domains.connections.providers.catalog import get_provider
         from sqlit.domains.connections.store.connections import load_connections
         from sqlit.domains.query.app.cancellable import CancellableQuery
         from sqlit.domains.query.app.query_service import NonQueryResult
@@ -230,13 +230,13 @@ class BaseDatabaseTests(DockerDiscoveryTests, ABC):
         config = next((c for c in connections if c.name == connection_name), None)
         assert config is not None
 
-        adapter = get_adapter(self.config.db_type)
+        provider = get_provider(self.config.db_type)
 
         # Test INSERT through CancellableQuery
         query = CancellableQuery(
             sql="INSERT INTO test_users (id, name, email) VALUES (99, 'CancellableTest', 'cancel@test.com')",
             config=config,
-            adapter=adapter,
+            provider=provider,
         )
         result = query.execute()
 
@@ -346,7 +346,7 @@ class BaseDatabaseTests(DockerDiscoveryTests, ABC):
         with ConnectionSession.create(config, get_adapter) as session:
             result = service.execute(
                 connection=session.connection,
-                adapter=session.adapter,
+                executor=session.provider.query_executor,
                 query="SELECT * FROM test_users ORDER BY id",
                 config=config,
                 max_rows=100,

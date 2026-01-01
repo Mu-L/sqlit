@@ -13,6 +13,11 @@ from sqlit.domains.connections.providers.catalog import (
     iter_provider_schemas,
     register_provider,
 )
+from sqlit.domains.connections.providers.registry import (
+    get_adapter,
+    get_connection_schema,
+    requires_database_selection,
+)
 from sqlit.domains.connections.providers.docker import DockerCredentials, DockerDetector
 from sqlit.domains.connections.providers.driver import (
     ConfigurableDriverResolver,
@@ -61,6 +66,8 @@ __all__ = [
     "get_provider_schema",
     "iter_provider_schemas",
     "register_provider",
+    "get_adapter",
+    "get_connection_schema",
     "get_all_schemas",
     "get_db_type_for_scheme",
     "get_default_port",
@@ -73,5 +80,6 @@ __all__ = [
     "has_advanced_auth",
     "is_file_based",
     "requires_auth",
+    "requires_database_selection",
     "supports_ssh",
 ]

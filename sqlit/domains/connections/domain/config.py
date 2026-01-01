@@ -350,6 +350,164 @@ class ConnectionConfig:
             return self.endpoint
         return None
 
+    @property
+    def server(self) -> str:
+        endpoint = self.tcp_endpoint
+        return endpoint.host if endpoint else ""
+
+    @server.setter
+    def server(self, value: str) -> None:
+        endpoint = self.tcp_endpoint
+        if endpoint:
+            endpoint.host = value
+        else:
+            self.endpoint = TcpEndpoint(host=value)
+
+    @property
+    def port(self) -> str:
+        endpoint = self.tcp_endpoint
+        return endpoint.port if endpoint else ""
+
+    @port.setter
+    def port(self, value: str) -> None:
+        endpoint = self.tcp_endpoint
+        if endpoint:
+            endpoint.port = value
+        else:
+            self.endpoint = TcpEndpoint(port=value)
+
+    @property
+    def database(self) -> str:
+        endpoint = self.tcp_endpoint
+        return endpoint.database if endpoint else ""
+
+    @database.setter
+    def database(self, value: str) -> None:
+        endpoint = self.tcp_endpoint
+        if endpoint:
+            endpoint.database = value
+        else:
+            self.endpoint = TcpEndpoint(database=value)
+
+    @property
+    def username(self) -> str:
+        endpoint = self.tcp_endpoint
+        return endpoint.username if endpoint else ""
+
+    @username.setter
+    def username(self, value: str) -> None:
+        endpoint = self.tcp_endpoint
+        if endpoint:
+            endpoint.username = value
+        else:
+            self.endpoint = TcpEndpoint(username=value)
+
+    @property
+    def password(self) -> str | None:
+        endpoint = self.tcp_endpoint
+        return endpoint.password if endpoint else None
+
+    @password.setter
+    def password(self, value: str | None) -> None:
+        endpoint = self.tcp_endpoint
+        if endpoint:
+            endpoint.password = value
+        else:
+            self.endpoint = TcpEndpoint(password=value)
+
+    @property
+    def file_path(self) -> str:
+        endpoint = self.file_endpoint
+        return endpoint.path if endpoint else ""
+
+    @file_path.setter
+    def file_path(self, value: str) -> None:
+        endpoint = self.file_endpoint
+        if endpoint:
+            endpoint.path = value
+        else:
+            self.endpoint = FileEndpoint(path=value)
+
+    @property
+    def ssh_enabled(self) -> bool:
+        return bool(self.tunnel and self.tunnel.enabled)
+
+    @ssh_enabled.setter
+    def ssh_enabled(self, value: bool) -> None:
+        if value:
+            if self.tunnel is None:
+                self.tunnel = TunnelConfig(enabled=True)
+            else:
+                self.tunnel.enabled = True
+        elif self.tunnel:
+            self.tunnel.enabled = False
+
+    @property
+    def ssh_host(self) -> str:
+        return self.tunnel.host if self.tunnel else ""
+
+    @ssh_host.setter
+    def ssh_host(self, value: str) -> None:
+        if self.tunnel is None:
+            self.tunnel = TunnelConfig(enabled=True, host=value)
+        else:
+            self.tunnel.host = value
+
+    @property
+    def ssh_port(self) -> str:
+        return self.tunnel.port if self.tunnel else "22"
+
+    @ssh_port.setter
+    def ssh_port(self, value: str) -> None:
+        if self.tunnel is None:
+            self.tunnel = TunnelConfig(enabled=True, port=value)
+        else:
+            self.tunnel.port = value
+
+    @property
+    def ssh_username(self) -> str:
+        return self.tunnel.username if self.tunnel else ""
+
+    @ssh_username.setter
+    def ssh_username(self, value: str) -> None:
+        if self.tunnel is None:
+            self.tunnel = TunnelConfig(enabled=True, username=value)
+        else:
+            self.tunnel.username = value
+
+    @property
+    def ssh_auth_type(self) -> str:
+        return self.tunnel.auth_type if self.tunnel else "key"
+
+    @ssh_auth_type.setter
+    def ssh_auth_type(self, value: str) -> None:
+        if self.tunnel is None:
+            self.tunnel = TunnelConfig(enabled=True, auth_type=value)
+        else:
+            self.tunnel.auth_type = value
+
+    @property
+    def ssh_password(self) -> str | None:
+        return self.tunnel.password if self.tunnel else None
+
+    @ssh_password.setter
+    def ssh_password(self, value: str | None) -> None:
+        if self.tunnel is None:
+            self.tunnel = TunnelConfig(enabled=True, password=value)
+        else:
+            self.tunnel.password = value
+
+    @property
+    def ssh_key_path(self) -> str:
+        return self.tunnel.key_path if self.tunnel else ""
+
+    @ssh_key_path.setter
+    def ssh_key_path(self, value: str) -> None:
+        if self.tunnel is None:
+            self.tunnel = TunnelConfig(enabled=True, key_path=value)
+        else:
+            self.tunnel.key_path = value
+
 
 SOURCE_EMOJIS: dict[str, str] = {
     "docker": "🐳 ",

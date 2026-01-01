@@ -146,6 +146,14 @@ SQL_FUNCTIONS = {
         "ARRAY_AGG",
         "LISTAGG",
     ],
+    "conditional": [
+        "COALESCE",
+        "NULLIF",
+        "IFNULL",
+        "NVL",
+        "NVL2",
+        "ISNULL",
+    ],
     "string": [
         "CONCAT",
         "SUBSTRING",

@@ -10,34 +10,50 @@ if TYPE_CHECKING:
     from sqlit.domains.connections.domain.config import ConnectionConfig
 
 
+def _get_provider_or_none(db_type: str):
+    try:
+        return get_provider(db_type)
+    except Exception:
+        return None
+
+
 def get_display_name(db_type: str) -> str:
-    return get_provider(db_type).metadata.display_name
+    provider = _get_provider_or_none(db_type)
+    return provider.metadata.display_name if provider else db_type
 
 
 def get_badge_label(db_type: str) -> str:
-    return get_provider(db_type).metadata.badge_label
+    provider = _get_provider_or_none(db_type)
+    return provider.metadata.badge_label if provider else db_type
 
 
 def get_default_port(db_type: str) -> str:
-    return get_provider(db_type).metadata.default_port
+    provider = _get_provider_or_none(db_type)
+    return provider.metadata.default_port if provider else "1433"
 
 
 def supports_ssh(db_type: str) -> bool:
-    return get_provider(db_type).metadata.supports_ssh
+    provider = _get_provider_or_none(db_type)
+    return provider.metadata.supports_ssh if provider else False
 
 
 def is_file_based(db_type: str) -> bool:
-    return get_provider(db_type).metadata.is_file_based
+    provider = _get_provider_or_none(db_type)
+    return provider.metadata.is_file_based if provider else False
 
 
 def has_advanced_auth(db_type: str) -> bool:
-    return get_provider(db_type).metadata.has_advanced_auth
+    provider = _get_provider_or_none(db_type)
+    return provider.metadata.has_advanced_auth if provider else False
 
 
 def requires_auth(db_type: str) -> bool:
-    return get_provider(db_type).metadata.requires_auth
+    provider = _get_provider_or_none(db_type)
+    return provider.metadata.requires_auth if provider else True
 
 
 def get_connection_display_info(config: ConnectionConfig) -> str:
-    provider = get_provider(config.db_type)
+    provider = _get_provider_or_none(config.db_type)
+    if provider is None:
+        return config.name
     return provider.display_info(config)

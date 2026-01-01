@@ -59,7 +59,7 @@ class TestMSSQLDatetimeOffset:
     """Integration tests for datetimeoffset column support."""
 
     @pytest.fixture(autouse=True)
-    def skip_if_unavailable(self):
+    def skip_if_unavailable(self, mssql_adapter, mssql_config):
         """Skip tests if SQL Server is not available."""
         if not is_mssql_available():
             pytest.skip("SQL Server is not available")
@@ -67,6 +67,11 @@ class TestMSSQLDatetimeOffset:
 
         if importlib.util.find_spec("mssql_python") is None:
             pytest.skip("mssql-python is not installed")
+        try:
+            conn = mssql_adapter.connect(mssql_config)
+            conn.close()
+        except Exception as exc:
+            pytest.skip(f"SQL Server credentials not available: {exc}")
 
     def test_query_datetimeoffset_column(self, mssql_adapter, mssql_config):
         """Test that querying a table with datetimeoffset columns works."""

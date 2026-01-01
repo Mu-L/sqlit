@@ -16,7 +16,11 @@ def normalize_connection_config(config: ConnectionConfig) -> ConnectionConfig:
 
 
 def validate_database_required(config: Any, database: str | None) -> None:
-    provider = get_provider(config.db_type)
+    db_type = getattr(config, "db_type", config)
+    try:
+        provider = get_provider(str(db_type))
+    except Exception:
+        return
     if provider.capabilities.supports_cross_database_queries:
         return
     if database:

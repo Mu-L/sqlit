@@ -407,6 +407,16 @@ class ConnectionPickerScreen(ModalScreen):
         except Exception:
             return
 
+        # Preserve current selection before clearing
+        previous_id: str | None = None
+        if option_list.highlighted is not None:
+            try:
+                prev_option = option_list.get_option_at_index(option_list.highlighted)
+                if prev_option:
+                    previous_id = prev_option.id
+            except Exception:
+                pass
+
         option_list.clear_options()
         if self._current_tab == TAB_CONNECTIONS:
             options = build_connections_options(self.connections, self.search_text)
@@ -424,6 +434,24 @@ class ConnectionPickerScreen(ModalScreen):
         for opt in options:
             option_list.add_option(opt)
 
+        self._restore_selection(previous_id)
+
+    def _restore_selection(self, previous_id: str | None) -> None:
+        """Restore selection to previous option ID, or fall back to first selectable."""
+        try:
+            option_list = self.query_one("#picker-list", OptionList)
+        except Exception:
+            return
+
+        # Try to restore previous selection by ID
+        if previous_id:
+            for i in range(option_list.option_count):
+                option = option_list.get_option_at_index(i)
+                if option and option.id == previous_id and not option.disabled:
+                    option_list.highlighted = i
+                    return
+
+        # Fall back to first selectable
         self._select_first_selectable()
 
     def _select_first_selectable(self) -> None:

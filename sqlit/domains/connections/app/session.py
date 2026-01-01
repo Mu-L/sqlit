@@ -7,7 +7,7 @@ of database connections and SSH tunnels, ensuring proper cleanup.
 from __future__ import annotations
 
 from collections.abc import Callable
-from typing import TYPE_CHECKING, Any
+from typing import TYPE_CHECKING, Any, cast
 
 if TYPE_CHECKING:
     from sqlit.domains.connections.domain.config import ConnectionConfig
@@ -88,8 +88,11 @@ class ConnectionSession:
             Any database-specific connection errors.
         """
         from sqlit.domains.connections.app.tunnel import create_ssh_tunnel
+        from sqlit.domains.connections.providers.adapter_provider import build_adapter_provider
         from sqlit.domains.connections.providers.catalog import get_provider
+        from sqlit.domains.connections.providers.catalog import get_provider_schema, get_provider_spec
         from sqlit.domains.connections.providers.config_service import normalize_connection_config
+        from sqlit.domains.connections.providers.model import DatabaseProvider
 
         get_provider_fn = provider_factory or get_provider
         create_tunnel_fn = tunnel_factory or create_ssh_tunnel
@@ -105,7 +108,14 @@ class ConnectionSession:
             connect_config = config
 
         # Get provider and connect
-        provider = get_provider_fn(config.db_type)
+        provider_candidate = get_provider_fn(config.db_type)
+        if isinstance(provider_candidate, DatabaseProvider) or hasattr(provider_candidate, "connection_factory"):
+            provider = cast(DatabaseProvider, provider_candidate)
+        else:
+            adapter = provider_candidate
+            spec = get_provider_spec(config.db_type)
+            schema = get_provider_schema(config.db_type)
+            provider = build_adapter_provider(spec, schema, adapter)
         connection = provider.connection_factory.connect(connect_config)
         try:
             provider.post_connect(connection, config)
@@ -123,6 +133,11 @@ class ConnectionSession:
     def provider(self) -> DatabaseProvider:
         """Get the database provider."""
         return self._provider
+
+    @property
+    def adapter(self) -> Any:
+        """Compatibility alias for the underlying adapter."""
+        return self._provider.connection_factory
 
     @property
     def config(self) -> ConnectionConfig:

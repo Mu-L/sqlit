@@ -216,6 +216,12 @@ class DatabaseAdapter(ABC):
         cursor.execute(self.test_query)
         cursor.fetchone()
 
+    def disconnect(self, conn: Any) -> None:
+        """Close a connection if the driver exposes a close method."""
+        close_fn = getattr(conn, "close", None)
+        if callable(close_fn):
+            close_fn()
+
     def normalize_config(self, config: ConnectionConfig) -> ConnectionConfig:
         """Normalize provider-specific config defaults."""
         return config

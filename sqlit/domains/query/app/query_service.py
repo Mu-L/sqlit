@@ -114,7 +114,11 @@ class QueryService:
         analyzer: Query analyzer strategy for selecting execution behavior.
     """
 
-    def __init__(self, history_store: HistoryStoreProtocol, analyzer: QueryAnalyzer | None = None):
+    def __init__(self, history_store: HistoryStoreProtocol | None = None, analyzer: QueryAnalyzer | None = None):
+        if history_store is None:
+            from sqlit.domains.query.store.memory import InMemoryHistoryStore
+
+            history_store = InMemoryHistoryStore()
         self._history_store = history_store
         self._analyzer = analyzer or KeywordQueryAnalyzer()
 

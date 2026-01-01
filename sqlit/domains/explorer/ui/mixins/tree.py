@@ -538,6 +538,11 @@ class TreeMixin(TreeSchemaMixin, TreeLabelMixin):
         # Clear column cache too so columns are re-fetched
         if hasattr(self, "_schema_cache") and "columns" in self._schema_cache:
             self._schema_cache["columns"] = {}
+        # Clear loading nodes set to allow re-loading
+        if hasattr(self, "_loading_nodes"):
+            self._loading_nodes.clear()
+        # Force schema service to be recreated on next access
+        self._schema_service = None
         self.refresh_tree()
         self.notify("Refreshed")
 

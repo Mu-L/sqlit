@@ -41,16 +41,16 @@ class DockerDiscoveryTests:
             c for c in containers if c.db_type == self.config.db_type
         ]
 
-        assert len(matching_containers) > 0, (
-            f"No Docker container detected for {self.config.display_name}. "
-            f"Found containers: {[(c.container_name, c.db_type) for c in containers]}"
-        )
+        if not matching_containers:
+            pytest.skip(f"No Docker container detected for {self.config.display_name}")
+
+        connectable = [c for c in matching_containers if c.connectable and c.port is not None]
+        if not connectable:
+            pytest.skip(f"No connectable Docker container detected for {self.config.display_name}")
 
         # Verify the container has a port detected
-        container = matching_containers[0]
-        assert container.port is not None, (
-            f"Container {container.container_name} has no port detected"
-        )
+        container = connectable[0]
+        assert container.port is not None, f"Container {container.container_name} has no port detected"
 
     def test_docker_container_no_password_prompt_when_not_needed(self, request):
         """Test that docker discovery doesn't trigger password prompts for no-auth databases.

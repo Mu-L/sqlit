@@ -18,6 +18,12 @@ from tests.integration.docker_detect.database_configs import (
     DatabaseTestConfig,
 )
 
+_TCP_ONLY_HOSTS = {"mysql", "mariadb"}
+
+
+def _expected_host(db_type: str) -> str:
+    return "127.0.0.1" if db_type in _TCP_ONLY_HOSTS else "localhost"
+
 
 def is_docker_available() -> bool:
     """Check if Docker is available."""
@@ -141,7 +147,7 @@ class TestAllDatabases:
         assert test_container.db_type == config.db_type, (
             f"Expected db_type '{config.db_type}', got '{test_container.db_type}'"
         )
-        assert test_container.host == "localhost"
+        assert test_container.host == _expected_host(config.db_type)
         assert test_container.port is not None, "Port should be detected"
         assert test_container.connectable is True
 
@@ -185,10 +191,11 @@ class TestAllDatabases:
         # Verify ConnectionConfig properties
         assert conn_config.name == f"sqlit-test-{config.name}"
         assert conn_config.db_type == config.db_type
+        expected_host = _expected_host(config.db_type)
         if config.db_type == "turso":
-            assert conn_config.server.startswith("http://localhost:")
+            assert conn_config.server.startswith(f"http://{expected_host}:")
         else:
-            assert conn_config.server == "localhost"
+            assert conn_config.server == expected_host
         if config.db_type == "turso":
             assert conn_config.port == ""
             assert conn_config.server.startswith("http://")

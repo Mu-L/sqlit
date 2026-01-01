@@ -34,6 +34,10 @@ def is_container_saved(
         if conn.name == container.container_name:
             return True
 
+        # Only match on technical details if this is a docker-sourced connection
+        if conn.source != "docker":
+            continue
+
         endpoint = conn.tcp_endpoint
         if (
             endpoint
@@ -56,6 +60,10 @@ def find_matching_saved_connection(
     for conn in connections:
         if conn.name == container.container_name:
             return conn
+
+        # Only match on technical details if this is a docker-sourced connection
+        if conn.source != "docker":
+            continue
 
         endpoint = conn.tcp_endpoint
         if (

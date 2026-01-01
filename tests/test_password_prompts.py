@@ -402,8 +402,8 @@ class TestPasswordPromptIntegration:
             ssh_password=None,
         )
 
-        assert _needs_db_password(config)
-        assert _needs_ssh_password(config)
+        assert needs_db_password(config)
+        assert needs_ssh_password(config)
 
         with patch("sqlit.domains.connections.cli.prompts.getpass.getpass") as mock_getpass:
             mock_getpass.side_effect = ["ssh_password", "db_password"]
@@ -428,8 +428,8 @@ class TestPasswordPromptIntegration:
             ssh_password="",  # Explicitly empty
         )
 
-        assert not _needs_db_password(config)
-        assert not _needs_ssh_password(config)
+        assert not needs_db_password(config)
+        assert not needs_ssh_password(config)
 
         with patch("sqlit.domains.connections.cli.prompts.getpass.getpass") as mock_getpass:
             result = prompt_for_password(config)

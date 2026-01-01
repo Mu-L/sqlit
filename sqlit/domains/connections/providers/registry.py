@@ -5,6 +5,9 @@ Prefer sqlit.domains.connections.providers.catalog/metadata/validation.
 
 from __future__ import annotations
 
+from typing import cast
+
+from sqlit.domains.connections.providers.adapters.base import DatabaseAdapter
 from sqlit.domains.connections.providers.catalog import (
     get_all_schemas,
     get_db_type_for_scheme,
@@ -32,8 +35,31 @@ from sqlit.domains.connections.providers.metadata import (
     supports_ssh,
 )
 
+
+def get_adapter(db_type: str) -> DatabaseAdapter:
+    """Return the adapter instance for a provider db_type."""
+    provider = get_provider(db_type)
+    return cast(DatabaseAdapter, provider.connection_factory)
+
+
+def get_connection_schema(db_type: str):
+    """Compatibility alias for provider schemas."""
+    return get_provider_schema(db_type)
+
+
+def requires_database_selection(db_type: str) -> bool:
+    """Return True when a database must be specified to query."""
+    try:
+        provider = get_provider(db_type)
+    except Exception:
+        return False
+    return not provider.capabilities.supports_cross_database_queries
+
+
 __all__ = [
     "get_all_schemas",
+    "get_adapter",
+    "get_connection_schema",
     "get_db_type_for_scheme",
     "get_provider",
     "get_provider_schema",
@@ -50,6 +76,7 @@ __all__ = [
     "has_advanced_auth",
     "is_file_based",
     "requires_auth",
+    "requires_database_selection",
     "supports_ssh",
     "normalize_connection_config",
     "validate_database_required",

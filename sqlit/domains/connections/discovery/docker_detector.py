@@ -385,4 +385,9 @@ def container_to_connection_config(container: DetectedContainer) -> ConnectionCo
     normalize = getattr(provider.connection_factory, "normalize_docker_connection", None)
     if callable(normalize):
         config = cast(ConnectionConfig, normalize(config))
-    return normalize_connection_config(config)
+    normalized = provider.config_validator.normalize(config)
+    try:
+        provider.config_validator.validate(normalized)
+    except ValueError:
+        pass
+    return normalized
