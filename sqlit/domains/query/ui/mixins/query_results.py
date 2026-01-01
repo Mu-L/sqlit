@@ -107,7 +107,10 @@ class QueryResultsMixin:
 
         time_str = format_duration_ms(elapsed_ms)
         if truncated:
-            self.notify(f"Query returned {row_count}+ rows in {time_str} (truncated)", severity="warning")
+            self.notify(
+                f"Query returned {row_count}+ rows in {time_str} (truncated)",
+                severity="warning",
+            )
         else:
             self.notify(f"Query returned {row_count} rows in {time_str}")
 

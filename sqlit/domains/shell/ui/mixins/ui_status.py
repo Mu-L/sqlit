@@ -235,7 +235,7 @@ class UIStatusMixin:
             if gap > 2:
                 status.update(f"{left_content}{' ' * gap}{notif_str}")
             else:
-                status.update(f"{left_content}  {notif_str}")
+                status.update(notif_str)
         elif right_str:
             import re
 

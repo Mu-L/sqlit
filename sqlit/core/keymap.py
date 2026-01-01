@@ -229,8 +229,6 @@ class DefaultKeymapProvider(KeymapProvider):
             ActionKeyDef("slash", "tree_filter", "tree"),
             ActionKeyDef("escape", "tree_filter_close", "tree_filter"),
             ActionKeyDef("enter", "tree_filter_accept", "tree_filter"),
-            ActionKeyDef("n", "tree_filter_next", "tree_filter"),
-            ActionKeyDef("N", "tree_filter_prev", "tree_filter"),
             # Global
             ActionKeyDef("space", "leader_key", "global", priority=True),
             ActionKeyDef("ctrl+q", "quit", "global"),
