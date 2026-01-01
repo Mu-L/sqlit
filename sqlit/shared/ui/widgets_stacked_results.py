@@ -105,6 +105,8 @@ class ResultSection(Collapsible):
         self.statement = statement
         self.index = index
         self.is_error = is_error
+        self.result_columns: list[str] = []
+        self.result_rows: list[tuple] = []
         self._content = content
         if is_error:
             self.add_class("error")
@@ -163,10 +165,13 @@ class StackedResultsContainer(VerticalScroll):
 
         # Build the content widget first
         content: SqlitDataTable | NonQueryDisplay | ErrorDisplay
+        result_columns: list[str] = []
+        result_rows: list[tuple] = []
         if stmt_result.success and stmt_result.result is not None:
             if isinstance(stmt_result.result, QueryResult):
                 # SELECT result - build a DataTable
-                content = self._build_result_table(stmt_result.result, index)
+                result_columns, result_rows = self._get_result_table_data(stmt_result.result)
+                content = self._build_result_table_from_rows(result_columns, result_rows, index)
             else:
                 # Non-query result (INSERT/UPDATE/DELETE)
                 content = NonQueryDisplay(stmt_result.result.rows_affected)
@@ -182,12 +187,14 @@ class StackedResultsContainer(VerticalScroll):
             is_error=not stmt_result.success,
             collapsed=auto_collapse,
         )
+        section.result_columns = result_columns
+        section.result_rows = result_rows
 
         self.mount(section)
         self._section_count += 1
 
-    def _build_result_table(self, result: QueryResult, index: int) -> SqlitDataTable:
-        """Build a DataTable for a QueryResult."""
+    def _get_result_table_data(self, result: QueryResult) -> tuple[list[str], list[tuple]]:
+        """Normalize QueryResult into columns/rows for display."""
         columns = result.columns or ["Result"]
         rows = result.rows or []
 
@@ -195,11 +202,16 @@ class StackedResultsContainer(VerticalScroll):
         if len(rows) > MAX_ROWS_PER_RESULT:
             rows = rows[:MAX_ROWS_PER_RESULT]
 
-        # Build PyArrow table
         if not columns:
             columns = ["(empty)"]
             rows = []
 
+        return columns, rows
+
+    def _build_result_table_from_rows(
+        self, columns: list[str], rows: list[tuple], index: int
+    ) -> SqlitDataTable:
+        """Build a DataTable for a QueryResult."""
         # Convert rows to column-oriented format
         column_data: dict[str, list[Any]] = {col: [] for col in columns}
         for row in rows:

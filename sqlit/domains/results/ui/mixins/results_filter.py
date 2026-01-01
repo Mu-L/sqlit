@@ -8,6 +8,7 @@ from rich.markup import escape as escape_markup
 
 from sqlit.shared.core.utils import fuzzy_match, highlight_matches
 from sqlit.shared.ui.protocols import ResultsFilterMixinHost
+from sqlit.shared.ui.widgets import SqlitDataTable
 
 if TYPE_CHECKING:
     pass
@@ -24,11 +25,15 @@ class ResultsFilterMixin:
     _results_filter_text: str = ""
     _results_filter_matches: list[int] = []  # Row indices that match
     _results_filter_match_index: int = 0
+    _results_filter_original_columns: list[str] = []
     _results_filter_original_rows: list[tuple] = []  # Store original rows for restore
     _results_filter_matching_rows: list[tuple] = []  # Current filtered rows
     _results_filter_fuzzy: bool = False  # Whether fuzzy mode is active
     _results_filter_debounce_timer: Any = None  # Timer for debounced updates
     _results_filter_pending_update: bool = False  # Whether an update is pending
+    _results_filter_stacked: bool = False
+    _results_filter_target_section: Any | None = None
+    _results_filter_target_table: Any | None = None
 
     # Maximum matches to display (performance optimization)
     MAX_FILTER_MATCHES = 5000
@@ -49,22 +54,49 @@ class ResultsFilterMixin:
 
     def action_results_filter(self: ResultsFilterMixinHost) -> None:
         """Open the results filter."""
+        self._results_filter_stacked = False
+        self._results_filter_target_section = None
+        self._results_filter_target_table = None
+        self._results_filter_original_columns = []
+
         if not self.results_table.has_focus:
             self.results_table.focus()
 
-        # Check if there are results to filter
-        if not self._last_result_rows:
-            self.notify("No results to filter", severity="warning")
-            return
+        if self.results_area.has_class("stacked-mode"):
+            section, table = self._get_active_stacked_results_target()
+            if section is None or table is None:
+                self.notify("No results to filter", severity="warning")
+                return
+            columns = list(getattr(section, "result_columns", []))
+            rows = list(getattr(section, "result_rows", []))
+            if not columns or not rows:
+                self.notify("No results to filter", severity="warning")
+                return
+            self._results_filter_stacked = True
+            self._results_filter_target_section = section
+            self._results_filter_target_table = table
+            self._results_filter_original_columns = columns
+            self._results_filter_original_rows = rows
+            self._results_filter_matching_rows = list(rows)
+            self.results_area.add_class("results-filter-active")
+            try:
+                table.focus()
+            except Exception:
+                pass
+        else:
+            # Check if there are results to filter
+            if not self._last_result_rows:
+                self.notify("No results to filter", severity="warning")
+                return
+            self._results_filter_original_columns = list(self._last_result_columns)
+            self._results_filter_original_rows = list(self._last_result_rows)
+            # Initially all rows match (no filter applied)
+            self._results_filter_matching_rows = list(self._last_result_rows)
 
         self._results_filter_visible = True
         self._results_filter_text = ""
         self._results_filter_matches = []
         self._results_filter_match_index = 0
-        # Store original rows for restoration
-        self._results_filter_original_rows = list(self._last_result_rows)
-        # Initially all rows match (no filter applied)
-        self._results_filter_matching_rows = list(self._last_result_rows)
 
         self.results_filter_input.show()
         # Just update the filter display, table already has the data
@@ -78,12 +110,19 @@ class ResultsFilterMixin:
         self._results_filter_text = ""
         self.results_filter_input.hide()
 
-        # Restore original data
-        if self._results_filter_original_rows:
-            self._replace_results_table(self._last_result_columns, self._results_filter_original_rows)
-            self._last_result_rows = list(self._results_filter_original_rows)
+        if self._results_filter_stacked:
+            self.results_area.remove_class("results-filter-active")
+            self._restore_results_table()
+        else:
+            # Restore original data
+            if self._results_filter_original_rows:
+                self._replace_results_table(self._last_result_columns, self._results_filter_original_rows)
+                self._last_result_rows = list(self._results_filter_original_rows)
 
         self._update_footer_bindings()
+        self._results_filter_stacked = False
+        self._results_filter_target_section = None
+        self._results_filter_target_table = None
 
     def action_results_filter_accept(self: ResultsFilterMixinHost) -> None:
         """Accept current filter selection and close, keeping filtered view."""
@@ -91,10 +130,18 @@ class ResultsFilterMixin:
         self._results_filter_text = ""
         self.results_filter_input.hide()
 
-        # Update stored rows to the filtered data
-        self._last_result_rows = list(self._results_filter_matching_rows)
+        if self._results_filter_stacked:
+            self.results_area.remove_class("results-filter-active")
+            if self._results_filter_target_section is not None:
+                self._results_filter_target_section.result_rows = list(self._results_filter_matching_rows)
+        else:
+            # Update stored rows to the filtered data
+            self._last_result_rows = list(self._results_filter_matching_rows)
 
         self._update_footer_bindings()
+        self._results_filter_stacked = False
+        self._results_filter_target_section = None
+        self._results_filter_target_table = None
 
     def action_results_filter_next(self: ResultsFilterMixinHost) -> None:
         """Move to next filter match."""
@@ -118,7 +165,11 @@ class ResultsFilterMixin:
         """Jump to the current match in the results table."""
         if not self._results_filter_matches:
             return
-        table = self.results_table
+        table = (
+            self._results_filter_target_table
+            if self._results_filter_stacked and self._results_filter_target_table is not None
+            else self.results_table
+        )
         # The match index corresponds to row in the filtered table
         row_idx = self._results_filter_match_index
         if row_idx < table.row_count:
@@ -319,7 +370,12 @@ class ResultsFilterMixin:
             highlighted_rows.append(tuple(highlighted_row))
 
         # Update the table with filtered results (markup already applied)
-        self._replace_results_table_raw(self._last_result_columns, highlighted_rows)
+        columns = (
+            self._results_filter_original_columns
+            if self._results_filter_stacked
+            else self._last_result_columns
+        )
+        self._replace_results_table_raw_for_filter(columns, highlighted_rows)
 
     def _highlight_substring(self: ResultsFilterMixinHost, text: str, search_lower: str) -> str:
         """Highlight substring matches in text (case-insensitive)."""
@@ -352,8 +408,125 @@ class ResultsFilterMixin:
         if not self._results_filter_original_rows:
             return
 
-        # Use _replace_results_table which handles escaping
-        self._replace_results_table(self._last_result_columns, self._results_filter_original_rows)
+        columns = (
+            self._results_filter_original_columns
+            if self._results_filter_stacked
+            else self._last_result_columns
+        )
 
-        # Update stored rows to match original
-        self._last_result_rows = list(self._results_filter_original_rows)
+        # Use _replace_results_table which handles escaping
+        self._replace_results_table_for_filter(columns, self._results_filter_original_rows)
+
+        if self._results_filter_stacked and self._results_filter_target_section is not None:
+            self._results_filter_target_section.result_rows = list(self._results_filter_original_rows)
+        else:
+            # Update stored rows to match original
+            self._last_result_rows = list(self._results_filter_original_rows)
+
+    def _replace_results_table_raw_for_filter(
+        self: ResultsFilterMixinHost, columns: list[str], rows: list[tuple]
+    ) -> None:
+        if self._results_filter_stacked:
+            self._replace_results_section_table(columns, rows, escape=False)
+        else:
+            self._replace_results_table_raw(columns, rows)
+
+    def _replace_results_table_for_filter(
+        self: ResultsFilterMixinHost, columns: list[str], rows: list[tuple]
+    ) -> None:
+        if self._results_filter_stacked:
+            self._replace_results_section_table(columns, rows, escape=True)
+        else:
+            self._replace_results_table(columns, rows)
+
+    def _get_active_stacked_results_target(
+        self: ResultsFilterMixinHost,
+    ) -> tuple[Any | None, SqlitDataTable | None]:
+        from sqlit.shared.ui.widgets_stacked_results import ResultSection, StackedResultsContainer
+
+        try:
+            container = self.query_one("#stacked-results", StackedResultsContainer)
+        except Exception:
+            return None, None
+
+        if not container.has_class("active"):
+            return None, None
+
+        focused_table = next(
+            (table for table in container.query(SqlitDataTable) if table.has_focus),
+            None,
+        )
+        if focused_table is not None:
+            active_section = self._find_results_section(focused_table)
+            return active_section, focused_table
+
+        sections = list(container.query(ResultSection))
+        if not sections:
+            return None, None
+
+        active_section = next((s for s in sections if not s.collapsed), sections[0])
+        if active_section.collapsed:
+            active_section.collapsed = False
+            active_section.scroll_visible()
+
+        try:
+            table = active_section.query_one(SqlitDataTable)
+        except Exception:
+            table = None
+
+        return active_section, table
+
+    def _find_results_section(self: ResultsFilterMixinHost, widget: Any) -> Any | None:
+        """Find the ResultSection ancestor for a widget."""
+        from sqlit.shared.ui.widgets_stacked_results import ResultSection
+
+        current = widget
+        while current is not None:
+            if isinstance(current, ResultSection):
+                return current
+            current = getattr(current, "parent", None)
+        return None
+
+    def _replace_results_section_table(
+        self: ResultsFilterMixinHost, columns: list[str], rows: list[tuple], *, escape: bool
+    ) -> None:
+        section = self._results_filter_target_section
+        table = self._results_filter_target_table
+        if section is None or table is None:
+            return
+
+        new_table = self._build_results_section_table(columns, rows, escape=escape)
+        section.mount(new_table, after=table)
+        table.remove()
+        self._results_filter_target_table = new_table
+
+    def _build_results_section_table(
+        self: ResultsFilterMixinHost, columns: list[str], rows: list[tuple], *, escape: bool
+    ) -> SqlitDataTable:
+        import pyarrow as pa
+        from textual_fastdatatable import ArrowBackend
+
+        if not columns:
+            columns = ["(empty)"]
+            rows = []
+
+        column_data: dict[str, list[Any]] = {col: [] for col in columns}
+        for row in rows:
+            for i, col in enumerate(columns):
+                val = row[i] if i < len(row) else None
+                if val is None:
+                    cell = "NULL"
+                else:
+                    cell = escape_markup(str(val)) if escape else str(val)
+                column_data[col].append(cell)
+
+        arrow_table = pa.table(column_data)
+        backend = ArrowBackend(arrow_table)
+        table_height = min(1 + len(rows), 15)
+
+        table = SqlitDataTable(
+            zebra_stripes=True,
+            backend=backend,
+        )
+        table.styles.height = table_height
+        return table

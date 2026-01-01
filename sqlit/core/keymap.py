@@ -281,6 +281,8 @@ class DefaultKeymapProvider(KeymapProvider):
             ActionKeyDef("j", "results_cursor_down", "results"),
             ActionKeyDef("k", "results_cursor_up", "results"),
             ActionKeyDef("l", "results_cursor_right", "results"),
+            ActionKeyDef("tab", "next_result_section", "results"),
+            ActionKeyDef("shift+tab", "prev_result_section", "results"),
             ActionKeyDef("right_square_bracket", "next_result_section", "results"),
             ActionKeyDef("left_square_bracket", "prev_result_section", "results"),
             ActionKeyDef("z", "toggle_result_section", "results"),

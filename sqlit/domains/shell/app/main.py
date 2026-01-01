@@ -199,6 +199,18 @@ class SSMSTUI(
         last_result_is_error = self._last_result_columns == ["Error"]
         current_connection_name = self.current_config.name if self.current_config else None
         has_results = bool(self._last_result_columns) and bool(self._last_result_rows)
+        stacked_result_count = 0
+        if hasattr(self, "results_area"):
+            try:
+                if self.results_area.has_class("stacked-mode"):
+                    from sqlit.shared.ui.widgets_stacked_results import StackedResultsContainer
+
+                    container = self.query_one("#stacked-results", StackedResultsContainer)
+                    stacked_result_count = container.section_count
+                    if not has_results:
+                        has_results = stacked_result_count > 0
+            except Exception:
+                pass
 
         # Compute modal_open dynamically from screen stack for accurate state
         modal_open = any(isinstance(screen, ModalScreen) for screen in self.screen_stack)
@@ -220,6 +232,7 @@ class SSMSTUI(
             tree_node_connection_name=tree_node_connection_name,
             last_result_is_error=last_result_is_error,
             has_results=has_results,
+            stacked_result_count=stacked_result_count,
         )
 
     def on_key(self, event: Key) -> None:

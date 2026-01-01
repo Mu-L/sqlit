@@ -140,6 +140,10 @@
         display: none;
     }
 
+    #results-area.stacked-mode.results-filter-active #results-filter {
+        display: block;
+    }
+
     #results-area.stacked-mode #stacked-results {
         display: block;
     }

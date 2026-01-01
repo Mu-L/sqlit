@@ -25,6 +25,8 @@ class ResultsFocusedState(State):
         self.allows("results_cursor_down", has_results)  # vim j
         self.allows("results_cursor_up", has_results)  # vim k
         self.allows("results_cursor_right", has_results)  # vim l
+        self.allows("next_result_section", has_results, label="Next result", help="Next result section")
+        self.allows("prev_result_section", has_results, label="Prev result", help="Previous result section")
 
     def get_display_bindings(self, app: InputContext) -> tuple[list[DisplayBinding], list[DisplayBinding]]:
         # No bindings when there are no results
@@ -97,8 +99,33 @@ class ResultsFocusedState(State):
                 action="results_filter",
             )
         )
+        if app.stacked_result_count > 1:
+            left.append(
+                DisplayBinding(
+                    key=resolve_display_key("next_result_section") or "tab",
+                    label="Next result",
+                    action="next_result_section",
+                )
+            )
+            left.append(
+                DisplayBinding(
+                    key=resolve_display_key("prev_result_section") or "shift+tab",
+                    label="Prev result",
+                    action="prev_result_section",
+                )
+            )
 
-        seen.update(["view_cell", "view_cell_full", "results_yank_leader_key", "clear_results", "results_filter"])
+        seen.update(
+            [
+                "view_cell",
+                "view_cell_full",
+                "results_yank_leader_key",
+                "clear_results",
+                "results_filter",
+                "next_result_section",
+                "prev_result_section",
+            ]
+        )
 
         right: list[DisplayBinding] = []
         if self.parent:

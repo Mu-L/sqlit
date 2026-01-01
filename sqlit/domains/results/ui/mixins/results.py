@@ -38,6 +38,56 @@ class ResultsMixin:
         except Exception:
             return False
 
+    def _get_active_results_context(
+        self: ResultsMixinHost,
+    ) -> tuple[SqlitDataTable | None, list[str], list[tuple], bool]:
+        """Get the active results table and data, handling stacked mode."""
+        if self.results_area.has_class("stacked-mode"):
+            try:
+                from sqlit.shared.ui.widgets_stacked_results import ResultSection, StackedResultsContainer
+
+                container = self.query_one("#stacked-results", StackedResultsContainer)
+                focused_table = next(
+                    (table for table in container.query(SqlitDataTable) if table.has_focus),
+                    None,
+                )
+                section = None
+                table = None
+
+                if focused_table is not None:
+                    table = focused_table
+                    section = self._find_results_section(table)
+                else:
+                    sections = list(container.query(ResultSection))
+                    if not sections:
+                        return None, [], [], True
+                    section = next((s for s in sections if not s.collapsed), sections[0])
+                    if section.collapsed:
+                        section.collapsed = False
+                        section.scroll_visible()
+                    try:
+                        table = section.query_one(SqlitDataTable)
+                    except Exception:
+                        table = None
+
+                columns = list(getattr(section, "result_columns", [])) if section else []
+                rows = list(getattr(section, "result_rows", [])) if section else []
+                return table, columns, rows, True
+            except Exception:
+                return None, [], [], True
+        return self.results_table, list(self._last_result_columns), list(self._last_result_rows), False
+
+    def _find_results_section(self: ResultsMixinHost, widget: Any) -> Any | None:
+        """Find the ResultSection ancestor for a widget."""
+        from sqlit.shared.ui.widgets_stacked_results import ResultSection
+
+        current = widget
+        while current is not None:
+            if isinstance(current, ResultSection):
+                return current
+            current = getattr(current, "parent", None)
+        return None
+
     def _flash_table_yank(self: ResultsMixinHost, table: SqlitDataTable, scope: str) -> None:
         """Briefly flash the yanked cell(s) to confirm a copy action."""
         from sqlit.shared.ui.widgets import flash_widget
@@ -83,8 +133,8 @@ class ResultsMixin:
 
     def action_view_cell(self: ResultsMixinHost) -> None:
         """Preview the selected cell value (tooltip)."""
-        table = self.results_table
-        if table.row_count <= 0:
+        table, _columns, _rows, _stacked = self._get_active_results_context()
+        if not table or table.row_count <= 0:
             self.notify("No results", severity="warning")
             return
         try:
@@ -109,8 +159,8 @@ class ResultsMixin:
         """View the full value of the selected cell inline."""
         from sqlit.shared.ui.widgets import InlineValueView
 
-        table = self.results_table
-        if table.row_count <= 0:
+        table, _columns, _rows, _stacked = self._get_active_results_context()
+        if not table or table.row_count <= 0:
             self.notify("No results", severity="warning")
             return
         try:
@@ -144,7 +194,9 @@ class ResultsMixin:
             value_view = self.query_one("#value-view", InlineValueView)
             if value_view.is_visible:
                 value_view.hide()
-                self.results_table.focus()
+                table, _columns, _rows, _stacked = self._get_active_results_context()
+                if table:
+                    table.focus()
                 if hasattr(self, "_value_view_active"):
                     self._value_view_active = False
         except Exception:
@@ -164,8 +216,8 @@ class ResultsMixin:
 
     def action_copy_cell(self: ResultsMixinHost) -> None:
         """Copy the selected cell to clipboard (or internal clipboard)."""
-        table = self.results_table
-        if table.row_count <= 0:
+        table, _columns, _rows, _stacked = self._get_active_results_context()
+        if not table or table.row_count <= 0:
             self.notify("No results", severity="warning")
             return
         try:
@@ -238,8 +290,8 @@ class ResultsMixin:
 
     def action_copy_row(self: ResultsMixinHost) -> None:
         """Copy the selected row to clipboard (TSV)."""
-        table = self.results_table
-        if table.row_count <= 0:
+        table, _columns, _rows, _stacked = self._get_active_results_context()
+        if not table or table.row_count <= 0:
             self.notify("No results", severity="warning")
             return
         try:
@@ -253,32 +305,36 @@ class ResultsMixin:
 
     def action_copy_results(self: ResultsMixinHost) -> None:
         """Copy the entire results (last query) to clipboard (TSV)."""
-        if not self._last_result_columns and not self._last_result_rows:
+        table, columns, rows, _stacked = self._get_active_results_context()
+        if not columns and not rows:
             self.notify("No results", severity="warning")
             return
 
-        text = self._format_tsv(self._last_result_columns, self._last_result_rows)
+        text = self._format_tsv(columns, rows)
         self._copy_text(text)
-        self._flash_table_yank(self.results_table, "all")
+        if table:
+            self._flash_table_yank(table, "all")
 
     def action_results_yank_leader_key(self: ResultsMixinHost) -> None:
         """Open the results yank (copy) leader menu.
 
         If the result is an error message, copy it directly instead of showing the menu.
         """
+        _table, columns, rows, _stacked = self._get_active_results_context()
         # If results show an error, copy it directly without showing the menu
-        if self._last_result_columns == ["Error"] and self._last_result_rows:
-            error_message = str(self._last_result_rows[0][0]) if self._last_result_rows[0] else ""
+        if columns == ["Error"] and rows:
+            error_message = str(rows[0][0]) if rows[0] else ""
             self._copy_text(error_message)
-            self._flash_table_yank(self.results_table, "cell")
+            if _table:
+                self._flash_table_yank(_table, "cell")
             return
         self._start_leader_pending("ry")
 
     def action_ry_cell(self: ResultsMixinHost) -> None:
         """Copy cell (from yank menu)."""
         self._clear_leader_pending()
-        table = self.results_table
-        if table.row_count <= 0:
+        table, _columns, _rows, _stacked = self._get_active_results_context()
+        if not table or table.row_count <= 0:
             self.notify("No results", severity="warning")
             return
         try:
@@ -291,8 +347,8 @@ class ResultsMixin:
     def action_ry_row(self: ResultsMixinHost) -> None:
         """Copy row (from yank menu)."""
         self._clear_leader_pending()
-        table = self.results_table
-        if table.row_count <= 0:
+        table, _columns, _rows, _stacked = self._get_active_results_context()
+        if not table or table.row_count <= 0:
             self.notify("No results", severity="warning")
             return
         try:
@@ -306,12 +362,14 @@ class ResultsMixin:
     def action_ry_all(self: ResultsMixinHost) -> None:
         """Copy all results (from yank menu)."""
         self._clear_leader_pending()
-        if not self._last_result_columns and not self._last_result_rows:
+        table, columns, rows, _stacked = self._get_active_results_context()
+        if not columns and not rows:
             self.notify("No results", severity="warning")
             return
-        text = self._format_tsv(self._last_result_columns, self._last_result_rows)
+        text = self._format_tsv(columns, rows)
         self._copy_text(text)
-        self._flash_table_yank(self.results_table, "all")
+        if table:
+            self._flash_table_yank(table, "all")
 
     def action_ry_export(self: ResultsMixinHost) -> None:
         """Open the export submenu."""
@@ -379,26 +437,39 @@ class ResultsMixin:
 
     def action_results_cursor_left(self: ResultsMixinHost) -> None:
         """Move results cursor left (vim h)."""
-        if self.results_table.has_focus:
-            self.results_table.action_cursor_left()
+        table, _columns, _rows, _stacked = self._get_active_results_context()
+        if table and table.has_focus:
+            table.action_cursor_left()
 
     def action_results_cursor_down(self: ResultsMixinHost) -> None:
         """Move results cursor down (vim j)."""
-        if self.results_table.has_focus:
-            self.results_table.action_cursor_down()
+        table, _columns, _rows, _stacked = self._get_active_results_context()
+        if table and table.has_focus:
+            table.action_cursor_down()
 
     def action_results_cursor_up(self: ResultsMixinHost) -> None:
         """Move results cursor up (vim k)."""
-        if self.results_table.has_focus:
-            self.results_table.action_cursor_up()
+        table, _columns, _rows, _stacked = self._get_active_results_context()
+        if table and table.has_focus:
+            table.action_cursor_up()
 
     def action_results_cursor_right(self: ResultsMixinHost) -> None:
         """Move results cursor right (vim l)."""
-        if self.results_table.has_focus:
-            self.results_table.action_cursor_right()
+        table, _columns, _rows, _stacked = self._get_active_results_context()
+        if table and table.has_focus:
+            table.action_cursor_right()
 
     def action_clear_results(self: ResultsMixinHost) -> None:
         """Clear the results table."""
+        if self.results_area.has_class("stacked-mode"):
+            from sqlit.shared.ui.widgets_stacked_results import StackedResultsContainer
+
+            try:
+                container = self.query_one("#stacked-results", StackedResultsContainer)
+                container.clear_results()
+            except Exception:
+                pass
+            self._show_single_result_mode()
         self._replace_results_table([], [])
         self._last_result_columns = []
         self._last_result_rows = []
@@ -406,12 +477,12 @@ class ResultsMixin:
 
     def action_edit_cell(self: ResultsMixinHost) -> None:
         """Generate an UPDATE query for the selected cell and enter insert mode."""
-        table = self.results_table
-        if table.row_count <= 0:
+        table, columns, _rows, _stacked = self._get_active_results_context()
+        if not table or table.row_count <= 0:
             self.notify("No results", severity="warning")
             return
 
-        if not self._last_result_columns:
+        if not columns:
             self.notify("No column info", severity="warning")
             return
 
@@ -422,9 +493,9 @@ class ResultsMixin:
             return
 
         # Get column name
-        if cursor_col >= len(self._last_result_columns):
+        if cursor_col >= len(columns):
             return
-        column_name = self._last_result_columns[cursor_col]
+        column_name = columns[cursor_col]
 
         # Check if this column is a primary key - don't allow editing PKs
         if hasattr(self, "_last_query_table") and self._last_query_table:
@@ -458,7 +529,7 @@ class ResultsMixin:
 
         # Build WHERE clause - prefer PK columns, fall back to all columns
         where_parts = []
-        for i, col in enumerate(self._last_result_columns):
+        for i, col in enumerate(columns):
             if i < len(row_values):
                 # If we have PK info, only use PK columns; otherwise use all columns
                 if pk_column_names and col not in pk_column_names:
@@ -471,7 +542,7 @@ class ResultsMixin:
 
         # If no where parts (no PKs matched result columns), fall back to all columns
         if not where_parts:
-            for i, col in enumerate(self._last_result_columns):
+            for i, col in enumerate(columns):
                 if i < len(row_values):
                     val = row_values[i]
                     if val is None:
@@ -520,19 +591,14 @@ class ResultsMixin:
         if not sections:
             return
 
-        # Find current focused/expanded section and move to next
-        for i, section in enumerate(sections):
-            if not section.collapsed:
-                # Collapse current and expand next
-                if i + 1 < len(sections):
-                    section.collapsed = True
-                    sections[i + 1].collapsed = False
-                    sections[i + 1].scroll_visible()
-                return
+        current_idx = next((i for i, section in enumerate(sections) if not section.collapsed), None)
+        next_idx = 0 if current_idx is None else (current_idx + 1) % len(sections)
 
-        # If no expanded section, expand the first one
-        sections[0].collapsed = False
-        sections[0].scroll_visible()
+        if current_idx is not None:
+            sections[current_idx].collapsed = True
+        sections[next_idx].collapsed = False
+        sections[next_idx].scroll_visible()
+        self._focus_result_section(sections[next_idx])
 
     def action_prev_result_section(self: ResultsMixinHost) -> None:
         """Navigate to the previous result section (for multi-statement results)."""
@@ -550,19 +616,14 @@ class ResultsMixin:
         if not sections:
             return
 
-        # Find current focused/expanded section and move to prev
-        for i, section in enumerate(sections):
-            if not section.collapsed:
-                # Collapse current and expand previous
-                if i > 0:
-                    section.collapsed = True
-                    sections[i - 1].collapsed = False
-                    sections[i - 1].scroll_visible()
-                return
+        current_idx = next((i for i, section in enumerate(sections) if not section.collapsed), None)
+        prev_idx = (len(sections) - 1) if current_idx is None else (current_idx - 1) % len(sections)
 
-        # If no expanded section, expand the last one
-        sections[-1].collapsed = False
-        sections[-1].scroll_visible()
+        if current_idx is not None:
+            sections[current_idx].collapsed = True
+        sections[prev_idx].collapsed = False
+        sections[prev_idx].scroll_visible()
+        self._focus_result_section(sections[prev_idx])
 
     def action_toggle_result_section(self: ResultsMixinHost) -> None:
         """Toggle collapse/expand of the current result section."""
@@ -588,3 +649,17 @@ class ResultsMixin:
 
         # If all collapsed, expand the first one
         sections[0].collapsed = False
+        self._focus_result_section(sections[0])
+
+    def _focus_result_section(self: ResultsMixinHost, section: Any) -> None:
+        """Focus the active result section content when possible."""
+        try:
+            table = section.query_one(SqlitDataTable)
+            table.focus()
+            return
+        except Exception:
+            pass
+        try:
+            section.focus()
+        except Exception:
+            pass

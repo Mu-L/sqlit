@@ -64,6 +64,23 @@ class UINavigationMixin(UIStatusMixin, UILeaderMixin):
         """Focus the Results pane."""
         if self._fullscreen_mode != "none":
             self._set_fullscreen_mode("none")
+        if self.results_area.has_class("stacked-mode"):
+            try:
+                from sqlit.shared.ui.widgets_stacked_results import ResultSection, StackedResultsContainer
+                from sqlit.shared.ui.widgets import SqlitDataTable
+
+                container = self.query_one("#stacked-results", StackedResultsContainer)
+                sections = list(container.query(ResultSection))
+                if sections:
+                    section = next((s for s in sections if not s.collapsed), sections[0])
+                    if section.collapsed:
+                        section.collapsed = False
+                        section.scroll_visible()
+                    table = section.query_one(SqlitDataTable)
+                    table.focus()
+                    return
+            except Exception:
+                pass
         try:
             self.results_table.focus()
         except Exception:
