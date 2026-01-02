@@ -266,10 +266,10 @@ class DefaultKeymapProvider(KeymapProvider):
             ActionKeyDef("ctrl+j", "autocomplete_next", "autocomplete"),
             ActionKeyDef("ctrl+k", "autocomplete_prev", "autocomplete"),
             ActionKeyDef("escape", "autocomplete_close", "autocomplete"),
-            # Clipboard
-            ActionKeyDef("ctrl+a", "select_all", "global"),
-            ActionKeyDef("ctrl+c", "copy_selection", "global"),
-            ActionKeyDef("ctrl+v", "paste", "global"),
+            # Clipboard (only in insert mode for vim consistency)
+            ActionKeyDef("ctrl+a", "select_all", "query_insert"),
+            ActionKeyDef("ctrl+c", "copy_selection", "query_insert"),
+            ActionKeyDef("ctrl+v", "paste", "query_insert"),
             ActionKeyDef("ctrl+z", "undo", "global"),
             ActionKeyDef("ctrl+y", "redo", "global"),
             # Results

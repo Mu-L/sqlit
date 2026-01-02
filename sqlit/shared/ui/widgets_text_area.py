@@ -48,36 +48,51 @@ class QueryTextArea(TextArea):
         """Normalize OS-variant shortcuts to canonical form."""
         return self._KEY_NORMALIZATION.get(key, key)
 
+    def _is_insert_mode(self) -> bool:
+        """Check if app is in vim INSERT mode."""
+        from sqlit.core.vim import VimMode
+        vim_mode = getattr(self.app, "vim_mode", None)
+        return vim_mode == VimMode.INSERT
+
     async def _on_key(self, event: Key) -> None:
         """Intercept clipboard, undo/redo, and Enter keys."""
         normalized_key = self._normalize_key(event.key)
 
-        # Handle CTRL+A (select all) - override Emacs beginning-of-line
-        if normalized_key == "ctrl+a":
-            if hasattr(self.app, "action_select_all"):
-                self.app.action_select_all()
-            event.prevent_default()
-            event.stop()
-            return
+        # Clipboard shortcuts only work in INSERT mode (vim consistency)
+        if normalized_key in ("ctrl+a", "ctrl+c", "ctrl+v"):
+            if not self._is_insert_mode():
+                # Block these in normal mode - use vim commands instead
+                event.prevent_default()
+                event.stop()
+                return
 
-        # Handle CTRL+C (copy) - override default behavior
-        if normalized_key == "ctrl+c":
-            if hasattr(self.app, "action_copy_selection"):
-                self.app.action_copy_selection()
-            event.prevent_default()
-            event.stop()
-            return
+            # Handle CTRL+A (select all) - override Emacs beginning-of-line
+            if normalized_key == "ctrl+a":
+                if hasattr(self.app, "action_select_all"):
+                    self.app.action_select_all()
+                event.prevent_default()
+                event.stop()
+                return
 
-        # Handle CTRL+V (paste) - override default behavior
-        if normalized_key == "ctrl+v":
-            # Push undo state before paste
-            self._push_undo_if_changed()
-            if hasattr(self.app, "action_paste"):
-                self.app.action_paste()
-            event.prevent_default()
-            event.stop()
-            return
+            # Handle CTRL+C (copy) - override default behavior
+            if normalized_key == "ctrl+c":
+                if hasattr(self.app, "action_copy_selection"):
+                    self.app.action_copy_selection()
+                event.prevent_default()
+                event.stop()
+                return
 
+            # Handle CTRL+V (paste) - override default behavior
+            if normalized_key == "ctrl+v":
+                # Push undo state before paste
+                self._push_undo_if_changed()
+                if hasattr(self.app, "action_paste"):
+                    self.app.action_paste()
+                event.prevent_default()
+                event.stop()
+                return
+
+        # Undo/redo work in both modes
         # Handle CTRL+Z (undo)
         if normalized_key == "ctrl+z":
             if hasattr(self.app, "action_undo"):
