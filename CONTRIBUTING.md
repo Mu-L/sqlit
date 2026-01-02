@@ -40,7 +40,7 @@ pytest tests/ -v -k sqlite
 
 ### Full Test Suite (Requires Docker)
 
-To run the complete test suite including SQL Server, PostgreSQL, MySQL, MariaDB, FirebirdSQL, Oracle, ClickHouse, Turso (libsql), D1 (miniflare), SSH tunnel, DuckDB, and CockroachDB tests:
+To run the complete test suite including SQL Server, PostgreSQL, MySQL, MariaDB, FirebirdSQL, Oracle, ClickHouse, Turso (libsql), D1 (miniflare), SSH tunnel, DuckDB, CockroachDB, and Flight SQL tests:
 
 1. Start the test database containers:
    ```bash
@@ -76,6 +76,7 @@ pytest tests/ -v -k PostgreSQL  # PostgreSQL only
 pytest tests/ -v -k MySQL       # MySQL only
 pytest tests/ -v -k cockroach   # CockroachDB only
 pytest tests/ -v -k firebird    # FirebirdSQL only
+pytest tests/ -v -k flight      # Flight SQL only
 ```
 
 ### Environment Variables
@@ -174,6 +175,15 @@ The database tests can be configured with these environment variables:
 | `ORACLE11G_SERVICE` | `XE` | Oracle 11g service name |
 | `ORACLE11G_CLIENT_MODE` | `thick` | Oracle client mode |
 | `ORACLE11G_CLIENT_LIB_DIR` | `` | Oracle Instant Client library directory |
+
+**Flight SQL:**
+| Variable | Default | Description |
+|----------|---------|-------------|
+| `FLIGHT_HOST` | `localhost` | Flight SQL server hostname |
+| `FLIGHT_PORT` | `31337` | Flight SQL server port |
+| `FLIGHT_USER` | `` | Flight SQL username (optional) |
+| `FLIGHT_PASSWORD` | `` | Flight SQL password (optional) |
+| `FLIGHT_DATABASE` | `` | Flight SQL database/catalog (optional) |
 
 ### CockroachDB Quickstart (Docker)
 

@@ -17,6 +17,7 @@ class DatabaseType(str, Enum):
     DUCKDB = "duckdb"
     DB2 = "db2"
     FIREBIRD = "firebird"
+    FLIGHT = "flight"
     HANA = "hana"
     MARIADB = "mariadb"
     MSSQL = "mssql"
@@ -59,6 +60,7 @@ DATABASE_TYPE_DISPLAY_ORDER: list[DatabaseType] = [
     DatabaseType.D1,
     DatabaseType.ATHENA,
     DatabaseType.FIREBIRD,
+    DatabaseType.FLIGHT,
 ]
 
 
