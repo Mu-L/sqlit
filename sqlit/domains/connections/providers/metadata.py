@@ -2,7 +2,7 @@
 
 from __future__ import annotations
 
-from typing import TYPE_CHECKING
+from typing import TYPE_CHECKING, Any
 
 from sqlit.domains.connections.providers.catalog import get_provider
 
@@ -10,7 +10,7 @@ if TYPE_CHECKING:
     from sqlit.domains.connections.domain.config import ConnectionConfig
 
 
-def _get_provider_or_none(db_type: str):
+def _get_provider_or_none(db_type: str) -> Any:
     try:
         return get_provider(db_type)
     except Exception:
@@ -56,4 +56,4 @@ def get_connection_display_info(config: ConnectionConfig) -> str:
     provider = _get_provider_or_none(config.db_type)
     if provider is None:
         return config.name
-    return provider.display_info(config)
+    return str(provider.display_info(config))

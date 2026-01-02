@@ -4,10 +4,14 @@ from __future__ import annotations
 
 import json
 from concurrent.futures import ThreadPoolExecutor, as_completed
+from typing import TYPE_CHECKING
 
 from .cache import cache_databases, get_cached_databases, get_cached_servers
 from .cli import _run_az_command, get_azure_status, get_azure_subscriptions
 from .models import AzureSqlServer, AzureStatus
+
+if TYPE_CHECKING:
+    from sqlit.domains.connections.domain.config import ConnectionConfig
 
 
 def check_entra_admin(

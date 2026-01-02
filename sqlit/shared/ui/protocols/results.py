@@ -26,8 +26,13 @@ class ResultsStateProtocol(Protocol):
     _results_filter_fuzzy: bool
     _results_filter_debounce_timer: Timer | None
     _results_filter_pending_update: bool
+    _results_filter_stacked: bool
+    _results_filter_target_section: Any | None
+    _results_filter_target_table: Any | None
+    _results_filter_original_columns: list[str]
     _tooltip_cell_coord: tuple[int, int] | None
     _tooltip_showing: bool
+    _tooltip_timer: Any | None
     _value_view_active: bool
     MAX_FILTER_MATCHES: int
 
@@ -88,6 +93,58 @@ class ResultsActionsProtocol(Protocol):
         ...
 
     def action_view_cell_full(self) -> None:
+        ...
+
+    def _get_active_stacked_results_target(self) -> tuple[Any | None, SqlitDataTable | None]:
+        ...
+
+    def _replace_results_table_raw_for_filter(
+        self, columns: list[str], rows: list[tuple[Any, ...]]
+    ) -> None:
+        ...
+
+    def _replace_results_table_for_filter(
+        self, columns: list[str], rows: list[tuple[Any, ...]]
+    ) -> None:
+        ...
+
+    def _show_export_dialog(self, fmt: str) -> None:
+        ...
+
+    def _save_export_file(self, filename: str, fmt: str) -> None:
+        ...
+
+    def _show_single_result_mode(self) -> None:
+        ...
+
+    def _focus_result_section(self, section: Any) -> None:
+        ...
+
+    def _get_active_results_context(
+        self,
+    ) -> tuple[SqlitDataTable | None, list[str], list[tuple[Any, ...]], bool]:
+        ...
+
+    def _find_results_section(self, widget: Any) -> Any | None:
+        ...
+
+    def _start_leader_pending(self, prefix: str) -> None:
+        ...
+
+    def _replace_results_section_table(
+        self, columns: list[str], rows: list[tuple[Any, ...]], *, escape: bool
+    ) -> None:
+        ...
+
+    def _build_results_section_table(
+        self, columns: list[str], rows: list[tuple[Any, ...]], *, escape: bool
+    ) -> SqlitDataTable:
+        ...
+
+    def _hide_cell_tooltip(self, table: SqlitDataTable) -> None:
+        ...
+
+    def _show_cell_tooltip(self, table: SqlitDataTable, coordinate: Any, value: Any) -> None:
         ...
 
 

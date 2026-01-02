@@ -5,7 +5,7 @@ Prefer sqlit.domains.connections.providers.catalog/metadata/validation.
 
 from __future__ import annotations
 
-from typing import cast
+from typing import Any, cast
 
 from sqlit.domains.connections.providers.adapters.base import DatabaseAdapter
 from sqlit.domains.connections.providers.catalog import (
@@ -42,7 +42,7 @@ def get_adapter(db_type: str) -> DatabaseAdapter:
     return cast(DatabaseAdapter, provider.connection_factory)
 
 
-def get_connection_schema(db_type: str):
+def get_connection_schema(db_type: str) -> Any:
     """Compatibility alias for provider schemas."""
     return get_provider_schema(db_type)
 

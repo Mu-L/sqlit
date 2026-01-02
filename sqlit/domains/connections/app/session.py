@@ -109,7 +109,9 @@ class ConnectionSession:
 
         # Get provider and connect
         provider_candidate = get_provider_fn(config.db_type)
-        if isinstance(provider_candidate, DatabaseProvider) or hasattr(provider_candidate, "connection_factory"):
+        if isinstance(provider_candidate, DatabaseProvider):
+            provider = provider_candidate
+        elif hasattr(provider_candidate, "connection_factory"):
             provider = cast(DatabaseProvider, provider_candidate)
         else:
             adapter = provider_candidate

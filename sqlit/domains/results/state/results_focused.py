@@ -127,15 +127,15 @@ class ResultsFocusedState(State):
             ]
         )
 
-        right: list[DisplayBinding] = []
+        right_bindings: list[DisplayBinding] = []
         if self.parent:
             _, parent_right = self.parent.get_display_bindings(app)
             for binding in parent_right:
                 if binding.action not in seen:
-                    right.append(binding)
+                    right_bindings.append(binding)
                     seen.add(binding.action)
 
-        return left, right
+        return left, right_bindings
 
     def is_active(self, app: InputContext) -> bool:
         return app.focus == "results"

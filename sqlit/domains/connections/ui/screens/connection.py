@@ -226,11 +226,11 @@ class ConnectionScreen(ModalScreen):
             tab = tabs.get_tab(tls_pane)
             tab.disabled = not has_fields
             if has_fields:
-                tab.show()
-                tls_pane.show()
+                tab.display = True
+                tls_pane.display = True
             else:
-                tab.hide()
-                tls_pane.hide()
+                tab.display = False
+                tls_pane.display = False
         except Exception:
             pass
 
@@ -268,7 +268,7 @@ class ConnectionScreen(ModalScreen):
             dialog=dialog,
         )
 
-    def _write_restart_cache(self, *, post_install_message: str | None = None) -> None:
+    def _write_restart_cache(self, post_install_message: str | None = None) -> None:
         try:
             values = self._form.get_current_form_values()
             values["name"] = self.query_one("#conn-name", Input).value
@@ -435,8 +435,8 @@ class ConnectionScreen(ModalScreen):
         tabs.active = "tab-general"
 
     def _apply_prefill_values(self) -> None:
-        name_input = self._query_one_or_none("#conn-name", Input)
-        tabs = self._query_one_or_none("#connection-tabs", TabbedContent)
+        name_input = cast(Input | None, self._query_one_or_none("#conn-name", Input))
+        tabs = cast(TabbedContent | None, self._query_one_or_none("#connection-tabs", TabbedContent))
         self._form.apply_prefill_values(name_input=name_input, tabs=tabs)
 
     def on_tabbed_content_tab_activated(self, event: TabbedContent.TabActivated) -> None:

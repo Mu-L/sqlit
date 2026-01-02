@@ -21,7 +21,7 @@ class ConnectionFocusController:
     def _get_active_tab(self) -> str:
         try:
             tabs_widget = self._screen.query_one("#connection-tabs", TabbedContent)
-            return tabs_widget.active
+            return str(tabs_widget.active)
         except Exception:
             return "tab-general"
 

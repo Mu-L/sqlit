@@ -186,6 +186,27 @@ class QueryActionsProtocol(Protocol):
     ) -> SqlitDataTable:
         ...
 
+    def _run_query_atomic_async(self, query: str) -> Awaitable[None]:
+        ...
+
+    def _reset_transaction_executor(self) -> None:
+        ...
+
+    def _get_transaction_executor(self, config: Any, provider: Any) -> Any:
+        ...
+
+    def _display_multi_statement_results(self, multi_result: Any, elapsed_ms: float) -> None:
+        ...
+
+    def _get_stacked_results_container(self) -> Any:
+        ...
+
+    def _show_stacked_results_mode(self) -> None:
+        ...
+
+    def action_enter_insert_mode(self) -> None:
+        ...
+
 
 class QueryProtocol(QueryStateProtocol, QueryActionsProtocol, Protocol):
     """Composite protocol for query-related mixins."""

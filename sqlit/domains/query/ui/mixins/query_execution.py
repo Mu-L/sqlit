@@ -148,14 +148,16 @@ class QueryExecutionMixin(LifecycleHooksMixin):
 
     def _on_disconnect(self: QueryMixinHost) -> None:
         """Handle disconnect lifecycle event."""
-        super()._on_disconnect()
+        parent_disconnect = getattr(super(), "_on_disconnect", None)
+        if callable(parent_disconnect):
+            parent_disconnect()
         self._reset_transaction_executor()
 
     @property
     def in_transaction(self: QueryMixinHost) -> bool:
         """Whether we're currently in a transaction."""
         if self._transaction_executor is not None:
-            return self._transaction_executor.in_transaction
+            return bool(self._transaction_executor.in_transaction)
         return False
 
     async def _run_query_async(self: QueryMixinHost, query: str, keep_insert_mode: bool) -> None:

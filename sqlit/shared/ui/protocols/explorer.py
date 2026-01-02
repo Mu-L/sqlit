@@ -90,6 +90,18 @@ class ExplorerActionsProtocol(Protocol):
     def _rebuild_label_with_highlight(self, node: Any, highlighted_text: str) -> str:
         ...
 
+    def _load_columns_async(self, node: Any, data: Any) -> None:
+        ...
+
+    def _load_folder_async(self, node: Any, data: Any) -> None:
+        ...
+
+    def refresh_tree(self) -> None:
+        ...
+
+    def _get_node_path_part(self, node: Any) -> str:
+        ...
+
 
 class ExplorerProtocol(ExplorerStateProtocol, ExplorerActionsProtocol, Protocol):
     """Composite protocol for explorer-related mixins."""

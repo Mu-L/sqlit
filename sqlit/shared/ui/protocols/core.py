@@ -113,6 +113,10 @@ class TextualAppProtocol(Protocol):
         ...
 
     @property
+    def app(self) -> Any:
+        ...
+
+    @property
     def size(self) -> Any:
         ...
 
