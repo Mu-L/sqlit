@@ -50,6 +50,41 @@ class ConnectionMixin:
 
     _connection_flow: ConnectionFlow | None = None
 
+    def watch_current_config(self: ConnectionMixinHost, old_config: ConnectionConfig | None, new_config: ConnectionConfig | None) -> None:
+        if not getattr(self, "_screen_stack", None):
+            return
+        self._update_status_bar()
+        self._update_section_labels()
+        if old_config and new_config and self._connection_identity(old_config) == self._connection_identity(new_config):
+            try:
+                tree_db_switching.update_database_labels(self)
+            except Exception:
+                pass
+            return
+        self._refresh_connection_tree()
+
+    def _connection_identity(self, config: ConnectionConfig) -> tuple[Any, ...]:
+        if config.file_endpoint:
+            return ("file", config.name, config.db_type, config.file_endpoint.path)
+        endpoint = config.tcp_endpoint
+        host = endpoint.host if endpoint else ""
+        port = endpoint.port if endpoint else ""
+        return ("tcp", config.name, config.db_type, host, port)
+
+    def _refresh_connection_tree(self: ConnectionMixinHost) -> None:
+        screen_stack = getattr(self, "_screen_stack", None)
+        if not screen_stack:
+            return
+
+        def after_refresh() -> None:
+            try:
+                self.call_after_refresh(self._select_connected_node)
+                self.call_after_refresh(lambda: tree_db_switching.update_database_labels(self))
+            except Exception:
+                pass
+
+        tree_builder.refresh_tree_chunked(self, on_done=after_refresh)
+
     def _get_connection_flow(self: ConnectionMixinHost) -> ConnectionFlow:
         flow = getattr(self, "_connection_flow", None)
         manager = getattr(self, "_connection_manager", None)
@@ -162,22 +197,15 @@ class ConnectionMixin:
 
             self._connection_failed = False
             self._session = session
-            self.current_connection = session.connection
-            self.current_config = config
             self.current_provider = session.provider
             self.current_ssh_tunnel = session.tunnel
-            self._set_connecting_state(None, refresh=False)
             is_saved = any(c.name == config.name for c in self.connections)
             self._direct_connection_config = None if is_saved else config
             self._active_database = None
+            self.current_connection = session.connection
+            self.current_config = config
+            self._set_connecting_state(None, refresh=False)
             reconnected = False
-
-            def after_tree_refresh() -> None:
-                self.call_after_refresh(self._select_connected_node)
-                # Update database labels to show star on active database
-                self.call_after_refresh(lambda: tree_db_switching.update_database_labels(self))
-
-            tree_builder.schedule_populate_connected_tree(self, on_done=after_tree_refresh)
             if not reconnected:
                 def load_schema_cache() -> None:
                     if attempt_id != self._connection_attempt_id:
@@ -204,8 +232,6 @@ class ConnectionMixin:
                     )
                 else:
                     self.set_timer(0.25, load_schema_cache)
-            self._update_status_bar()
-            self._update_section_labels()
             connect_hook = getattr(self, "_on_connect", None)
             if callable(connect_hook):
                 connect_hook()
@@ -276,8 +302,6 @@ class ConnectionMixin:
         self._clear_query_target_database()
         # Notify all mixins of disconnect via lifecycle hook
         self._on_disconnect()
-        tree_builder.refresh_tree_chunked(self)
-        self._update_section_labels()
 
     def _select_connected_node(self: ConnectionMixinHost) -> None:
         """Move cursor to the connected node without toggling expansion."""

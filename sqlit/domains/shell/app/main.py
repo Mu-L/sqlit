@@ -78,6 +78,10 @@ class SSMSTUI(
     BINDINGS: ClassVar[list[Any]] = []
 
     query_executing: bool = reactive(False)
+    current_connection: Any | None = reactive(None)
+    current_config: ConnectionConfig | None = reactive(None)
+    current_provider: DatabaseProvider | None = reactive(None)
+    current_ssh_tunnel: Any | None = reactive(None)
 
     def __init__(
         self,
