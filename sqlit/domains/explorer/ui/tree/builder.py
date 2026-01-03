@@ -7,10 +7,8 @@ from typing import Any, Callable
 from rich.markup import escape as escape_markup
 
 from sqlit.domains.connections.providers.metadata import get_connection_display_info
-from sqlit.domains.explorer.domain.tree_nodes import ConnectionNode, FolderNode, LoadingNode
+from sqlit.domains.explorer.domain.tree_nodes import ConnectionNode, FolderNode
 from sqlit.shared.ui.protocols import TreeMixinHost
-
-from . import expansion_state
 
 MIN_TIMER_DELAY_S = 0.001
 POPULATE_CONNECTED_DEFER_S = 0.15
@@ -295,8 +293,6 @@ def populate_connected_tree(host: TreeMixinHost) -> None:
         return
 
     provider = host.current_provider
-    schema_service = host._get_schema_service()
-
     def get_conn_label(config: Any, connected: bool = False) -> str:
         display_info = escape_markup(get_connection_display_info(config))
         db_type_label = host._db_type_badge(config.db_type)
@@ -337,29 +333,10 @@ def populate_connected_tree(host: TreeMixinHost) -> None:
                 dbs_node = active_node.add("Databases")
                 dbs_node.data = FolderNode(folder_type="databases")
                 dbs_node.allow_expand = True
-
-                if not schema_service:
-                    empty_child = dbs_node.add_leaf("[dim](Empty)[/]")
-                    empty_child.data = LoadingNode()
-                else:
-                    from . import loaders as tree_loaders
-
-                    loading_nodes = tree_loaders.ensure_loading_nodes(host)
-                    node_path = expansion_state.get_node_path(host, dbs_node)
-                    loading_nodes.add(node_path)
-                    tree_loaders.add_loading_placeholder(host, dbs_node)
-                    tree_loaders.load_folder_async(host, dbs_node, dbs_node.data)
-
                 active_node.expand()
-                dbs_node.expand()
         else:
             add_database_object_nodes(host, active_node, None)
             active_node.expand()
-
-        host.set_timer(
-            MIN_TIMER_DELAY_S,
-            lambda: expansion_state.restore_subtree_expansion(host, active_node),
-        )
 
     except Exception as error:
         host.notify(f"Error loading objects: {error}", severity="error")

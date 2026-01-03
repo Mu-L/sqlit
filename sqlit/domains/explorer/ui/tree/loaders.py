@@ -210,7 +210,6 @@ def on_folder_loaded(
         active_db = None
         if hasattr(host, "_get_effective_database"):
             active_db = host._get_effective_database()
-        from . import expansion_state
         from . import builder as tree_builder
 
         for db in items:
@@ -223,7 +222,6 @@ def on_folder_loaded(
             db_node.allow_expand = True
             tree_builder.add_database_object_nodes(host, db_node, str(db))
 
-        expansion_state.restore_subtree_expansion(host, node)
         return
 
     if folder_type in ("tables", "views"):
