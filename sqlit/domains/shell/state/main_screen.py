@@ -18,6 +18,7 @@ class MainScreenState(State):
         self.allows("toggle_fullscreen", help="Toggle fullscreen")
         self.allows("show_help")
         self.allows("change_theme")
+        self.allows("toggle_process_worker", help="Toggle process worker")
         self.allows("leader_key", label="Commands", right=True)
 
     def is_active(self, app: InputContext) -> bool:

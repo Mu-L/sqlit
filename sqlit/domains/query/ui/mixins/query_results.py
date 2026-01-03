@@ -4,10 +4,6 @@ from __future__ import annotations
 
 from typing import Any
 
-import pyarrow as pa
-from rich.markup import escape as escape_markup
-from textual_fastdatatable import ArrowBackend
-
 from sqlit.shared.core.utils import format_duration_ms
 from sqlit.shared.ui.protocols import QueryMixinHost
 from sqlit.shared.ui.widgets import SqlitDataTable
@@ -25,6 +21,7 @@ class QueryResultsMixin:
     def _replace_results_table_raw(self: QueryMixinHost, columns: list[str], rows: list[tuple]) -> None:
         """Update the results table with pre-formatted data (no escaping)."""
         self._replace_results_table_with_data(columns, rows, escape=False)
+
     def _replace_results_table_with_data(
         self: QueryMixinHost,
         columns: list[str],
@@ -33,11 +30,15 @@ class QueryResultsMixin:
         escape: bool,
     ) -> None:
         """Replace the results table with new data."""
+        self._cancel_results_render()
         container = self.results_area
         old_table = self.results_table
+        was_focused = old_table.has_focus
         new_table = self._build_results_table(columns, rows, escape=escape)
         container.mount(new_table, after=old_table)
         old_table.remove()
+        if was_focused:
+            new_table.focus()
 
     def _build_results_table(
         self: QueryMixinHost,
@@ -46,53 +47,45 @@ class QueryResultsMixin:
         *,
         escape: bool,
     ) -> SqlitDataTable:
-        """Build a new results table with optional markup escaping."""
+        """Build a new results table without converting to Arrow."""
         self._results_table_counter += 1
         new_id = f"results-table-{self._results_table_counter}"
 
         if not columns:
             return SqlitDataTable(id=new_id, zebra_stripes=True, show_header=False)
 
-        if not rows:
-            empty_columns: dict[str, list[Any]] = {col: [] for col in columns}
-            arrow_table = pa.table(empty_columns)
-            backend = ArrowBackend(arrow_table)
-            return SqlitDataTable(
-                id=new_id,
-                zebra_stripes=True,
-                backend=backend,
-                max_column_content_width=MAX_COLUMN_CONTENT_WIDTH,
-            )
-
-        if escape:
-            formatted_rows = []
-            for row in rows[:MAX_RENDER_ROWS]:
-                formatted = []
-                for i in range(len(columns)):
-                    val = row[i] if i < len(row) else None
-                    str_val = escape_markup(str(val)) if val is not None else "NULL"
-                    formatted.append(str_val)
-                formatted_rows.append(formatted)
-
-            formatted_columns: dict[str, list[Any]] = {
-                col: [r[i] for r in formatted_rows] for i, col in enumerate(columns)
-            }
-            arrow_table = pa.table(formatted_columns)
-        else:
-            raw_columns: dict[str, list[Any]] = {}
-            for i, col in enumerate(columns):
-                raw_columns[col] = [r[i] for r in rows[:MAX_RENDER_ROWS]]
-            arrow_table = pa.table(raw_columns)
-
-        backend = ArrowBackend(arrow_table)
+        render_rows = rows[:MAX_RENDER_ROWS] if rows else []
+        render_markup = not escape
         return SqlitDataTable(
             id=new_id,
             zebra_stripes=True,
-            backend=backend,
+            data=render_rows,
+            column_labels=columns,
             max_column_content_width=MAX_COLUMN_CONTENT_WIDTH,
+            render_markup=render_markup,
+            null_rep="NULL",
         )
 
-    def _display_query_results(
+    def _replace_results_table_with_table(self: QueryMixinHost, table: SqlitDataTable) -> None:
+        """Replace the results table with a prebuilt table."""
+        container = self.results_area
+        old_table = self.results_table
+        was_focused = old_table.has_focus
+        container.mount(table, after=old_table)
+        old_table.remove()
+        if was_focused:
+            table.focus()
+
+    def _cancel_results_render(self: QueryMixinHost) -> None:
+        """Cancel any in-flight results rendering worker."""
+        worker = getattr(self, "_results_render_worker", None)
+        if worker is not None:
+            worker.cancel()
+            self._results_render_worker = None
+        token = getattr(self, "_results_render_token", 0)
+        self._results_render_token = token + 1
+
+    async def _display_query_results(
         self: QueryMixinHost, columns: list[str], rows: list[tuple], row_count: int, truncated: bool, elapsed_ms: float
     ) -> None:
         """Display query results in the results table (called on main thread)."""
@@ -103,7 +96,12 @@ class QueryResultsMixin:
         # Switch to single result mode (in case we were showing stacked results)
         self._show_single_result_mode()
 
-        self._replace_results_table(columns, rows)
+        render_token = getattr(self, "_results_render_token", 0) + 1
+        self._results_render_token = render_token
+        table = self._build_results_table(columns, rows, escape=True)
+        if render_token != getattr(self, "_results_render_token", 0):
+            return
+        self._replace_results_table_with_table(table)
 
         time_str = format_duration_ms(elapsed_ms)
         if truncated:
@@ -129,6 +127,7 @@ class QueryResultsMixin:
 
     def _display_query_error(self: QueryMixinHost, error_message: str) -> None:
         """Display query error (called on main thread)."""
+        self._cancel_results_render()
         # notify(severity="error") handles displaying the error in results via _show_error_in_results
         self.notify(f"Query error: {error_message}", severity="error")
 
@@ -138,6 +137,7 @@ class QueryResultsMixin:
         elapsed_ms: float,
     ) -> None:
         """Display stacked results for multi-statement query."""
+        self._cancel_results_render()
         from sqlit.shared.ui.widgets_stacked_results import (
             AUTO_COLLAPSE_THRESHOLD,
         )

@@ -106,6 +106,9 @@ class UILeaderMixin:
     def action_leader_change_theme(self: UINavigationMixinHost) -> None:
         self._execute_leader_command("change_theme")
 
+    def action_leader_toggle_process_worker(self: UINavigationMixinHost) -> None:
+        self._execute_leader_command("toggle_process_worker")
+
     def action_leader_show_help(self: UINavigationMixinHost) -> None:
         self._execute_leader_command("show_help")
 

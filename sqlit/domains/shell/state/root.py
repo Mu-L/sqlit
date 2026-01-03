@@ -15,6 +15,13 @@ class RootState(State):
         self.allows("quit", help="Quit")
         self.allows("show_help", help="Show this help")
         self.allows("leader_key", help="Commands menu")
+        self.allows(
+            "cancel_operation",
+            guard=lambda app: app.query_executing,
+            key="escape",
+            label="Cancel",
+            help="Cancel query",
+        )
 
     def is_active(self, app: InputContext) -> bool:
         return True

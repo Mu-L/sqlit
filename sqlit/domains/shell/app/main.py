@@ -13,6 +13,7 @@ from textual.app import App, ComposeResult
 from textual.containers import Container, Horizontal, Vertical
 from textual.events import Key
 from textual.lazy import Lazy
+from textual.reactive import reactive
 from textual.screen import ModalScreen
 from textual.timer import Timer
 from textual.widgets import Static, Tree
@@ -72,6 +73,8 @@ class SSMSTUI(
     LAYERS = ["autocomplete"]
 
     BINDINGS: ClassVar[list[Any]] = []
+
+    query_executing: bool = reactive(False)
 
     def __init__(
         self,
@@ -136,8 +139,9 @@ class SSMSTUI(
         self._dialog_open: bool = False
         self._last_active_pane: str | None = None
         self._query_worker: Worker[Any] | None = None
-        self._query_executing: bool = False
         self._query_handle: Any | None = None
+        self._command_mode: bool = False
+        self._command_buffer: str = ""
         self._theme_manager = ThemeManager(self, settings_store=self.services.settings_store)
         self._spinner_index: int = 0
         self._spinner_timer: Timer | None = None
@@ -224,7 +228,7 @@ class SSMSTUI(
             autocomplete_visible=self._autocomplete_visible,
             results_filter_active=getattr(self, "_results_filter_visible", False),
             value_view_active=self._value_view_active,
-            query_executing=self._query_executing,
+            query_executing=self.query_executing,
             modal_open=modal_open,
             has_connection=self.current_connection is not None,
             current_connection_name=current_connection_name,
@@ -239,6 +243,9 @@ class SSMSTUI(
         """Route key presses through the core key router."""
         ctx = self._get_input_context()
         if ctx.modal_open:
+            return
+
+        if self._handle_command_input(event, ctx):
             return
 
         action = resolve_action(
@@ -262,6 +269,220 @@ class SSMSTUI(
                 handler()
                 event.prevent_default()
                 event.stop()
+
+    def _start_command_mode(self) -> None:
+        if getattr(self, "_leader_pending", False) and hasattr(self, "_cancel_leader_pending"):
+            cast(UINavigationMixinHost, self)._cancel_leader_pending()
+        self._command_mode = True
+        self._command_buffer = ""
+        self._update_status_bar()
+
+    def _exit_command_mode(self) -> None:
+        self._command_mode = False
+        self._command_buffer = ""
+        self._update_status_bar()
+
+    def _handle_command_input(self, event: Key, ctx: InputContext) -> bool:
+        from sqlit.core.vim import VimMode
+
+        if not self._command_mode:
+            is_command_start = event.character == ":" or event.key in {":", "colon", "shift+semicolon"}
+            if not is_command_start:
+                return False
+            if ctx.focus == "query" and self.vim_mode == VimMode.INSERT:
+                return False
+            self._start_command_mode()
+            event.prevent_default()
+            event.stop()
+            return True
+
+        if event.key == "escape":
+            self._exit_command_mode()
+        elif event.key == "enter":
+            command = self._command_buffer.strip()
+            self._exit_command_mode()
+            self._run_command(command)
+        elif event.key in ("backspace", "delete"):
+            if self._command_buffer:
+                self._command_buffer = self._command_buffer[:-1]
+                self._update_status_bar()
+            else:
+                self._exit_command_mode()
+        else:
+            char = event.character
+            if char and len(char) == 1:
+                self._command_buffer += char
+                self._update_status_bar()
+            else:
+                event.prevent_default()
+                event.stop()
+                return True
+
+        event.prevent_default()
+        event.stop()
+        return True
+
+    def _run_command(self, command: str) -> None:
+        if not command:
+            return
+
+        normalized = command.strip()
+        cmd, *args = normalized.split()
+        cmd = cmd.lower()
+
+        if cmd in {"q", "quit", "exit"}:
+            try:
+                handler = getattr(self, "action_quit", None)
+                if callable(handler):
+                    handler()
+                else:
+                    self.exit()
+            except Exception:
+                self.exit()
+            return
+
+        command_actions = {
+            "help": "show_help",
+            "h": "show_help",
+            "connect": "show_connection_picker",
+            "c": "show_connection_picker",
+            "disconnect": "disconnect",
+            "dc": "disconnect",
+            "theme": "change_theme",
+            "run": "execute_query",
+            "r": "execute_query",
+            "run!": "execute_query_insert",
+            "r!": "execute_query_insert",
+            "process-worker": "toggle_process_worker",
+            "process_worker": "toggle_process_worker",
+            "process-worker!": "toggle_process_worker",
+            "worker": "toggle_process_worker",
+        }
+
+        if cmd == "set" and args:
+            target = args[0].lower().replace("-", "_")
+            value = args[1].lower() if len(args) > 1 else ""
+            if target in {"process_worker"}:
+                if not value:
+                    self._execute_command_action("toggle_process_worker")
+                    return
+                enable_values = {"1", "true", "on", "yes", "enable", "enabled"}
+                disable_values = {"0", "false", "off", "no", "disable", "disabled"}
+                if value in enable_values:
+                    self._set_process_worker(True)
+                    return
+                if value in disable_values:
+                    self._set_process_worker(False)
+                    return
+                self.notify(f"Unknown value for process_worker: {value}", severity="warning")
+                return
+            if target in {"process_worker_warm", "process_worker_warm_on_idle", "process_worker_lazy"}:
+                if not value:
+                    current = bool(self.services.runtime.process_worker_warm_on_idle)
+                    desired = not current
+                else:
+                    enable_values = {"1", "true", "on", "yes", "enable", "enabled"}
+                    disable_values = {"0", "false", "off", "no", "disable", "disabled"}
+                    if value in enable_values:
+                        desired = True
+                    elif value in disable_values:
+                        desired = False
+                    else:
+                        self.notify(f"Unknown value for {target}: {value}", severity="warning")
+                        return
+                if target == "process_worker_lazy":
+                    desired = not desired
+                self._set_process_worker_warm_on_idle(desired)
+                return
+            if target in {"process_worker_auto_shutdown", "process_worker_auto_shutdown_s"}:
+                if not value:
+                    self.notify("Provide seconds or 'off' for process_worker_auto_shutdown", severity="warning")
+                    return
+                disable_values = {"0", "false", "off", "no", "disable", "disabled"}
+                if value in disable_values:
+                    self._set_process_worker_auto_shutdown(0.0)
+                    return
+                try:
+                    seconds = float(value)
+                except ValueError:
+                    self.notify(f"Invalid process_worker_auto_shutdown value: {value}", severity="warning")
+                    return
+                if seconds < 0:
+                    self.notify("process_worker_auto_shutdown must be >= 0", severity="warning")
+                    return
+                self._set_process_worker_auto_shutdown(seconds)
+                return
+
+        action = command_actions.get(cmd)
+        if action is None:
+            self.notify(f"Unknown command: {normalized}", severity="warning")
+            return
+        self._execute_command_action(action)
+
+    def _execute_command_action(self, action: str) -> None:
+        ctx = self._get_input_context()
+        if not self._state_machine.check_action(ctx, action):
+            self.notify(f"Command not available: {action}", severity="warning")
+            return
+        handler = getattr(self, f"action_{action}", None)
+        if not callable(handler):
+            self.notify(f"Unknown action: {action}", severity="warning")
+            return
+        handler()
+
+    def _set_process_worker(self, enabled: bool) -> None:
+        self.services.runtime.process_worker = enabled
+        try:
+            self.services.settings_store.set("process_worker", enabled)
+        except Exception:
+            pass
+        if not enabled:
+            close_fn = getattr(self, "_close_process_worker_client", None)
+            if callable(close_fn):
+                close_fn()
+            cancel_warm = getattr(self, "_cancel_process_worker_warm", None)
+            if callable(cancel_warm):
+                cancel_warm()
+        else:
+            schedule_warm = getattr(self, "_schedule_process_worker_warm", None)
+            if callable(schedule_warm):
+                schedule_warm()
+        state = "enabled" if enabled else "disabled"
+        self.notify(f"Process worker {state}")
+
+    def _set_process_worker_warm_on_idle(self, enabled: bool) -> None:
+        self.services.runtime.process_worker_warm_on_idle = enabled
+        try:
+            self.services.settings_store.set("process_worker_warm_on_idle", enabled)
+        except Exception:
+            pass
+        cancel_warm = getattr(self, "_cancel_process_worker_warm", None)
+        if callable(cancel_warm):
+            cancel_warm()
+        if enabled and self.services.runtime.process_worker:
+            schedule_warm = getattr(self, "_schedule_process_worker_warm", None)
+            if callable(schedule_warm):
+                schedule_warm()
+        state = "enabled" if enabled else "disabled"
+        self.notify(f"Process worker warm-on-idle {state}")
+
+    def _set_process_worker_auto_shutdown(self, seconds: float) -> None:
+        self.services.runtime.process_worker_auto_shutdown_s = float(seconds)
+        try:
+            self.services.settings_store.set("process_worker_auto_shutdown_s", float(seconds))
+        except Exception:
+            pass
+        if seconds <= 0:
+            clear_fn = getattr(self, "_clear_process_worker_auto_shutdown", None)
+            if callable(clear_fn):
+                clear_fn()
+            state = "disabled"
+        else:
+            arm_fn = getattr(self, "_arm_process_worker_auto_shutdown", None)
+            if callable(arm_fn):
+                arm_fn()
+            state = f"{seconds:g}s"
+        self.notify(f"Process worker auto-shutdown {state}")
 
 
     @property
@@ -450,6 +671,11 @@ class SSMSTUI(
     def watch_theme(self, old_theme: str, new_theme: str) -> None:
         """Save theme whenever it changes."""
         self._theme_manager.on_theme_changed(new_theme)
+
+    def watch_query_executing(self, old_value: bool, new_value: bool) -> None:
+        """React to query execution status changes."""
+        self._update_footer_bindings()
+        self._update_status_bar()
 
     def get_custom_theme_names(self) -> set[str]:
         return self._theme_manager.get_custom_theme_names()

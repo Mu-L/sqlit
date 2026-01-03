@@ -4,7 +4,7 @@ from __future__ import annotations
 
 from sqlit.core.input_context import InputContext
 from sqlit.core.vim import VimMode
-from sqlit.domains.shell.state import QueryExecutingState, UIStateMachine
+from sqlit.domains.shell.state import UIStateMachine
 
 
 def make_context(**overrides: object) -> InputContext:
@@ -47,14 +47,6 @@ class TestQueryExecutingState:
         ctx = make_context(query_executing=True)
 
         assert sm.check_action(ctx, "cancel_operation") is True
-
-    def test_active_state_is_query_executing_when_running(self):
-        """Active state should be QueryExecutingState when query is running."""
-        sm = UIStateMachine()
-        ctx = make_context(query_executing=True)
-
-        state = sm.get_active_state(ctx)
-        assert isinstance(state, QueryExecutingState)
 
     def test_footer_shows_cancel_when_executing(self):
         """Footer should show cancel binding when query is executing."""

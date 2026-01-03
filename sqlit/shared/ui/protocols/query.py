@@ -16,7 +16,7 @@ if TYPE_CHECKING:
 
 class QueryStateProtocol(Protocol):
     _query_worker: Worker[Any] | None
-    _query_executing: bool
+    query_executing: bool
     _query_start_time: float
     _spinner_index: int
     _spinner_timer: Timer | None
@@ -25,10 +25,16 @@ class QueryStateProtocol(Protocol):
     _query_service_db_type: str | None
     _cancellable_query: Any | None
     _query_spinner: Spinner | None
+    _process_worker_client: Any | None
+    _process_worker_client_error: str | None
+    _process_worker_last_used: float | None
+    _process_worker_idle_timer: Timer | None
     _query_cursor_cache: dict[str, tuple[int, int]] | None
     _undo_history: Any | None
     _transaction_executor: Any | None
     _transaction_executor_config: Any | None
+    _results_render_worker: Worker[Any] | None
+    _results_render_token: int
 
 
 class QueryActionsProtocol(Protocol):
@@ -63,7 +69,7 @@ class QueryActionsProtocol(Protocol):
 
     def _display_query_results(
         self, columns: list[str], rows: list[tuple[Any, ...]], row_count: int, truncated: bool, elapsed_ms: float
-    ) -> None:
+    ) -> Awaitable[None]:
         ...
 
     def _display_non_query_result(self, affected: int, elapsed_ms: float) -> None:

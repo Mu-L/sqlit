@@ -36,6 +36,19 @@ def run_on_mount(app: AppProtocol) -> None:
     app._startup_stamp("settings_loaded")
 
     app._expanded_paths = set(settings.get("expanded_nodes", []))
+    if "process_worker" in settings:
+        app.services.runtime.process_worker = bool(settings.get("process_worker"))
+    if "process_worker_warm_on_idle" in settings:
+        app.services.runtime.process_worker_warm_on_idle = bool(
+            settings.get("process_worker_warm_on_idle")
+        )
+    if "process_worker_auto_shutdown_s" in settings:
+        try:
+            app.services.runtime.process_worker_auto_shutdown_s = float(
+                settings.get("process_worker_auto_shutdown_s") or 0
+            )
+        except (TypeError, ValueError):
+            app.services.runtime.process_worker_auto_shutdown_s = 0.0
     app._startup_stamp("settings_applied")
 
     apply_mock_settings(app, settings)
@@ -61,6 +74,15 @@ def run_on_mount(app: AppProtocol) -> None:
     app._update_footer_bindings()
     app._startup_stamp("footer_updated")
     _warn_on_missing_actions(app, is_headless)
+    if (
+        app.services.runtime.process_worker
+        and app.services.runtime.process_worker_warm_on_idle
+        and hasattr(app, "_schedule_process_worker_warm")
+    ):
+        try:
+            app._schedule_process_worker_warm()  # type: ignore[attr-defined]
+        except Exception:
+            pass
     startup_config = app._startup_connect_config
     if startup_config is not None:
         config = startup_config

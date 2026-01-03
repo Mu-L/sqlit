@@ -3,6 +3,9 @@
   "theme": "tokyo-night",
   "custom_themes": [],
   "expanded_nodes": [],
+  "process_worker": true,
+  "process_worker_warm_on_idle": true,
+  "process_worker_auto_shutdown_s": 0,
   "allow_plaintext_credentials": false,
   "mock": {
     "enabled": true,

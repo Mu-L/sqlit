@@ -243,6 +243,7 @@ class DefaultKeymapProvider(KeymapProvider):
             # Global
             ActionKeyDef("space", "leader_key", "global", priority=True),
             ActionKeyDef("ctrl+q", "quit", "global"),
+            ActionKeyDef("escape", "cancel_operation", "global"),
             ActionKeyDef("question_mark", "show_help", "global"),
             # Navigation
             ActionKeyDef("e", "focus_explorer", "navigation"),

@@ -42,7 +42,6 @@ from sqlit.domains.results.state import (
 from sqlit.domains.shell.state.leader_pending import LeaderPendingState
 from sqlit.domains.shell.state.main_screen import MainScreenState
 from sqlit.domains.shell.state.modal_active import ModalActiveState
-from sqlit.domains.shell.state.query_executing import QueryExecutingState
 from sqlit.domains.shell.state.root import RootState
 
 
@@ -53,8 +52,6 @@ class UIStateMachine:
         self.root = RootState()
 
         self.modal_active = ModalActiveState(parent=self.root)
-
-        self.query_executing = QueryExecutingState(parent=self.root)
 
         self.main_screen = MainScreenState(parent=self.root)
 
@@ -79,7 +76,6 @@ class UIStateMachine:
 
         self._states = [
             self.modal_active,
-            self.query_executing,  # Before main_screen (more specific when query running)
             self.leader_pending,
             self.tree_filter_active,  # Before tree_focused (more specific when filter active)
             self.tree_on_connection,
@@ -291,5 +287,24 @@ class UIStateMachine:
         lines.append(binding(f"{leader_key}t", "Change theme"))
         lines.append(binding(f"{leader_key}f", "Toggle fullscreen pane"))
         lines.append(binding(f"{leader_key}e", "Toggle explorer visibility"))
+        lines.append("")
+
+        # ═══════════════════════════════════════════════════════════════════
+        # COMMAND MODE
+        # ═══════════════════════════════════════════════════════════════════
+        lines.append(section("COMMAND MODE"))
+        lines.append(binding(":", "Enter command mode"))
+        lines.append(binding("<enter>", "Run command"))
+        lines.append(binding("<esc>", "Cancel command mode"))
+        lines.append(binding("<backspace>", "Exit when empty"))
+        lines.append("")
+        lines.append(subsection("Common Commands:"))
+        lines.append(binding(":help", "Show this help"))
+        lines.append(binding(":connect", "Open connection picker"))
+        lines.append(binding(":run", "Execute query"))
+        lines.append(binding(":process-worker", "Toggle process worker"))
+        lines.append(binding(":set process_worker_warm on|off", "Warm worker on idle"))
+        lines.append(binding(":set process_worker_lazy on|off", "Lazy worker start"))
+        lines.append(binding(":set process_worker_auto_shutdown <seconds>", "Auto-shutdown worker"))
 
         return "\n".join(lines)

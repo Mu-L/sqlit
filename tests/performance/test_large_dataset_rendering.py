@@ -128,7 +128,7 @@ class TestDataTableRenderingPerformance:
                 start_time = time.perf_counter()
 
                 # Directly call the display method (bypassing actual query execution)
-                app._display_query_results(
+                await app._display_query_results(
                     columns=columns,
                     rows=rows,
                     row_count=len(rows),
@@ -167,7 +167,7 @@ class TestDataTableRenderingPerformance:
                 await pilot.pause()
 
                 start_time = time.perf_counter()
-                app._display_query_results(
+                await app._display_query_results(
                     columns=columns,
                     rows=rows,
                     row_count=len(rows),
@@ -197,7 +197,7 @@ class TestDataTableRenderingPerformance:
                 await pilot.pause()
 
                 # Should not raise any markup errors
-                app._display_query_results(
+                await app._display_query_results(
                     columns=columns,
                     rows=rows,
                     row_count=len(rows),
@@ -223,7 +223,7 @@ class TestDataTableRenderingPerformance:
             async with app.run_test(size=(120, 50)) as pilot:
                 await pilot.pause()
 
-                app._display_query_results(
+                await app._display_query_results(
                     columns=columns,
                     rows=rows,
                     row_count=len(rows),
@@ -249,7 +249,7 @@ class TestMemoryUsage:
             async with app.run_test(size=(120, 50)) as pilot:
                 await pilot.pause()
 
-                app._display_query_results(
+                await app._display_query_results(
                     columns=columns,
                     rows=rows,
                     row_count=len(rows),
@@ -275,7 +275,7 @@ class TestMemoryUsage:
 
                 # Render multiple times
                 for i in range(3):
-                    app._display_query_results(
+                    await app._display_query_results(
                         columns=columns,
                         rows=rows,
                         row_count=len(rows),

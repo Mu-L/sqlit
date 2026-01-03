@@ -25,6 +25,8 @@ class UIStateProtocol(Protocol):
     _state_machine: Any
     _active_database: str | None
     _query_target_database: str | None
+    _command_mode: bool
+    _command_buffer: str
     log: Any
 
 

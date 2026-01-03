@@ -167,6 +167,25 @@ class UINavigationMixin(UIStatusMixin, UILeaderMixin):
         help_text = self._state_machine.generate_help_text()
         self.push_screen(HelpScreen(help_text))
 
+    def action_toggle_process_worker(self: UINavigationMixinHost) -> None:
+        """Toggle the process worker setting."""
+        enabled = not bool(self.services.runtime.process_worker)
+        self.services.runtime.process_worker = enabled
+        try:
+            self.services.settings_store.set("process_worker", enabled)
+        except Exception:
+            pass
+        if enabled:
+            schedule_warm = getattr(self, "_schedule_process_worker_warm", None)
+            if callable(schedule_warm):
+                schedule_warm()
+        else:
+            close_fn = getattr(self, "_close_process_worker_client", None)
+            if callable(close_fn):
+                close_fn()
+        state = "enabled" if enabled else "disabled"
+        self.notify(f"Process worker {state}")
+
     def on_descendant_focus(self: UINavigationMixinHost, event: Any) -> None:
         """Handle focus changes to update section labels and footer."""
         from sqlit.core.vim import VimMode

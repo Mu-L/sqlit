@@ -262,7 +262,7 @@ class BaseDatabaseBrowsingTest:
                 # Wait for query to complete
                 await wait_for_condition(
                     pilot,
-                    lambda: not getattr(app, "_query_executing", False),
+                    lambda: not getattr(app, "query_executing", False),
                     timeout_seconds=15.0,
                     description="query to complete",
                 )
