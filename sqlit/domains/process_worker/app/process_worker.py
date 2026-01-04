@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import threading
 import time
+from collections import deque
 from dataclasses import dataclass, field
 from multiprocessing.connection import Connection
 from typing import Any
@@ -46,6 +47,7 @@ class _WorkerState:
     current_query: CancellableQuery | None = None
     current_thread: threading.Thread | None = None
     send_lock: threading.Lock = field(default_factory=threading.Lock)
+    queue: deque[dict[str, Any]] = field(default_factory=deque)
 
     def send(self, payload: dict[str, Any]) -> None:
         with self.send_lock:
@@ -178,6 +180,36 @@ class _WorkerState:
 
         self.current_thread = threading.Thread(target=run, daemon=True)
         self.current_thread.start()
+
+    def _handle_schema_message(self, message: dict[str, Any]) -> None:
+        op = message.get("op")
+        if op == "columns":
+            self._start_schema_columns(message)
+        elif op == "folder_items":
+            self._start_schema_folder_items(message)
+        else:
+            self.send(
+                {
+                    "type": "error",
+                    "id": int(message.get("id", 0)),
+                    "message": f"Unknown schema operation: {op}",
+                }
+            )
+
+    def _handle_message(self, message: dict[str, Any]) -> None:
+        message_type = message.get("type")
+        if message_type == "exec":
+            self._start_query(message)
+        elif message_type == "schema":
+            self._handle_schema_message(message)
+
+    def _enqueue_message(self, message: dict[str, Any]) -> None:
+        self.queue.append(message)
+
+    def _maybe_start_next(self) -> None:
+        while self.current_thread is None and self.queue:
+            message = self.queue.popleft()
+            self._handle_message(message)
 
     def _start_schema_columns(self, message: dict[str, Any]) -> None:
         query_id = int(message.get("id", 0))
@@ -447,45 +479,17 @@ def run_process_worker(conn: Connection) -> None:
     try:
         while True:
             state._cleanup_current()
+            state._maybe_start_next()
             if conn.poll(0.1):
                 message = conn.recv()
                 message_type = message.get("type")
                 if message_type == "shutdown":
                     break
-                if message_type == "exec":
+                if message_type in {"exec", "schema"}:
                     if state.current_thread is not None and state.current_thread.is_alive():
-                        state.send(
-                            {
-                                "type": "error",
-                                "id": int(message.get("id", 0)),
-                                "message": "Worker is busy.",
-                            }
-                        )
+                        state._enqueue_message(message)
                     else:
-                        state._start_query(message)
-                elif message_type == "schema":
-                    if state.current_thread is not None and state.current_thread.is_alive():
-                        state.send(
-                            {
-                                "type": "error",
-                                "id": int(message.get("id", 0)),
-                                "message": "Worker is busy.",
-                            }
-                        )
-                    else:
-                        op = message.get("op")
-                        if op == "columns":
-                            state._start_schema_columns(message)
-                        elif op == "folder_items":
-                            state._start_schema_folder_items(message)
-                        else:
-                            state.send(
-                                {
-                                    "type": "error",
-                                    "id": int(message.get("id", 0)),
-                                    "message": f"Unknown schema operation: {op}",
-                                }
-                            )
+                        state._handle_message(message)
                 elif message_type == "cancel":
                     state._cancel_current(int(message.get("id", 0)))
     finally:

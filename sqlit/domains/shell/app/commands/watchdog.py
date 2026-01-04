@@ -2,7 +2,6 @@
 
 from __future__ import annotations
 
-import time
 from typing import Any
 
 from .router import register_command_handler
@@ -11,67 +10,26 @@ from .router import register_command_handler
 def _handle_watchdog_command(app: Any, cmd: str, args: list[str]) -> bool:
     if cmd in {"watchdog", "wd"}:
         value = args[0].lower() if args else ""
-        if value == "info":
-            from sqlit.shared.ui.screens.message import MessageScreen
-
-            runtime = getattr(app.services, "runtime", None)
-            enabled = bool(getattr(runtime, "process_worker", False)) if runtime else False
-            warm_on_idle = bool(getattr(runtime, "process_worker_warm_on_idle", False)) if runtime else False
-            auto_shutdown = float(getattr(runtime, "process_worker_auto_shutdown_s", 0) or 0) if runtime else 0.0
-            active = getattr(app, "_process_worker_client", None) is not None
-            last_used = getattr(app, "_process_worker_last_used", None)
-            client_error = getattr(app, "_process_worker_client_error", None)
-
-            if not enabled:
-                mode = "disabled"
-            else:
-                mode = "warm-on-idle" if warm_on_idle else "lazy"
-
-            if last_used is None:
-                last_active = "never"
-            else:
-                age_s = max(0.0, time.monotonic() - float(last_used))
-                if age_s < 1:
-                    last_active = "just now"
-                elif age_s < 60:
-                    last_active = f"{age_s:.1f}s ago"
-                elif age_s < 3600:
-                    last_active = f"{age_s / 60:.1f}m ago"
-                elif age_s < 86400:
-                    last_active = f"{age_s / 3600:.1f}h ago"
-                else:
-                    last_active = f"{age_s / 86400:.1f}d ago"
-
-            auto_shutdown_label = "off" if auto_shutdown <= 0 else f"{auto_shutdown:g}s"
-
-            lines = [
-                "Process worker status:",
-                f"Enabled: {'yes' if enabled else 'no'}",
-                f"Mode: {mode}",
-                f"Active: {'yes' if active else 'no'}",
-                f"Last active: {last_active}",
-                f"Auto-shutdown: {auto_shutdown_label}",
-            ]
-            if client_error:
-                lines.append(f"Last error: {client_error}")
-            app.push_screen(MessageScreen("Process Worker Info", "\n".join(lines)))
-            return True
         if value == "list":
             events = getattr(app, "_ui_stall_watchdog_events", [])
             if not events:
                 app.notify("No UI stall warnings recorded")
                 return True
-            from sqlit.shared.ui.screens.message import MessageScreen
+            def format_context(suffix: str) -> str:
+                text = suffix.strip()
+                if text.startswith("(") and text.endswith(")"):
+                    return text[1:-1].strip()
+                return text
 
-            lines = ["Recent UI stall warnings:"]
+            columns = ["Time", "Stall (ms)", "Context"]
+            rows: list[tuple[str, str, str]] = []
+            for ts, ms, suffix in events[-10:]:
+                rows.append((ts or "?", f"{ms:.1f}", format_context(str(suffix))))
+            if hasattr(app, "_replace_results_table"):
+                app._replace_results_table(columns, rows)
             path = getattr(app, "_ui_stall_watchdog_log_path", None)
             if path:
-                lines.append(f"Log file: {path}")
-                lines.append("")
-            for ts, ms, suffix in events[-10:]:
-                prefix = f"[{ts}]" if ts else "[?]"
-                lines.append(f"{prefix} {ms:.1f} ms{suffix}")
-            app.push_screen(MessageScreen("UI Stall Watchdog", "\n".join(lines)))
+                app.notify(f"UI stall log: {path}")
             return True
         if value == "clear":
             try:

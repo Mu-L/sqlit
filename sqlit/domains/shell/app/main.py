@@ -471,16 +471,16 @@ class SSMSTUI(
                 "Spawns a separate OS process to run SQL queries, avoiding GIL starvation for better UI responsiveness; uses more RAM while active.",
             ),
             (
+                "Worker",
+                ":worker info",
+                "Show process worker status",
+                "Displays worker mode, active state, and last activity.",
+            ),
+            (
                 "Watchdog",
                 ":wd <ms|off>",
                 "Set UI stall watchdog threshold",
                 "Logs when the UI thread stalls longer than the threshold.",
-            ),
-            (
-                "Watchdog",
-                ":wd info",
-                "Show process worker status",
-                "Displays worker status, mode, and last active time.",
             ),
             ("Watchdog", ":wd list", "Show UI stall warnings", ""),
             ("Watchdog", ":wd clear", "Clear UI stall log", ""),
