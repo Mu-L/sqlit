@@ -3,12 +3,9 @@
 from __future__ import annotations
 
 from typing import TYPE_CHECKING, Any
-
-import pyarrow as pa
 from textual.app import ComposeResult
 from textual.containers import VerticalScroll
 from textual.widgets import Collapsible, Static
-from textual_fastdatatable import ArrowBackend
 
 from .widgets_tables import SqlitDataTable
 
@@ -211,25 +208,17 @@ class StackedResultsContainer(VerticalScroll):
     def _build_result_table_from_rows(
         self, columns: list[str], rows: list[tuple], index: int
     ) -> SqlitDataTable:
-        """Build a DataTable for a QueryResult."""
-        # Convert rows to column-oriented format
-        column_data: dict[str, list[Any]] = {col: [] for col in columns}
-        for row in rows:
-            for i, col in enumerate(columns):
-                val = row[i] if i < len(row) else None
-                # Convert to string for display
-                column_data[col].append(str(val) if val is not None else "NULL")
-
-        arrow_table = pa.table(column_data)
-        backend = ArrowBackend(arrow_table)
-
+        """Build a DataTable for a QueryResult without Arrow conversion."""
         # Calculate height: 1 for header + number of rows, capped at 15
         table_height = min(1 + len(rows), 15)
 
         table = SqlitDataTable(
             id=f"result-table-{index}",
             zebra_stripes=True,
-            backend=backend,
+            data=rows,
+            column_labels=columns,
+            render_markup=False,
+            null_rep="NULL",
         )
         table.styles.height = table_height
         return table

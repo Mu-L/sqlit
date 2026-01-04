@@ -27,6 +27,8 @@ class ResultsFilterMixin:
     _results_filter_match_index: int = 0
     _results_filter_original_columns: list[str] = []
     _results_filter_original_rows: list[tuple] = []  # Store original rows for restore
+    _results_filter_row_texts: list[str] = []  # Cached row strings for filtering
+    _results_filter_row_texts_lower: list[str] = []  # Cached lowercase row strings
     _results_filter_matching_rows: list[tuple] = []  # Current filtered rows
     _results_filter_fuzzy: bool = False  # Whether fuzzy mode is active
     _results_filter_debounce_timer: Any = None  # Timer for debounced updates
@@ -58,6 +60,8 @@ class ResultsFilterMixin:
         self._results_filter_target_section = None
         self._results_filter_target_table = None
         self._results_filter_original_columns = []
+        self._results_filter_row_texts = []
+        self._results_filter_row_texts_lower = []
 
         if not self.results_table.has_focus:
             self.results_table.focus()
@@ -78,6 +82,7 @@ class ResultsFilterMixin:
             self._results_filter_original_columns = columns
             self._results_filter_original_rows = rows
             self._results_filter_matching_rows = list(rows)
+            self._prime_results_filter_cache(rows)
             self.results_area.add_class("results-filter-active")
             try:
                 table.focus()
@@ -92,6 +97,7 @@ class ResultsFilterMixin:
             self._results_filter_original_rows = list(self._last_result_rows)
             # Initially all rows match (no filter applied)
             self._results_filter_matching_rows = list(self._last_result_rows)
+            self._prime_results_filter_cache(self._last_result_rows)
 
         self._results_filter_visible = True
         self._results_filter_text = ""
@@ -108,6 +114,8 @@ class ResultsFilterMixin:
         """Close the results filter and restore original data."""
         self._results_filter_visible = False
         self._results_filter_text = ""
+        self._results_filter_row_texts = []
+        self._results_filter_row_texts_lower = []
         self.results_filter_input.hide()
 
         if self._results_filter_stacked:
@@ -128,6 +136,8 @@ class ResultsFilterMixin:
         """Accept current filter selection and close, keeping filtered view."""
         self._results_filter_visible = False
         self._results_filter_text = ""
+        self._results_filter_row_texts = []
+        self._results_filter_row_texts_lower = []
         self.results_filter_input.hide()
 
         if self._results_filter_stacked:
@@ -269,6 +279,11 @@ class ResultsFilterMixin:
         Prefix with ~ for fuzzy matching.
         """
         total = len(self._results_filter_original_rows)
+        if (
+            len(self._results_filter_row_texts) != total
+            or len(self._results_filter_row_texts_lower) != total
+        ):
+            self._prime_results_filter_cache(self._results_filter_original_rows)
 
         if not self._results_filter_text:
             # Restore all rows
@@ -301,13 +316,20 @@ class ResultsFilterMixin:
         hit_limit = False
 
         for row_idx, row in enumerate(self._results_filter_original_rows):
-            row_text = " ".join(str(cell) if cell is not None else "" for cell in row)
+            if row_idx < len(self._results_filter_row_texts):
+                row_text = self._results_filter_row_texts[row_idx]
+            else:
+                row_text = self._build_row_text(row)
 
             if self._results_filter_fuzzy:
                 matched, _ = fuzzy_match(search_text, row_text)
             else:
                 # Fast case-insensitive substring match
-                matched = search_lower in row_text.lower()
+                if row_idx < len(self._results_filter_row_texts_lower):
+                    row_text_lower = self._results_filter_row_texts_lower[row_idx]
+                else:
+                    row_text_lower = row_text.lower()
+                matched = search_lower in row_text_lower
 
             if matched:
                 matches.append(row_idx)
@@ -376,6 +398,21 @@ class ResultsFilterMixin:
             else self._last_result_columns
         )
         self._replace_results_table_raw_for_filter(columns, highlighted_rows)
+
+    @staticmethod
+    def _build_row_text(row: tuple) -> str:
+        return " ".join(str(cell) if cell is not None else "" for cell in row)
+
+    def _prime_results_filter_cache(self: ResultsFilterMixinHost, rows: list[tuple]) -> None:
+        """Precompute row text caches for faster filtering."""
+        row_texts: list[str] = []
+        row_texts_lower: list[str] = []
+        for row in rows:
+            row_text = self._build_row_text(row)
+            row_texts.append(row_text)
+            row_texts_lower.append(row_text.lower())
+        self._results_filter_row_texts = row_texts
+        self._results_filter_row_texts_lower = row_texts_lower
 
     def _highlight_substring(self: ResultsFilterMixinHost, text: str, search_lower: str) -> str:
         """Highlight substring matches in text (case-insensitive)."""
@@ -503,30 +540,24 @@ class ResultsFilterMixin:
     def _build_results_section_table(
         self: ResultsFilterMixinHost, columns: list[str], rows: list[tuple], *, escape: bool
     ) -> SqlitDataTable:
-        import pyarrow as pa
-        from textual_fastdatatable import ArrowBackend
-
         if not columns:
             columns = ["(empty)"]
             rows = []
 
-        column_data: dict[str, list[Any]] = {col: [] for col in columns}
-        for row in rows:
-            for i, col in enumerate(columns):
-                val = row[i] if i < len(row) else None
-                if val is None:
-                    cell = "NULL"
-                else:
-                    cell = escape_markup(str(val)) if escape else str(val)
-                column_data[col].append(cell)
+        if escape:
+            rows = [
+                tuple(escape_markup(str(val)) if val is not None else "NULL" for val in row)
+                for row in rows
+            ]
 
-        arrow_table = pa.table(column_data)
-        backend = ArrowBackend(arrow_table)
         table_height = min(1 + len(rows), 15)
 
         table = SqlitDataTable(
             zebra_stripes=True,
-            backend=backend,
+            data=rows,
+            column_labels=columns,
+            render_markup=not escape,
+            null_rep="NULL",
         )
         table.styles.height = table_height
         return table

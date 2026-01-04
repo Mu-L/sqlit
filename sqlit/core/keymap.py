@@ -5,6 +5,8 @@ from __future__ import annotations
 from abc import ABC, abstractmethod
 from dataclasses import dataclass
 
+from sqlit.shared.core.debug_events import emit_debug_event
+
 KEY_DISPLAY_OVERRIDES: dict[str, str] = {
     "question_mark": "?",
     "slash": "/",
@@ -118,7 +120,68 @@ class KeymapProvider(ABC):
 class DefaultKeymapProvider(KeymapProvider):
     """Default keymap with hardcoded bindings."""
 
+    def __init__(self) -> None:
+        self._leader_commands_cache: list[LeaderCommandDef] | None = None
+        self._action_keys_cache: list[ActionKeyDef] | None = None
+        self._leader_emitted: bool = False
+        self._action_emitted: bool = False
+
+    def _emit_leader_keybindings(self, commands: list[LeaderCommandDef]) -> None:
+        for cmd in commands:
+            emit_debug_event(
+                "keybinding.register",
+                category="keybinding",
+                kind="leader",
+                provider=self.__class__.__name__,
+                key=cmd.key,
+                action=cmd.action,
+                label=cmd.label,
+                group=cmd.category,
+                menu=cmd.menu,
+                guard=cmd.guard,
+            )
+
+    def _emit_action_keybindings(self, bindings: list[ActionKeyDef]) -> None:
+        for binding in bindings:
+            emit_debug_event(
+                "keybinding.register",
+                category="keybinding",
+                kind="action",
+                provider=self.__class__.__name__,
+                key=binding.key,
+                action=binding.action,
+                context=binding.context,
+                guard=binding.guard,
+                primary=binding.primary,
+                show=binding.show,
+                priority=binding.priority,
+            )
+
+    def _ensure_leader_commands(self) -> list[LeaderCommandDef]:
+        if self._leader_commands_cache is None:
+            self._leader_commands_cache = self._build_leader_commands()
+        return self._leader_commands_cache
+
+    def _ensure_action_keys(self) -> list[ActionKeyDef]:
+        if self._action_keys_cache is None:
+            self._action_keys_cache = self._build_action_keys()
+        return self._action_keys_cache
+
     def get_leader_commands(self) -> list[LeaderCommandDef]:
+        commands = self._ensure_leader_commands()
+        if not self._leader_emitted:
+            self._emit_leader_keybindings(commands)
+            self._leader_emitted = True
+        return list(commands)
+
+    def get_action_keys(self) -> list[ActionKeyDef]:
+        bindings = self._ensure_action_keys()
+        if not self._action_emitted:
+            self._emit_action_keybindings(bindings)
+            self._action_emitted = True
+        return list(bindings)
+
+    def _build_leader_commands(self) -> list[LeaderCommandDef]:
         return [
             # View
             LeaderCommandDef("e", "toggle_explorer", "Toggle Explorer", "View"),
@@ -130,6 +193,8 @@ class DefaultKeymapProvider(KeymapProvider):
             LeaderCommandDef("z", "cancel_operation", "Cancel", "Actions", guard="query_executing"),
             LeaderCommandDef("t", "change_theme", "Change Theme", "Actions"),
             LeaderCommandDef("h", "show_help", "Help", "Actions"),
+            LeaderCommandDef("space", "telescope", "Telescope", "Actions"),
+            LeaderCommandDef("slash", "telescope_filter", "Telescope Search", "Actions"),
             LeaderCommandDef("q", "quit", "Quit", "Actions"),
             # Delete menu (vim-style)
             LeaderCommandDef("d", "line", "Delete line", "Delete", menu="delete"),
@@ -222,7 +287,7 @@ class DefaultKeymapProvider(KeymapProvider):
             LeaderCommandDef("j", "json", "Export as JSON", "Export", menu="rye"),
         ]
 
-    def get_action_keys(self) -> list[ActionKeyDef]:
+    def _build_action_keys(self) -> list[ActionKeyDef]:
         return [
             # Tree actions
             ActionKeyDef("n", "new_connection", "tree"),
@@ -243,6 +308,7 @@ class DefaultKeymapProvider(KeymapProvider):
             # Global
             ActionKeyDef("space", "leader_key", "global", priority=True),
             ActionKeyDef("ctrl+q", "quit", "global"),
+            ActionKeyDef("escape", "cancel_operation", "global"),
             ActionKeyDef("question_mark", "show_help", "global"),
             # Navigation
             ActionKeyDef("e", "focus_explorer", "navigation"),
@@ -322,9 +388,62 @@ def set_keymap(provider: KeymapProvider) -> None:
     """Set the keymap provider (for testing or custom keymaps)."""
     global _keymap_provider
     _keymap_provider = provider
+    emit_keybinding_snapshot(provider)
 
 
 def reset_keymap() -> None:
     """Reset to default keymap provider."""
     global _keymap_provider
     _keymap_provider = None
+
+
+def emit_keybinding_snapshot(provider: KeymapProvider | None = None) -> None:
+    """Emit debug events for the current keymap bindings."""
+    keymap = provider or get_keymap()
+    if hasattr(keymap, "_ensure_leader_commands"):
+        commands = keymap._ensure_leader_commands()  # type: ignore[attr-defined]
+    else:
+        commands = keymap.get_leader_commands()
+    for cmd in commands:
+        emit_debug_event(
+            "keybinding.register",
+            category="keybinding",
+            source="snapshot",
+            kind="leader",
+            provider=keymap.__class__.__name__,
+            key=cmd.key,
+            action=cmd.action,
+            label=cmd.label,
+            group=cmd.category,
+            menu=cmd.menu,
+            guard=cmd.guard,
+        )
+    if hasattr(keymap, "_leader_emitted"):
+        try:
+            keymap._leader_emitted = True  # type: ignore[attr-defined]
+        except Exception:
+            pass
+    if hasattr(keymap, "_ensure_action_keys"):
+        bindings = keymap._ensure_action_keys()  # type: ignore[attr-defined]
+    else:
+        bindings = keymap.get_action_keys()
+    for binding in bindings:
+        emit_debug_event(
+            "keybinding.register",
+            category="keybinding",
+            source="snapshot",
+            kind="action",
+            provider=keymap.__class__.__name__,
+            key=binding.key,
+            action=binding.action,
+            context=binding.context,
+            guard=binding.guard,
+            primary=binding.primary,
+            show=binding.show,
+            priority=binding.priority,
+        )
+    if hasattr(keymap, "_action_emitted"):
+        try:
+            keymap._action_emitted = True  # type: ignore[attr-defined]
+        except Exception:
+            pass

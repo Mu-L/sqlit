@@ -177,6 +177,12 @@ class UIStatusMixin:
         else:
             conn_info = "Not connected"
 
+        if getattr(self, "_command_mode", False):
+            from rich.markup import escape as escape_markup
+
+            cmd_buffer = escape_markup(getattr(self, "_command_buffer", ""))
+            conn_info = f"[bold cyan]:{cmd_buffer}[/]"
+
         # Build status indicators
         status_parts = []
 
@@ -239,7 +245,10 @@ class UIStatusMixin:
         left_plain = re.sub(r"\[.*?\]", "", left_content)
 
         # Build right side content - executing status takes priority over notification
-        if getattr(self, "_query_executing", False):
+        if getattr(self, "query_executing", False):
+            from sqlit.core.state_base import resolve_display_key
+
+            cancel_key = resolve_display_key("cancel_operation") or "<esc>"
             query_spinner = getattr(self, "_query_spinner", None)
             if query_spinner and query_spinner.running:
                 import time
@@ -250,11 +259,14 @@ class UIStatusMixin:
                 if start_time:
                     elapsed_ms = (time.perf_counter() - start_time) * 1000
                     elapsed_str = format_duration_ms(elapsed_ms, always_seconds=True)
-                    right_content = f"[bold yellow]{query_spinner.frame} Executing [{elapsed_str}][/] [dim]^z to cancel[/]"
-                    right_content_plain = f"  Executing [{elapsed_str}] ^z to cancel"
+                    right_content = (
+                        f"[bold yellow]{query_spinner.frame} Executing [{elapsed_str}][/] "
+                        f"[dim]{cancel_key} to cancel[/]"
+                    )
+                    right_content_plain = f"  Executing [{elapsed_str}] {cancel_key} to cancel"
                 else:
-                    right_content = f"[bold yellow]{query_spinner.frame} Executing[/] [dim]^z to cancel[/]"
-                    right_content_plain = "  Executing ^z to cancel"
+                    right_content = f"[bold yellow]{query_spinner.frame} Executing[/] [dim]{cancel_key} to cancel[/]"
+                    right_content_plain = f"  Executing {cancel_key} to cancel"
             else:
                 right_content = "[bold yellow]Executing...[/]"
                 right_content_plain = "Executing..."
@@ -363,12 +375,24 @@ class UIStatusMixin:
             self._last_notification_time = ""
             self._update_status_bar()
             self._show_error_in_results(message, timestamp)
+            self._show_error_dialog(message, title=title)
         else:
             # Show normal/warning in status bar
             self._last_notification = message
             self._last_notification_severity = severity
             self._last_notification_time = timestamp
             self._update_status_bar()
+
+    def _show_error_dialog(self: UINavigationMixinHost, message: str, *, title: str = "") -> None:
+        """Display an error dialog for critical errors."""
+        from textual.screen import ModalScreen
+
+        from sqlit.shared.ui.screens.error import ErrorScreen
+
+        if any(isinstance(screen, ModalScreen) for screen in self.screen_stack[1:]):
+            return
+        dialog_title = title or "Error"
+        self.push_screen(ErrorScreen(dialog_title, message))
 
     def _show_error_in_results(self: UINavigationMixinHost, message: str, timestamp: str) -> None:
         """Display error message in the results table."""

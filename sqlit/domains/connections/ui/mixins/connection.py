@@ -50,6 +50,71 @@ class ConnectionMixin:
 
     _connection_flow: ConnectionFlow | None = None
 
+    def _emit_debug(self: ConnectionMixinHost, name: str, **data: Any) -> None:
+        emit = getattr(self, "emit_debug_event", None)
+        if callable(emit):
+            emit(name, **data)
+
+    def watch_current_config(self: ConnectionMixinHost, old_config: ConnectionConfig | None, new_config: ConnectionConfig | None) -> None:
+        if not getattr(self, "_screen_stack", None):
+            return
+        self._update_status_bar()
+        self._update_section_labels()
+        pending_runner = getattr(self, "_maybe_run_pending_telescope_query", None)
+        if callable(pending_runner):
+            pending_runner()
+        if old_config and new_config and self._connection_identity(old_config) == self._connection_identity(new_config):
+            try:
+                tree_db_switching.update_database_labels(self)
+            except Exception:
+                pass
+            return
+        self._refresh_connection_tree()
+
+    def _connection_identity(self, config: ConnectionConfig) -> tuple[Any, ...]:
+        if config.file_endpoint:
+            return ("file", config.name, config.db_type, config.file_endpoint.path)
+        endpoint = config.tcp_endpoint
+        host = endpoint.host if endpoint else ""
+        port = endpoint.port if endpoint else ""
+        return ("tcp", config.name, config.db_type, host, port)
+
+    def _refresh_connection_tree(self: ConnectionMixinHost) -> None:
+        screen_stack = getattr(self, "_screen_stack", None)
+        if not screen_stack:
+            return
+
+        token = object()
+        setattr(self, "_connection_tree_refresh_token", token)
+
+        def do_refresh() -> None:
+            if getattr(self, "_connection_tree_refresh_token", None) is not token:
+                return
+
+            def after_refresh() -> None:
+                try:
+                    self.call_after_refresh(self._select_connected_node)
+                    self.call_after_refresh(lambda: tree_db_switching.update_database_labels(self))
+                except Exception:
+                    pass
+
+            tree_builder.refresh_tree_chunked(self, on_done=after_refresh)
+
+        try:
+            from sqlit.domains.shell.app.idle_scheduler import Priority, get_idle_scheduler
+        except Exception:
+            scheduler = None
+        else:
+            scheduler = get_idle_scheduler()
+        if scheduler:
+            scheduler.request_idle_callback(
+                do_refresh,
+                priority=Priority.NORMAL,
+                name="connection-tree-refresh",
+            )
+        else:
+            self.set_timer(0.001, do_refresh)
+
     def _get_connection_flow(self: ConnectionMixinHost) -> ConnectionFlow:
         flow = getattr(self, "_connection_flow", None)
         manager = getattr(self, "_connection_manager", None)
@@ -58,6 +123,7 @@ class ConnectionMixin:
                 services=self.services,
                 connection_manager=manager,
                 prompter=_ScreenPrompter(self),
+                emit_debug=getattr(self, "emit_debug_event", None),
             )
             self._connection_flow = flow
         else:
@@ -85,16 +151,22 @@ class ConnectionMixin:
         If the connection requires a password that is not stored (empty),
         the user will be prompted to enter the password before connecting.
         """
+        self._emit_debug(
+            "connection.request",
+            connection=config.name,
+            db_type=str(config.db_type),
+        )
         flow = self._get_connection_flow()
         flow.start(config, self._do_connect)
 
     def _set_connecting_state(self: ConnectionMixinHost, config: ConnectionConfig | None, refresh: bool = True) -> None:
         """Track which connection is currently being attempted."""
+        previous_config = getattr(self, "_connecting_config", None)
         self._connecting_config = config
         if config is None:
             self._stop_connect_spinner()
-            if refresh:
-                tree_builder.refresh_tree(self)
+            if previous_config is not None:
+                tree_builder.clear_connecting_indicator(self, previous_config)
             try:
                 self._update_status_bar()
             except Exception:
@@ -103,7 +175,7 @@ class ConnectionMixin:
 
         self._start_connect_spinner()
         if refresh:
-            tree_builder.refresh_tree(self)
+            tree_builder.ensure_connecting_indicator(self, config)
         tree_builder.update_connecting_indicator(self)
         try:
             self._update_status_bar()
@@ -135,7 +207,7 @@ class ConnectionMixin:
 
     def _do_connect(self: ConnectionMixinHost, config: ConnectionConfig) -> None:
         # Disconnect from current server first (if any)
-        if self.current_connection:
+        if self.current_connection is not None:
             self._disconnect_silent()
 
         self._connection_failed = False
@@ -146,6 +218,12 @@ class ConnectionMixin:
             self._connection_attempt_id = 0
         self._connection_attempt_id += 1
         attempt_id = self._connection_attempt_id
+        self._emit_debug(
+            "connection.attempt_start",
+            connection=config.name,
+            db_type=str(config.db_type),
+            attempt_id=attempt_id,
+        )
 
         def work() -> ConnectionSession:
             manager = getattr(self, "_connection_manager", None)
@@ -159,29 +237,57 @@ class ConnectionMixin:
                 session.close()
                 return
 
-            self._set_connecting_state(None, refresh=False)
             self._connection_failed = False
             self._session = session
-            self.current_connection = session.connection
-            self.current_config = config
             self.current_provider = session.provider
             self.current_ssh_tunnel = session.tunnel
             is_saved = any(c.name == config.name for c in self.connections)
             self._direct_connection_config = None if is_saved else config
             self._active_database = None
+            self.current_connection = session.connection
+            self.current_config = config
+            self._set_connecting_state(None, refresh=False)
             reconnected = False
-
-            tree_builder.refresh_tree(self)
-            self.call_after_refresh(self._select_connected_node)
             if not reconnected:
-                self._load_schema_cache()
-            self._update_status_bar()
-            self._update_section_labels()
-            # Update database labels to show star on active database
-            self.call_after_refresh(lambda: tree_db_switching.update_database_labels(self))
+                def load_schema_cache() -> None:
+                    if attempt_id != self._connection_attempt_id:
+                        return
+                    if self.current_connection is None or self.current_config is None:
+                        return
+                    self._load_schema_cache()
+
+                if getattr(self, "_pending_telescope_query", None) or getattr(self, "_defer_schema_load", False):
+                    setattr(self, "_defer_schema_load", True)
+                else:
+                    try:
+                        from sqlit.domains.shell.app.idle_scheduler import (
+                            Priority,
+                            get_idle_scheduler,
+                        )
+                    except Exception:
+                        scheduler = None
+                    else:
+                        scheduler = get_idle_scheduler()
+                    if scheduler:
+                        scheduler.cancel_all(name="schema-cache-load")
+                        scheduler.request_idle_callback(
+                            load_schema_cache,
+                            priority=Priority.NORMAL,
+                            name="schema-cache-load",
+                        )
+                    else:
+                        self.set_timer(0.25, load_schema_cache)
+            connect_hook = getattr(self, "_on_connect", None)
+            if callable(connect_hook):
+                connect_hook()
             if self.current_provider:
                 for message in self.current_provider.post_connect_warnings(config):
                     self.notify(message, severity="warning")
+            self._emit_debug(
+                "connection.attempt_success",
+                connection=config.name,
+                attempt_id=attempt_id,
+            )
 
         def on_error(error: Exception) -> None:
             # Ignore if a newer connection attempt was started
@@ -195,6 +301,17 @@ class ConnectionMixin:
 
             self._connection_failed = True
             self._update_status_bar()
+
+            connect_failed = getattr(self, "_on_connect_failed", None)
+            if callable(connect_failed):
+                connect_failed(config)
+
+            self._emit_debug(
+                "connection.attempt_error",
+                connection=config.name,
+                attempt_id=attempt_id,
+                error=str(error),
+            )
 
             if handle_connection_error(self, error, config):
                 return
@@ -217,9 +334,21 @@ class ConnectionMixin:
         Closes the session, clears connection state, and refreshes the tree.
         Called 'silent' because it doesn't notify the user, but it does update the UI.
         """
-        if hasattr(self, "_session") and self._session:
-            self._session.close()
-            self._session = None
+        session = getattr(self, "_session", None)
+        self._session = None
+        if session is not None:
+            def close_session() -> None:
+                try:
+                    session.close()
+                except Exception:
+                    pass
+            try:
+                self.run_worker(close_session, name="close-session", thread=True, exclusive=False)
+            except Exception:
+                try:
+                    session.close()
+                except Exception:
+                    pass
 
         self.current_connection = None
         self.current_config = None
@@ -230,13 +359,16 @@ class ConnectionMixin:
         self._clear_query_target_database()
         # Notify all mixins of disconnect via lifecycle hook
         self._on_disconnect()
-        tree_builder.refresh_tree(self)
-        self._update_section_labels()
 
     def _select_connected_node(self: ConnectionMixinHost) -> None:
         """Move cursor to the connected node without toggling expansion."""
         if not self.current_config:
             return
+        cursor = self.object_tree.cursor_node
+        if cursor is not None:
+            cursor_config = self._get_connection_config_from_node(cursor)
+            if not cursor_config or cursor_config.name != self.current_config.name:
+                return
         for node in self.object_tree.root.children:
             config = self._get_connection_config_from_node(node)
             if config and config.name == self.current_config.name:
@@ -245,7 +377,7 @@ class ConnectionMixin:
 
     def action_disconnect(self: ConnectionMixinHost) -> None:
         """Disconnect from current database."""
-        if self.current_connection:
+        if self.current_connection is not None:
             self._disconnect_silent()
             self.status_bar.update("Disconnected")
             self.notify("Disconnected")
@@ -342,7 +474,7 @@ class ConnectionMixin:
                     self.services.connection_store.save_all(self.connections)
                 except CredentialsPersistError as exc:
                     credentials_error = exc
-                tree_builder.refresh_tree(self)
+                self._refresh_connection_tree()
                 self.notify(f"Connection '{with_config.name}' saved")
                 if credentials_error:
                     self.push_screen(ErrorScreen("Keyring Error", str(credentials_error)))
@@ -469,7 +601,7 @@ class ConnectionMixin:
             self.services.connection_store.save_all(self.connections)
         except CredentialsPersistError as exc:
             credentials_error = exc
-        tree_builder.refresh_tree(self)
+        self._refresh_connection_tree()
         self.notify(f"Connection '{config.name}' deleted")
         if credentials_error:
             self.push_screen(ErrorScreen("Keyring Error", str(credentials_error)))
@@ -491,6 +623,7 @@ class ConnectionMixin:
     def action_show_connection_picker(self: ConnectionMixinHost) -> None:
         from ..screens import ConnectionPickerScreen
 
+        self._emit_debug("connection_picker.open_request")
         self.push_screen(
             ConnectionPickerScreen(self.connections),
             self._handle_connection_picker_result,
@@ -498,10 +631,12 @@ class ConnectionMixin:
 
     def _handle_connection_picker_result(self: ConnectionMixinHost, result: Any) -> None:
         if result is None:
+            self._emit_debug("connection_picker.result", result="none")
             return
 
         # Handle special "new connection" action
         if result == "__new_connection__":
+            self._emit_debug("connection_picker.result", result="new_connection")
             self.action_new_connection()
             return
 
@@ -509,30 +644,46 @@ class ConnectionMixin:
 
         if isinstance(result, ConnectionConfig):
             config = result
+            self._emit_debug(
+                "connection_picker.result",
+                result="config",
+                connection=config.name,
+                db_type=str(config.db_type),
+            )
             matching_config = next((c for c in self.connections if c.name == config.name), None)
             if matching_config:
                 config = matching_config
             for node in self.object_tree.root.children:
                 node_config = self._get_connection_config_from_node(node)
                 if node_config and node_config.name == config.name:
-                    self.object_tree.select_node(node)
+                    self._emit_debug(
+                        "connection_picker.select_node",
+                        connection=config.name,
+                    )
+                    self.object_tree.move_cursor(node)
                     break
             if self.current_config and self.current_config.name == config.name:
+                self._emit_debug("connection_picker.already_connected", connection=config.name)
                 self.notify(f"Already connected to {config.name}")
                 return
+            self._emit_debug("connection_picker.connect", connection=config.name)
             self.connect_to_server(config)
             return
 
         selected_config = next((c for c in self.connections if c.name == result), None)
         if selected_config:
+            self._emit_debug("connection_picker.result", result="name", connection=selected_config.name)
             for node in self.object_tree.root.children:
                 node_config = self._get_connection_config_from_node(node)
                 if node_config and node_config.name == result:
-                    self.object_tree.select_node(node)
+                    self._emit_debug("connection_picker.select_node", connection=selected_config.name)
+                    self.object_tree.move_cursor(node)
                     break
 
             if self.current_config and self.current_config.name == selected_config.name:
+                self._emit_debug("connection_picker.already_connected", connection=selected_config.name)
                 self.notify(f"Already connected to {selected_config.name}")
                 return
+            self._emit_debug("connection_picker.connect", connection=selected_config.name)
             # Don't disconnect here - we'll disconnect only after successful connection
             self.connect_to_server(selected_config)

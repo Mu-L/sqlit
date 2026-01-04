@@ -161,9 +161,21 @@ class ConnectionPickerScreen(ModalScreen):
             self._load_containers_async()
             self._load_cloud_providers_async()
         self._update_shortcuts()
+        self._emit_debug(
+            "connection_picker.open",
+            tab=self._current_tab,
+            connections=len(self.connections),
+            docker_loading=self._docker_state.loading,
+            cloud_providers=len(self._cloud_providers),
+        )
 
     def _app(self) -> AppProtocol:
         return cast(AppProtocol, self.app)
+
+    def _emit_debug(self, name: str, **data: Any) -> None:
+        emit = getattr(self.app, "emit_debug_event", None)
+        if callable(emit):
+            emit(name, **data)
 
     def _update_dialog_title(self) -> None:
         self._view.update_dialog_title(self._current_tab)
@@ -281,7 +293,7 @@ class ConnectionPickerScreen(ModalScreen):
                 self._update_filter_display()
                 self._update_list()
             else:
-                self._close_filter()
+                self._close_filter(source="backspace")
             event.prevent_default()
             event.stop()
             return
@@ -303,12 +315,14 @@ class ConnectionPickerScreen(ModalScreen):
         self._filter_state.text = ""
         self._view.show_filter()
         self._update_filter_display()
+        self._emit_debug("connection_picker.filter_open")
 
-    def _close_filter(self) -> None:
+    def _close_filter(self, *, source: str = "unknown") -> None:
         self._filter_state.active = False
         self._filter_state.text = ""
         self._view.hide_filter()
         self._update_list()
+        self._emit_debug("connection_picker.filter_close", source=source)
 
     def _update_filter_display(self) -> None:
         total = len(self.connections) + len(self._docker_state.containers)
@@ -333,8 +347,9 @@ class ConnectionPickerScreen(ModalScreen):
 
     def action_cancel_or_close_filter(self) -> None:
         if self._filter_state.active:
-            self._close_filter()
+            self._close_filter(source="cancel")
         else:
+            self._emit_debug("connection_picker.cancel")
             self.dismiss(None)
 
     def action_move_up(self) -> None:
@@ -393,6 +408,12 @@ class ConnectionPickerScreen(ModalScreen):
 
     def action_select(self) -> None:
         if self._current_tab == TAB_CLOUD:
+            node = self._get_highlighted_tree_node()
+            self._emit_debug(
+                "connection_picker.select",
+                tab=self._current_tab,
+                node_label=getattr(node, "label", None),
+            )
             result = self._select_cloud_node()
             if result is not None:
                 self.dismiss(result)
@@ -403,6 +424,11 @@ class ConnectionPickerScreen(ModalScreen):
             return
 
         option_id = str(option.id) if option.id else ""
+        self._emit_debug(
+            "connection_picker.select",
+            tab=self._current_tab,
+            option_id=option_id,
+        )
         if is_docker_option_id(option_id):
             container_id = option_id[len(DOCKER_PREFIX):]
             container = find_container_by_id(self._docker_state.containers, container_id)
@@ -444,6 +470,7 @@ class ConnectionPickerScreen(ModalScreen):
         self._cloud_controller.switch_subscription(provider_id, index)
 
     def action_switch_tab(self) -> None:
+        previous_tab = self._current_tab
         if self._current_tab == TAB_CONNECTIONS:
             self._current_tab = TAB_DOCKER
         elif self._current_tab == TAB_DOCKER:
@@ -451,6 +478,11 @@ class ConnectionPickerScreen(ModalScreen):
         else:
             self._current_tab = TAB_CONNECTIONS
 
+        self._emit_debug(
+            "connection_picker.tab_switch",
+            from_tab=previous_tab,
+            to_tab=self._current_tab,
+        )
         self._update_dialog_title()
         self._update_widget_visibility()
         self._rebuild_list()
@@ -546,7 +578,7 @@ class ConnectionPickerScreen(ModalScreen):
             return
 
         self._rebuild_list()
-        tree_builder.refresh_tree(cast(Any, self.app))
+        tree_builder.refresh_tree_chunked(cast(Any, self.app))
 
         if self._current_tab == TAB_DOCKER:
             self._select_option_by_id(option_id)

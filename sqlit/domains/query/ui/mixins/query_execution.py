@@ -5,7 +5,9 @@ from __future__ import annotations
 from typing import TYPE_CHECKING, Any
 
 from sqlit.domains.explorer.ui.tree import db_switching as tree_db_switching
-from sqlit.shared.ui.lifecycle import LifecycleHooksMixin
+from sqlit.domains.process_worker.ui.mixins.process_worker_lifecycle import (
+    ProcessWorkerLifecycleMixin,
+)
 from sqlit.shared.ui.protocols import QueryMixinHost
 from sqlit.shared.ui.spinner import Spinner
 
@@ -19,7 +21,7 @@ if TYPE_CHECKING:
     from sqlit.domains.query.app.transaction import TransactionExecutor
 
 
-class QueryExecutionMixin(LifecycleHooksMixin):
+class QueryExecutionMixin(ProcessWorkerLifecycleMixin):
     """Mixin providing query execution actions."""
 
     _query_service: QueryService | None = None
@@ -33,6 +35,8 @@ class QueryExecutionMixin(LifecycleHooksMixin):
     _query_target_database: str | None = None
     _schema_worker: Any | None = None
     _schema_indexing: bool = False
+    _pending_telescope_query: tuple[str, str] | None = None
+    _telescope_auto_filter: bool = False
 
     def action_execute_query(self: QueryMixinHost) -> None:
         """Execute the current query."""
@@ -44,7 +48,7 @@ class QueryExecutionMixin(LifecycleHooksMixin):
 
     def action_execute_query_atomic(self: QueryMixinHost) -> None:
         """Execute query atomically (wrapped in BEGIN/COMMIT with rollback on error)."""
-        if not self.current_connection or not self.current_provider:
+        if self.current_connection is None or self.current_provider is None:
             self.notify("Connect to a server to execute queries", severity="warning")
             return
 
@@ -67,7 +71,7 @@ class QueryExecutionMixin(LifecycleHooksMixin):
 
     def _execute_query_common(self: QueryMixinHost, keep_insert_mode: bool) -> None:
         """Common query execution logic."""
-        if not self.current_connection or not self.current_provider:
+        if self.current_connection is None or self.current_provider is None:
             self.notify("Connect to a server to execute queries", severity="warning")
             return
 
@@ -92,20 +96,28 @@ class QueryExecutionMixin(LifecycleHooksMixin):
         """Start the query execution spinner animation."""
         import time
 
-        self._query_executing = True
+        self.query_executing = True
         self._query_start_time = time.perf_counter()
         if self._query_spinner is not None:
             self._query_spinner.stop()
         self._query_spinner = Spinner(self, on_tick=lambda _: self._update_status_bar(), fps=30)
         self._query_spinner.start()
+        self._update_footer_bindings()
 
     def _stop_query_spinner(self: QueryMixinHost) -> None:
         """Stop the query execution spinner animation."""
-        self._query_executing = False
+        self.query_executing = False
         if self._query_spinner is not None:
             self._query_spinner.stop()
             self._query_spinner = None
-        self._update_status_bar()
+        if getattr(self, "_defer_schema_load", False):
+            setattr(self, "_defer_schema_load", False)
+            loader = getattr(self, "_load_schema_cache", None)
+            if callable(loader):
+                try:
+                    loader()
+                except Exception:
+                    pass
 
     def _get_history_store(self: QueryMixinHost) -> Any:
         store = getattr(self, "_history_store", None)
@@ -153,6 +165,45 @@ class QueryExecutionMixin(LifecycleHooksMixin):
             parent_disconnect()
         self._reset_transaction_executor()
 
+    def _on_connect(self: QueryMixinHost) -> None:
+        """Handle connect lifecycle event."""
+        parent_connect = getattr(super(), "_on_connect", None)
+        if callable(parent_connect):
+            parent_connect()
+
+        self._maybe_run_pending_telescope_query()
+
+    def watch_current_connection(self: QueryMixinHost, old_value: Any, new_value: Any) -> None:
+        self._maybe_run_pending_telescope_query()
+
+    def watch_current_provider(self: QueryMixinHost, old_value: Any, new_value: Any) -> None:
+        self._maybe_run_pending_telescope_query()
+
+    def _on_connect_failed(self: QueryMixinHost, config: Any) -> None:
+        pending = getattr(self, "_pending_telescope_query", None)
+        if not pending:
+            return
+        if getattr(config, "name", None) == pending[0]:
+            self._pending_telescope_query = None
+
+    def _maybe_run_pending_telescope_query(self: QueryMixinHost) -> None:
+        if not getattr(self, "_screen_stack", None):
+            return
+        pending = getattr(self, "_pending_telescope_query", None)
+        if not pending:
+            return
+        if (
+            self.current_connection is None
+            or self.current_provider is None
+            or self.current_config is None
+        ):
+            return
+        connection_name, query = pending
+        if self.current_config.name != connection_name:
+            return
+        self._pending_telescope_query = None
+        self._apply_history_query(query)
+
     @property
     def in_transaction(self: QueryMixinHost) -> bool:
         """Whether we're currently in a transaction."""
@@ -170,6 +221,7 @@ class QueryExecutionMixin(LifecycleHooksMixin):
             split_statements,
         )
         from sqlit.domains.query.app.query_service import QueryResult, parse_use_statement
+        from sqlit.domains.query.app.transaction import is_transaction_end, is_transaction_start
 
         provider = self.current_provider
         config = self.current_config
@@ -220,6 +272,59 @@ class QueryExecutionMixin(LifecycleHooksMixin):
             start_time = time.perf_counter()
             max_rows = self.services.runtime.max_rows or MAX_FETCH_ROWS
 
+            use_process_worker = self._use_process_worker(provider)
+            if use_process_worker and statements:
+                statement = statements[0].strip()
+                if self.in_transaction or is_transaction_start(statement) or is_transaction_end(statement):
+                    use_process_worker = False
+
+            if use_process_worker and not is_multi_statement:
+                client = await self._get_process_worker_client_async()
+                if client is None:
+                    error = getattr(self, "_process_worker_client_error", None)
+                    if error:
+                        self.notify(
+                            f"Process worker unavailable; falling back. ({error})",
+                            severity="error",
+                            title="Process Worker",
+                        )
+                    else:
+                        self.notify(
+                            "Process worker unavailable; falling back.",
+                            severity="error",
+                            title="Process Worker",
+                        )
+                    use_process_worker = False
+
+                if use_process_worker:
+                    outcome = await asyncio.to_thread(client.execute, query, config, max_rows)
+                    if outcome.cancelled:
+                        return
+                    if outcome.error:
+                        self._display_query_error(outcome.error)
+                        return
+
+                    try:
+                        await asyncio.to_thread(service._save_to_history, config.name, query)
+                    except Exception:
+                        pass
+                    result = outcome.result
+                    elapsed_ms = outcome.elapsed_ms
+
+                    if isinstance(result, QueryResult):
+                        await self._display_query_results(
+                            result.columns,
+                            result.rows,
+                            result.row_count,
+                            result.truncated,
+                            elapsed_ms,
+                        )
+                    else:
+                        self._display_non_query_result(result.rows_affected, elapsed_ms)
+                    if keep_insert_mode:
+                        self._restore_insert_mode()
+                    return
+
             if is_multi_statement:
                 # Multi-statement execution with stacked results
                 multi_executor = MultiStatementExecutor(executor)
@@ -230,7 +335,10 @@ class QueryExecutionMixin(LifecycleHooksMixin):
                 )
                 elapsed_ms = (time.perf_counter() - start_time) * 1000
 
-                service._save_to_history(config.name, query)
+                try:
+                    await asyncio.to_thread(service._save_to_history, config.name, query)
+                except Exception:
+                    pass
                 self._display_multi_statement_results(multi_result, elapsed_ms)
             else:
                 # Single statement - existing behavior
@@ -241,10 +349,15 @@ class QueryExecutionMixin(LifecycleHooksMixin):
                 )
                 elapsed_ms = (time.perf_counter() - start_time) * 1000
 
-                service._save_to_history(config.name, query)
+                try:
+                    await asyncio.to_thread(service._save_to_history, config.name, query)
+                except Exception:
+                    pass
 
                 if isinstance(result, QueryResult):
-                    self._display_query_results(result.columns, result.rows, result.row_count, result.truncated, elapsed_ms)
+                    await self._display_query_results(
+                        result.columns, result.rows, result.row_count, result.truncated, elapsed_ms
+                    )
                 else:
                     self._display_non_query_result(result.rows_affected, elapsed_ms)
 
@@ -300,10 +413,13 @@ class QueryExecutionMixin(LifecycleHooksMixin):
             )
             elapsed_ms = (time.perf_counter() - start_time) * 1000
 
-            service._save_to_history(config.name, query)
+            try:
+                await asyncio.to_thread(service._save_to_history, config.name, query)
+            except Exception:
+                pass
 
             if isinstance(result, QueryResult):
-                self._display_query_results(
+                await self._display_query_results(
                     result.columns, result.rows, result.row_count, result.truncated, elapsed_ms
                 )
             else:
@@ -329,9 +445,16 @@ class QueryExecutionMixin(LifecycleHooksMixin):
 
     def action_cancel_query(self: QueryMixinHost) -> None:
         """Cancel the currently running query."""
-        if not getattr(self, "_query_executing", False):
+        if not getattr(self, "query_executing", False):
             self.notify("No query running")
             return
+
+        client = getattr(self, "_process_worker_client", None)
+        if client is not None:
+            try:
+                client.cancel_current()
+            except Exception:
+                pass
 
         if hasattr(self, "_cancellable_query") and self._cancellable_query is not None:
             self._cancellable_query.cancel()
@@ -351,8 +474,14 @@ class QueryExecutionMixin(LifecycleHooksMixin):
         cancelled = False
 
         # Cancel query if running
-        if getattr(self, "_query_executing", False):
+        if getattr(self, "query_executing", False):
             # Cancel the cancellable query (closes dedicated connection)
+            client = getattr(self, "_process_worker_client", None)
+            if client is not None:
+                try:
+                    client.cancel_current()
+                except Exception:
+                    pass
             if hasattr(self, "_cancellable_query") and self._cancellable_query is not None:
                 self._cancellable_query.cancel()
 
@@ -387,6 +516,33 @@ class QueryExecutionMixin(LifecycleHooksMixin):
         self.query_input.text = ""
         self._replace_results_table([], [])
 
+    def _apply_history_query(self: QueryMixinHost, query: str) -> None:
+        """Load a query into the editor and restore cursor position if possible."""
+        # Initialize cursor cache if needed
+        if self._query_cursor_cache is None:
+            self._query_cursor_cache = {}
+        cursor_cache = self._query_cursor_cache
+
+        # Save current query's cursor position before switching
+        current_query = self.query_input.text
+        if current_query:
+            cursor_cache[current_query] = self.query_input.cursor_location
+
+        # Set new query text
+        self.query_input.text = query
+
+        # Restore cursor position if we have it cached, otherwise go to end
+        if query in cursor_cache:
+            self.query_input.cursor_location = cursor_cache[query]
+        else:
+            lines = query.split("\n")
+            last_line = len(lines) - 1
+            last_col = len(lines[-1]) if lines else 0
+            self.query_input.cursor_location = (last_line, last_col)
+
+        # Focus query input - this triggers on_descendant_focus which updates footer bindings
+        self.query_input.focus()
+
     def action_show_history(self: QueryMixinHost) -> None:
         """Show query history for the current connection."""
         if not self.current_config:
@@ -411,37 +567,162 @@ class QueryExecutionMixin(LifecycleHooksMixin):
 
         action, data = result
         if action == "select":
-            # Initialize cursor cache if needed
-            if self._query_cursor_cache is None:
-                self._query_cursor_cache = {}
-            cursor_cache = self._query_cursor_cache
-
-            # Save current query's cursor position before switching
-            current_query = self.query_input.text
-            if current_query:
-                cursor_cache[current_query] = self.query_input.cursor_location
-
-            # Set new query text
-            self.query_input.text = data
-
-            # Restore cursor position if we have it cached, otherwise go to end
-            if data in cursor_cache:
-                self.query_input.cursor_location = cursor_cache[data]
-            else:
-                # Move cursor to end of query
-                lines = data.split("\n")
-                last_line = len(lines) - 1
-                last_col = len(lines[-1]) if lines else 0
-                self.query_input.cursor_location = (last_line, last_col)
-
-            # Focus query input - this triggers on_descendant_focus which updates footer bindings
-            self.query_input.focus()
+            self._apply_history_query(data)
         elif action == "delete":
             self._delete_history_entry(data)
             self.action_show_history()
         elif action == "toggle_star":
             self._toggle_star(data)
             self.action_show_history()
+
+    def action_telescope(self: QueryMixinHost) -> None:
+        """Show query history across all connections."""
+        self._show_telescope(auto_open_filter=False)
+
+    def action_telescope_filter(self: QueryMixinHost) -> None:
+        """Show query history across all connections with filter active."""
+        self._show_telescope(auto_open_filter=True)
+
+    def _show_telescope(self: QueryMixinHost, *, auto_open_filter: bool) -> None:
+        """Open telescope with optional filter preset."""
+        from ..screens import QueryHistoryScreen
+
+        history_store = self._get_history_store()
+        if hasattr(history_store, "load_all"):
+            history = history_store.load_all()
+        else:
+            history = []
+            for config in self._get_telescope_connection_map().values():
+                history.extend(history_store.load_for_connection(config.name))
+            history.sort(key=lambda entry: entry.timestamp, reverse=True)
+
+        connection_map = self._get_telescope_connection_map()
+        connection_labels = {
+            name: self._format_telescope_connection_label(config)
+            for name, config in connection_map.items()
+        }
+        starred_by_connection = self._load_starred_by_connection(connection_map)
+        self._telescope_auto_filter = auto_open_filter
+
+        self.push_screen(
+            QueryHistoryScreen(
+                history,
+                "All Servers",
+                None,
+                multi_connection=True,
+                connection_labels=connection_labels,
+                starred_by_connection=starred_by_connection,
+                auto_open_filter=auto_open_filter,
+            ),
+            self._handle_telescope_result,
+        )
+
+    def _handle_telescope_result(self: QueryMixinHost, result: Any) -> None:
+        """Handle the result from the telescope screen."""
+        if result is None:
+            return
+
+        action, data = result
+        if action == "select":
+            query = data.get("query", "")
+            connection_name = data.get("connection_name", "")
+            self._run_telescope_query(connection_name, query)
+        elif action == "delete":
+            timestamp = data.get("timestamp", "")
+            connection_name = data.get("connection_name", "")
+            if timestamp and connection_name:
+                self._get_history_store().delete_entry(connection_name, timestamp)
+            if self._telescope_auto_filter:
+                self.action_telescope_filter()
+            else:
+                self.action_telescope()
+        elif action == "toggle_star":
+            query = data.get("query", "")
+            connection_name = data.get("connection_name", "")
+            if query and connection_name:
+                is_now_starred = self.services.starred_store.toggle_star(connection_name, query)
+                if is_now_starred:
+                    self.notify("Query starred")
+                else:
+                    self.notify("Query unstarred")
+            if self._telescope_auto_filter:
+                self.action_telescope_filter()
+            else:
+                self.action_telescope()
+
+    def _run_telescope_query(self: QueryMixinHost, connection_name: str, query: str) -> None:
+        if not query or not connection_name:
+            return
+
+        config = self._get_telescope_connection_map().get(connection_name)
+        if config is None:
+            self.notify(f"Connection '{connection_name}' not found", severity="warning")
+            return
+
+        self._apply_history_query(query)
+
+        if (
+            self.current_connection is not None
+            and self.current_config is not None
+            and self.current_config.name == connection_name
+        ):
+            self._pending_telescope_query = None
+            return
+
+        self._pending_telescope_query = None
+        self._connect_like_explorer(connection_name, config)
+
+    def _get_telescope_connection_map(self: QueryMixinHost) -> dict[str, Any]:
+        connection_map = {config.name: config for config in getattr(self, "connections", [])}
+        for config in (
+            getattr(self, "_direct_connection_config", None),
+            getattr(self, "current_config", None),
+        ):
+            if config and config.name not in connection_map:
+                connection_map[config.name] = config
+        return connection_map
+
+    def _connect_like_explorer(self: QueryMixinHost, connection_name: str, config: Any) -> None:
+        node = None
+        object_tree = getattr(self, "object_tree", None)
+        if object_tree is not None:
+            try:
+                for candidate in object_tree.root.children:
+                    if getattr(self, "_get_node_kind", None) and self._get_node_kind(candidate) != "connection":
+                        continue
+                    data = getattr(candidate, "data", None)
+                    node_config = getattr(data, "config", None)
+                    if node_config and node_config.name == connection_name:
+                        node = candidate
+                        break
+            except Exception:
+                node = None
+
+        if node is not None and hasattr(self, "_activate_tree_node"):
+            self._activate_tree_node(node)
+            return
+
+        self.connect_to_server(config)
+
+    def _format_telescope_connection_label(self: QueryMixinHost, config: Any) -> str:
+        endpoint = getattr(config, "tcp_endpoint", None)
+        if endpoint is None:
+            file_endpoint = getattr(config, "file_endpoint", None)
+            if file_endpoint and getattr(file_endpoint, "path", ""):
+                return file_endpoint.path
+            return getattr(config, "name", "")
+        database = getattr(config, "database", "")
+        return database or getattr(config, "name", "")
+
+    def _load_starred_by_connection(self: QueryMixinHost, connection_map: dict[str, Any]) -> dict[str, set[str]]:
+        starred_store = self.services.starred_store
+        loader = getattr(starred_store, "load_all", None)
+        if callable(loader):
+            return loader()
+        return {
+            name: starred_store.load_for_connection(name)
+            for name in connection_map.keys()
+        }
 
     def _delete_history_entry(self: QueryMixinHost, timestamp: str) -> None:
         """Delete a specific history entry by timestamp."""

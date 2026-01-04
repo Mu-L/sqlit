@@ -131,7 +131,7 @@ class AutocompleteMixin(AutocompleteSchemaMixin, AutocompleteSuggestionsMixin):
             self._hide_autocomplete()
             return
 
-        if not self.current_connection:
+        if self.current_connection is None:
             return
 
         # Cancel any pending debounce timer
@@ -194,8 +194,13 @@ class AutocompleteMixin(AutocompleteSchemaMixin, AutocompleteSuggestionsMixin):
             self.autocomplete_dropdown.move_selection(-1)
 
     def action_autocomplete_close(self: AutocompleteMixinHost) -> None:
-        """Close autocomplete dropdown without exiting insert mode."""
-        self._hide_autocomplete()
+        """Close autocomplete dropdown and exit insert mode."""
+        from sqlit.core.vim import VimMode
+
+        if self.vim_mode == VimMode.INSERT:
+            self.action_exit_insert_mode()
+        else:
+            self._hide_autocomplete()
 
     def action_autocomplete_accept(self: AutocompleteMixinHost) -> None:
         """Accept the current autocomplete suggestion."""

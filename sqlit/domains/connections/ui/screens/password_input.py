@@ -92,6 +92,8 @@ class PasswordInputScreen(ModalScreen):
         self.connection_name = connection_name
         self.title_text = title
         self.password_type = password_type
+        self._submit_logged = False
+        self._cancel_logged = False
         if description:
             self.description = description
         else:
@@ -118,9 +120,15 @@ class PasswordInputScreen(ModalScreen):
 
     def on_mount(self) -> None:
         self.query_one("#password-input", Input).focus()
+        self._emit_debug(
+            "password_prompt.open",
+            connection=self.connection_name,
+            password_type=self.password_type,
+        )
 
     def on_input_submitted(self, event: Input.Submitted) -> None:
         if event.input.id == "password-input":
+            self._log_submit("input_submitted", event.value)
             self.dismiss(event.value)
 
     def on_descendant_focus(self, event: Any) -> None:
@@ -139,12 +147,43 @@ class PasswordInputScreen(ModalScreen):
 
     def action_submit(self) -> None:
         password = self.query_one("#password-input", Input).value
+        self._log_submit("action_submit", password)
         self.dismiss(password)
 
     def action_cancel(self) -> None:
+        if not self._cancel_logged:
+            self._emit_debug(
+                "password_prompt.cancel",
+                connection=self.connection_name,
+                password_type=self.password_type,
+            )
+            self._cancel_logged = True
         self.dismiss(None)
 
     def check_action(self, action: str, parameters: tuple) -> bool | None:
         if self.app.screen is not self:
+            if action in {"cancel", "submit"}:
+                self._emit_debug(
+                    "password_prompt.action_blocked",
+                    action=action,
+                    active_screen=getattr(self.app.screen, "__class__", type(self.app.screen)).__name__,
+                )
             return False
         return super().check_action(action, parameters)
+
+    def _emit_debug(self, name: str, **data: Any) -> None:
+        emit = getattr(self.app, "emit_debug_event", None)
+        if callable(emit):
+            emit(name, **data)
+
+    def _log_submit(self, source: str, value: str) -> None:
+        if self._submit_logged:
+            return
+        self._submit_logged = True
+        self._emit_debug(
+            "password_prompt.submit",
+            connection=self.connection_name,
+            password_type=self.password_type,
+            source=source,
+            value_len=len(value),
+        )

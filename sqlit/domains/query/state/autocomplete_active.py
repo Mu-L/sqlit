@@ -16,11 +16,15 @@ class AutocompleteActiveState(State):
         self.allows("autocomplete_next", help="Next suggestion", help_key="^j")
         self.allows("autocomplete_prev", help="Previous suggestion", help_key="^k")
         self.allows("autocomplete_accept", help="Accept autocomplete", help_key="tab")
-        self.allows("autocomplete_close", help="Close autocomplete", help_key="esc")
+        self.allows(
+            "autocomplete_close",
+            help="Close autocomplete and return to NORMAL mode",
+            help_key="esc",
+        )
         self.allows("execute_query_insert")
         self.allows("quit")
         self.forbids(
-            "exit_insert_mode",  # Escape closes autocomplete, not exits insert mode
+            "exit_insert_mode",  # Escape handled via autocomplete_close (closes + NORMAL mode)
             "focus_explorer",
             "focus_results",
             "leader_key",
@@ -36,7 +40,7 @@ class AutocompleteActiveState(State):
         left: list[DisplayBinding] = [
             DisplayBinding(key=accept_key, label="Accept", action="autocomplete_accept"),
             DisplayBinding(key=f"{next_key}/{prev_key}", label="Next/Prev", action="autocomplete_next"),
-            DisplayBinding(key=close_key, label="Close", action="autocomplete_close"),
+            DisplayBinding(key=close_key, label="Close + Normal", action="autocomplete_close"),
         ]
         return left, []
 

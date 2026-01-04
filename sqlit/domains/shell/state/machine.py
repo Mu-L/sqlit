@@ -11,6 +11,7 @@ adding or overriding specific behaviors.
 from __future__ import annotations
 
 from sqlit.core.input_context import InputContext
+from sqlit.core.keymap import format_key
 from sqlit.core.leader_commands import get_leader_commands
 from sqlit.core.state_base import (
     ActionResult,
@@ -42,7 +43,6 @@ from sqlit.domains.results.state import (
 from sqlit.domains.shell.state.leader_pending import LeaderPendingState
 from sqlit.domains.shell.state.main_screen import MainScreenState
 from sqlit.domains.shell.state.modal_active import ModalActiveState
-from sqlit.domains.shell.state.query_executing import QueryExecutingState
 from sqlit.domains.shell.state.root import RootState
 
 
@@ -53,8 +53,6 @@ class UIStateMachine:
         self.root = RootState()
 
         self.modal_active = ModalActiveState(parent=self.root)
-
-        self.query_executing = QueryExecutingState(parent=self.root)
 
         self.main_screen = MainScreenState(parent=self.root)
 
@@ -79,7 +77,6 @@ class UIStateMachine:
 
         self._states = [
             self.modal_active,
-            self.query_executing,  # Before main_screen (more specific when query running)
             self.leader_pending,
             self.tree_filter_active,  # Before tree_focused (more specific when filter active)
             self.tree_on_connection,
@@ -129,14 +126,15 @@ class UIStateMachine:
         leader_key = resolve_display_key("leader_key") or "<space>"
 
         def section(title: str) -> str:
-            return f"[bold cyan]{title}[/]"
+            divider = "-" * 62
+            return f"[bold $primary]{title}[/]\n[dim]{divider}[/]"
 
         def subsection(title: str) -> str:
-            return f"  [dim]{title}[/]"
+            return f"  [bold $text-muted]{title}[/]"
 
         def binding(key: str, desc: str, indent: int = 4) -> str:
             pad = " " * indent
-            return f"{pad}[bold yellow]{key:<12}[/] {desc}"
+            return f"{pad}[bold $warning]{key:<14}[/] [dim]-[/] {desc}"
 
         lines: list[str] = []
 
@@ -158,7 +156,7 @@ class UIStateMachine:
         lines.append(binding("j/k", "Move cursor down/up"))
         lines.append(binding("<enter>", "Expand node / Connect"))
         lines.append(binding("s", "SELECT TOP 100 (on table/view)"))
-        lines.append(binding("/", "Filter tree (fuzzy search)"))
+        lines.append(binding("/", "Filter tree"))
         lines.append(binding("z", "Collapse all nodes"))
         lines.append(binding("f", "Refresh tree"))
         lines.append("")
@@ -265,7 +263,7 @@ class UIStateMachine:
             if cat in by_cat:
                 lines.append(subsection(f"{cat}:"))
                 for key, label in by_cat[cat]:
-                    lines.append(binding(f"{leader_key}{key}", label))
+                    lines.append(binding(f"{leader_key}{format_key(key)}", label))
         lines.append("")
 
         # ═══════════════════════════════════════════════════════════════════
@@ -291,5 +289,13 @@ class UIStateMachine:
         lines.append(binding(f"{leader_key}t", "Change theme"))
         lines.append(binding(f"{leader_key}f", "Toggle fullscreen pane"))
         lines.append(binding(f"{leader_key}e", "Toggle explorer visibility"))
+        lines.append("")
+
+        # ═══════════════════════════════════════════════════════════════════
+        # COMMAND MODE
+        # ═══════════════════════════════════════════════════════════════════
+        lines.append(section("COMMAND MODE"))
+        lines.append(binding(":", "Enter command mode"))
+        lines.append(binding(":commands", "Show command list"))
 
         return "\n".join(lines)

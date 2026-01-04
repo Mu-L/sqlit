@@ -42,4 +42,6 @@ class QueryMixin(
     _query_spinner: Spinner | None = None
     _query_cursor_cache: dict[str, tuple[int, int]] | None = None  # query text -> cursor (row, col)
     _results_table_counter: int = 0  # Counter for unique table IDs
+    _results_render_worker: Worker[Any] | None = None
+    _results_render_token: int = 0
     _query_target_database: str | None = None

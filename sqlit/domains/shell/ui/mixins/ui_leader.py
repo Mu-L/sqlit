@@ -106,8 +106,17 @@ class UILeaderMixin:
     def action_leader_change_theme(self: UINavigationMixinHost) -> None:
         self._execute_leader_command("change_theme")
 
+    def action_leader_toggle_process_worker(self: UINavigationMixinHost) -> None:
+        self._execute_leader_command("toggle_process_worker")
+
     def action_leader_show_help(self: UINavigationMixinHost) -> None:
         self._execute_leader_command("show_help")
+
+    def action_leader_telescope(self: UINavigationMixinHost) -> None:
+        self._execute_leader_command("telescope")
+
+    def action_leader_telescope_filter(self: UINavigationMixinHost) -> None:
+        self._execute_leader_command("telescope_filter")
 
     def action_leader_quit(self: UINavigationMixinHost) -> None:
         self._execute_leader_command("quit")

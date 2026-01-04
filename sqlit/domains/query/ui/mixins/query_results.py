@@ -4,15 +4,14 @@ from __future__ import annotations
 
 from typing import Any
 
-import pyarrow as pa
-from rich.markup import escape as escape_markup
-from textual_fastdatatable import ArrowBackend
-
 from sqlit.shared.core.utils import format_duration_ms
 from sqlit.shared.ui.protocols import QueryMixinHost
 from sqlit.shared.ui.widgets import SqlitDataTable
 
 from .query_constants import MAX_COLUMN_CONTENT_WIDTH, MAX_RENDER_ROWS
+
+RESULTS_RENDER_CHUNK_SIZE = 200
+RESULTS_RENDER_INITIAL_ROWS = 20
 
 
 class QueryResultsMixin:
@@ -25,6 +24,7 @@ class QueryResultsMixin:
     def _replace_results_table_raw(self: QueryMixinHost, columns: list[str], rows: list[tuple]) -> None:
         """Update the results table with pre-formatted data (no escaping)."""
         self._replace_results_table_with_data(columns, rows, escape=False)
+
     def _replace_results_table_with_data(
         self: QueryMixinHost,
         columns: list[str],
@@ -33,11 +33,15 @@ class QueryResultsMixin:
         escape: bool,
     ) -> None:
         """Replace the results table with new data."""
+        self._cancel_results_render()
         container = self.results_area
         old_table = self.results_table
+        was_focused = old_table.has_focus
         new_table = self._build_results_table(columns, rows, escape=escape)
         container.mount(new_table, after=old_table)
         old_table.remove()
+        if was_focused:
+            new_table.focus()
 
     def _build_results_table(
         self: QueryMixinHost,
@@ -46,53 +50,127 @@ class QueryResultsMixin:
         *,
         escape: bool,
     ) -> SqlitDataTable:
-        """Build a new results table with optional markup escaping."""
+        """Build a new results table without converting to Arrow."""
         self._results_table_counter += 1
         new_id = f"results-table-{self._results_table_counter}"
 
         if not columns:
             return SqlitDataTable(id=new_id, zebra_stripes=True, show_header=False)
 
-        if not rows:
-            empty_columns: dict[str, list[Any]] = {col: [] for col in columns}
-            arrow_table = pa.table(empty_columns)
-            backend = ArrowBackend(arrow_table)
-            return SqlitDataTable(
-                id=new_id,
-                zebra_stripes=True,
-                backend=backend,
-                max_column_content_width=MAX_COLUMN_CONTENT_WIDTH,
-            )
-
-        if escape:
-            formatted_rows = []
-            for row in rows[:MAX_RENDER_ROWS]:
-                formatted = []
-                for i in range(len(columns)):
-                    val = row[i] if i < len(row) else None
-                    str_val = escape_markup(str(val)) if val is not None else "NULL"
-                    formatted.append(str_val)
-                formatted_rows.append(formatted)
-
-            formatted_columns: dict[str, list[Any]] = {
-                col: [r[i] for r in formatted_rows] for i, col in enumerate(columns)
-            }
-            arrow_table = pa.table(formatted_columns)
-        else:
-            raw_columns: dict[str, list[Any]] = {}
-            for i, col in enumerate(columns):
-                raw_columns[col] = [r[i] for r in rows[:MAX_RENDER_ROWS]]
-            arrow_table = pa.table(raw_columns)
-
-        backend = ArrowBackend(arrow_table)
+        render_rows = rows[:MAX_RENDER_ROWS] if rows else []
+        render_markup = not escape
         return SqlitDataTable(
             id=new_id,
             zebra_stripes=True,
-            backend=backend,
+            data=render_rows,
+            column_labels=columns,
             max_column_content_width=MAX_COLUMN_CONTENT_WIDTH,
+            render_markup=render_markup,
+            null_rep="NULL",
         )
 
-    def _display_query_results(
+    def _replace_results_table_with_table(self: QueryMixinHost, table: SqlitDataTable) -> None:
+        """Replace the results table with a prebuilt table."""
+        container = self.results_area
+        old_table = self.results_table
+        was_focused = old_table.has_focus
+        container.mount(table, after=old_table)
+        old_table.remove()
+        if was_focused:
+            table.focus()
+
+    def _cancel_results_render(self: QueryMixinHost) -> None:
+        """Cancel any in-flight results rendering worker."""
+        worker = getattr(self, "_results_render_worker", None)
+        if worker is not None:
+            worker.cancel()
+            self._results_render_worker = None
+        token = getattr(self, "_results_render_token", 0)
+        self._results_render_token = token + 1
+        try:
+            from sqlit.domains.shell.app.idle_scheduler import get_idle_scheduler
+        except Exception:
+            scheduler = None
+        else:
+            scheduler = get_idle_scheduler()
+        if scheduler:
+            scheduler.cancel_all(name="results-render")
+
+    def _schedule_results_render(
+        self: QueryMixinHost,
+        table: SqlitDataTable,
+        rows: list[tuple],
+        *,
+        start_index: int,
+        row_limit: int,
+        render_token: int,
+    ) -> None:
+        if not rows or row_limit <= 0:
+            return
+
+        index = max(0, start_index)
+        total = min(len(rows), row_limit)
+        if index >= total:
+            return
+
+        def add_batch() -> None:
+            nonlocal index
+            if render_token != getattr(self, "_results_render_token", 0):
+                return
+            end = min(index + RESULTS_RENDER_CHUNK_SIZE, total)
+            if end <= index:
+                return
+            batch = rows[index:end]
+            try:
+                table.add_rows(batch)
+            except Exception:
+                return
+            index = end
+            if index < total:
+                schedule_next()
+
+        def schedule_next() -> None:
+            try:
+                from sqlit.domains.shell.app.idle_scheduler import Priority, get_idle_scheduler
+            except Exception:
+                scheduler = None
+            else:
+                scheduler = get_idle_scheduler()
+            if scheduler:
+                scheduler.request_idle_callback(
+                    add_batch,
+                    priority=Priority.NORMAL,
+                    name="results-render",
+                )
+            else:
+                self.set_timer(0.001, add_batch)
+
+        schedule_next()
+
+    def _render_results_table_incremental(
+        self: QueryMixinHost,
+        columns: list[str],
+        rows: list[tuple],
+        *,
+        escape: bool,
+        row_limit: int,
+        render_token: int,
+    ) -> None:
+        initial_count = min(RESULTS_RENDER_INITIAL_ROWS, row_limit)
+        initial_rows = rows[:initial_count] if initial_count > 0 else []
+        table = self._build_results_table(columns, initial_rows, escape=escape)
+        if render_token != getattr(self, "_results_render_token", 0):
+            return
+        self._replace_results_table_with_table(table)
+        self._schedule_results_render(
+            table,
+            rows,
+            start_index=initial_count,
+            row_limit=row_limit,
+            render_token=render_token,
+        )
+
+    async def _display_query_results(
         self: QueryMixinHost, columns: list[str], rows: list[tuple], row_count: int, truncated: bool, elapsed_ms: float
     ) -> None:
         """Display query results in the results table (called on main thread)."""
@@ -102,8 +180,23 @@ class QueryResultsMixin:
 
         # Switch to single result mode (in case we were showing stacked results)
         self._show_single_result_mode()
-
-        self._replace_results_table(columns, rows)
+        self._cancel_results_render()
+        render_token = getattr(self, "_results_render_token", 0)
+        row_limit = min(len(rows), MAX_RENDER_ROWS)
+        if row_limit > RESULTS_RENDER_CHUNK_SIZE:
+            self._render_results_table_incremental(
+                columns,
+                rows,
+                escape=True,
+                row_limit=row_limit,
+                render_token=render_token,
+            )
+        else:
+            render_rows = rows[:row_limit] if row_limit else []
+            table = self._build_results_table(columns, render_rows, escape=True)
+            if render_token != getattr(self, "_results_render_token", 0):
+                return
+            self._replace_results_table_with_table(table)
 
         time_str = format_duration_ms(elapsed_ms)
         if truncated:
@@ -129,6 +222,7 @@ class QueryResultsMixin:
 
     def _display_query_error(self: QueryMixinHost, error_message: str) -> None:
         """Display query error (called on main thread)."""
+        self._cancel_results_render()
         # notify(severity="error") handles displaying the error in results via _show_error_in_results
         self.notify(f"Query error: {error_message}", severity="error")
 
@@ -138,6 +232,7 @@ class QueryResultsMixin:
         elapsed_ms: float,
     ) -> None:
         """Display stacked results for multi-statement query."""
+        self._cancel_results_render()
         from sqlit.shared.ui.widgets_stacked_results import (
             AUTO_COLLAPSE_THRESHOLD,
         )

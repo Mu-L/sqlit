@@ -5,6 +5,7 @@ from __future__ import annotations
 import os
 import sys
 import time
+from datetime import datetime
 from collections.abc import Awaitable, Callable
 from pathlib import Path
 from typing import TYPE_CHECKING, Any, ClassVar, cast
@@ -13,6 +14,7 @@ from textual.app import App, ComposeResult
 from textual.containers import Container, Horizontal, Vertical
 from textual.events import Key
 from textual.lazy import Lazy
+from textual.reactive import reactive
 from textual.screen import ModalScreen
 from textual.timer import Timer
 from textual.widgets import Static, Tree
@@ -30,6 +32,7 @@ from sqlit.domains.query.ui.mixins.autocomplete import AutocompleteMixin
 from sqlit.domains.query.ui.mixins.query import QueryMixin
 from sqlit.domains.results.ui.mixins.results import ResultsMixin
 from sqlit.domains.results.ui.mixins.results_filter import ResultsFilterMixin
+from sqlit.domains.shell.app.commands import dispatch_command
 from sqlit.domains.shell.app.idle_scheduler import IdleScheduler
 from sqlit.domains.shell.app.omarchy import DEFAULT_THEME
 from sqlit.domains.shell.app.startup_flow import run_on_mount
@@ -37,6 +40,14 @@ from sqlit.domains.shell.app.theme_manager import ThemeManager
 from sqlit.domains.shell.state import UIStateMachine
 from sqlit.domains.shell.ui.mixins.ui_navigation import UINavigationMixin
 from sqlit.shared.app import AppServices, RuntimeConfig, build_app_services
+from sqlit.shared.core.debug_events import (
+    DebugEvent,
+    DebugEventBus,
+    format_debug_data,
+    serialize_debug_event,
+    set_debug_emitter,
+)
+from sqlit.shared.core.store import CONFIG_DIR
 from sqlit.shared.ui.protocols import AppProtocol, UINavigationMixinHost
 from sqlit.shared.ui.widgets import (
     AutocompleteDropdown,
@@ -72,6 +83,12 @@ class SSMSTUI(
     LAYERS = ["autocomplete"]
 
     BINDINGS: ClassVar[list[Any]] = []
+
+    query_executing: bool = reactive(False)
+    current_connection: Any | None = reactive(None)
+    current_config: ConnectionConfig | None = reactive(None)
+    current_provider: DatabaseProvider | None = reactive(None)
+    current_ssh_tunnel: Any | None = reactive(None)
 
     def __init__(
         self,
@@ -136,8 +153,30 @@ class SSMSTUI(
         self._dialog_open: bool = False
         self._last_active_pane: str | None = None
         self._query_worker: Worker[Any] | None = None
-        self._query_executing: bool = False
         self._query_handle: Any | None = None
+        self._command_mode: bool = False
+        self._command_buffer: str = ""
+        self._ui_stall_watchdog_timer: Timer | None = None
+        self._ui_stall_watchdog_expected: float | None = None
+        self._ui_stall_watchdog_interval_s: float = 0.0
+        self._ui_stall_watchdog_threshold_s: float = 0.0
+        self._ui_stall_watchdog_events: list[tuple[str, float, str]] = []
+        self._ui_stall_watchdog_log_path: Path = CONFIG_DIR / "ui_stall_watchdog.txt"
+        self._debug_event_bus = DebugEventBus()
+        self._debug_events_enabled: bool = False
+        self._debug_event_history: list[DebugEvent] = []
+        self._debug_event_history_limit: int = 200
+        self._debug_event_recent_window_s: float = 2.0
+        self._debug_event_recent_limit: int = 40
+        self._debug_event_log_path: Path = CONFIG_DIR / "debug_events.txt"
+        set_debug_emitter(self.emit_debug_event)
+        self._last_key: str | None = None
+        self._last_key_char: str | None = None
+        self._last_key_at: float | None = None
+        self._last_action: str | None = None
+        self._last_action_at: float | None = None
+        self._last_command: str | None = None
+        self._last_command_at: float | None = None
         self._theme_manager = ThemeManager(self, settings_store=self.services.settings_store)
         self._spinner_index: int = 0
         self._spinner_timer: Timer | None = None
@@ -224,7 +263,7 @@ class SSMSTUI(
             autocomplete_visible=self._autocomplete_visible,
             results_filter_active=getattr(self, "_results_filter_visible", False),
             value_view_active=self._value_view_active,
-            query_executing=self._query_executing,
+            query_executing=self.query_executing,
             modal_open=modal_open,
             has_connection=self.current_connection is not None,
             current_connection_name=current_connection_name,
@@ -235,10 +274,128 @@ class SSMSTUI(
             stacked_result_count=stacked_result_count,
         )
 
+    def _debug_screen_label(self, screen: Any | None) -> str:
+        if screen is None:
+            return "none"
+        name = getattr(screen, "name", None)
+        if name:
+            return str(name)
+        return screen.__class__.__name__
+
+    def _debug_screen_stack(self) -> list[str]:
+        try:
+            return [self._debug_screen_label(screen) for screen in self.screen_stack]
+        except Exception:
+            return []
+
+    def emit_debug_event(self, name: str, *, category: str = "", **data: Any) -> None:
+        self._debug_event_bus.emit(name, category=category, **data)
+
+    def _handle_debug_event(self, event: DebugEvent) -> None:
+        self._debug_event_history.append(event)
+        if len(self._debug_event_history) > self._debug_event_history_limit:
+            self._debug_event_history = self._debug_event_history[-self._debug_event_history_limit:]
+        self._write_debug_event(event)
+
+    def _collect_recent_debug_events(self, *, now: float) -> list[dict[str, Any]]:
+        if not self._debug_events_enabled:
+            return []
+        events = self._debug_event_history
+        if not events:
+            return []
+        cutoff = now - self._debug_event_recent_window_s
+        recent = [event for event in events if event.ts >= cutoff]
+        if not recent:
+            return []
+        if len(recent) > self._debug_event_recent_limit:
+            recent = recent[-self._debug_event_recent_limit:]
+        summaries: list[dict[str, Any]] = []
+        for event in recent:
+            summaries.append(
+                {
+                    "time": event.iso,
+                    "name": event.name,
+                    "category": event.category,
+                    "data": format_debug_data(event.data, max_len=160),
+                    "age_ms": int((now - event.ts) * 1000),
+                }
+            )
+        return summaries
+
+    def _write_debug_event(self, event: DebugEvent) -> None:
+        path = self._debug_event_log_path
+        try:
+            path.parent.mkdir(parents=True, exist_ok=True)
+            try:
+                path.parent.chmod(0o700)
+            except OSError:
+                pass
+            with path.open("a", encoding="utf-8") as handle:
+                handle.write(serialize_debug_event(event))
+                handle.write("\n")
+        except Exception:
+            pass
+
+    def _set_debug_events_enabled(self, enabled: bool) -> None:
+        if enabled == self._debug_events_enabled:
+            return
+        if enabled:
+            self._debug_event_bus.subscribe(self._handle_debug_event)
+        else:
+            self._debug_event_bus.unsubscribe(self._handle_debug_event)
+        self._debug_events_enabled = enabled
+        if enabled:
+            try:
+                from sqlit.core.keymap import emit_keybinding_snapshot
+
+                emit_keybinding_snapshot()
+            except Exception:
+                pass
+
+    async def _check_bindings(self, key: str, priority: bool = False) -> bool:
+        chain = (
+            reversed(self.screen._binding_chain)
+            if priority
+            else self.screen._modal_binding_chain
+        )
+        for namespace, bindings in chain:
+            key_bindings = bindings.key_to_bindings.get(key, ())
+            for binding in key_bindings:
+                if binding.priority != priority:
+                    continue
+                handled = await self.run_action(binding.action, namespace)
+                if handled:
+                    self.emit_debug_event(
+                        "keybinding.execute",
+                        category="keybinding",
+                        source="textual",
+                        key=key,
+                        action=binding.action,
+                        namespace=namespace.__class__.__name__,
+                        namespace_id=getattr(namespace, "id", None),
+                        screen=self._debug_screen_label(self.screen),
+                        priority=priority,
+                    )
+                    return True
+        return False
+
     def on_key(self, event: Key) -> None:
         """Route key presses through the core key router."""
+        self._last_key = event.key
+        self._last_key_char = event.character
+        self._last_key_at = time.perf_counter()
         ctx = self._get_input_context()
         if ctx.modal_open:
+            if event.key in {"escape", "enter"}:
+                self.emit_debug_event(
+                    "key.modal",
+                    key=event.key,
+                    screen=self._debug_screen_label(self.screen),
+                    stack=self._debug_screen_stack(),
+                )
+            return
+
+        if self._handle_command_input(event, ctx):
             return
 
         action = resolve_action(
@@ -259,9 +416,320 @@ class SSMSTUI(
         if action:
             handler = getattr(self, f"action_{action}", None)
             if handler:
+                self.emit_debug_event(
+                    "keybinding.execute",
+                    category="keybinding",
+                    source="core",
+                    key=event.key,
+                    action=action,
+                    screen=self._debug_screen_label(self.screen),
+                    state=self._state_machine.get_active_state_name(ctx),
+                    focus=ctx.focus,
+                    vim_mode=str(ctx.vim_mode),
+                    leader_pending=ctx.leader_pending,
+                )
+                self._last_action = action
+                self._last_action_at = time.perf_counter()
                 handler()
                 event.prevent_default()
                 event.stop()
+
+    def push_screen(
+        self,
+        screen: Any,
+        callback: Callable[[Any], None] | Callable[[Any], Awaitable[None]] | None = None,
+        wait_for_dismiss: bool = False,
+    ) -> Any:
+        stack_before = self._debug_screen_stack()
+        result = super().push_screen(screen, callback, wait_for_dismiss)
+        screen_label = screen if isinstance(screen, str) else self._debug_screen_label(screen)
+        self.emit_debug_event(
+            "screen.push",
+            screen=screen_label,
+            stack_before=stack_before,
+            stack_after=self._debug_screen_stack(),
+        )
+        return result
+
+    def pop_screen(self) -> Any:
+        stack_before = self._debug_screen_stack()
+        result = super().pop_screen()
+        self.emit_debug_event(
+            "screen.pop",
+            stack_before=stack_before,
+            stack_after=self._debug_screen_stack(),
+        )
+        return result
+
+    def _start_command_mode(self) -> None:
+        if getattr(self, "_leader_pending", False) and hasattr(self, "_cancel_leader_pending"):
+            cast(UINavigationMixinHost, self)._cancel_leader_pending()
+        self._command_mode = True
+        self._command_buffer = ""
+        self._update_status_bar()
+
+    def _exit_command_mode(self) -> None:
+        self._command_mode = False
+        self._command_buffer = ""
+        self._update_status_bar()
+
+    def _handle_command_input(self, event: Key, ctx: InputContext) -> bool:
+        from sqlit.core.vim import VimMode
+
+        if not self._command_mode:
+            is_command_start = event.character == ":" or event.key in {":", "colon", "shift+semicolon"}
+            if not is_command_start:
+                return False
+            if ctx.focus == "query" and self.vim_mode == VimMode.INSERT:
+                return False
+            self._start_command_mode()
+            event.prevent_default()
+            event.stop()
+            return True
+
+        if event.key == "escape":
+            self._exit_command_mode()
+        elif event.key == "enter":
+            command = self._command_buffer.strip()
+            self._exit_command_mode()
+            self._run_command(command)
+        elif event.key in ("backspace", "delete"):
+            if self._command_buffer:
+                self._command_buffer = self._command_buffer[:-1]
+                self._update_status_bar()
+            else:
+                self._exit_command_mode()
+        else:
+            char = event.character
+            if char and len(char) == 1:
+                self._command_buffer += char
+                self._update_status_bar()
+            else:
+                event.prevent_default()
+                event.stop()
+                return True
+
+        event.prevent_default()
+        event.stop()
+        return True
+
+    def _run_command(self, command: str) -> None:
+        if not command:
+            return
+
+        normalized = command.strip()
+        self._last_command = normalized
+        self._last_command_at = time.perf_counter()
+        cmd, *args = normalized.split()
+        cmd = cmd.lower()
+
+        if cmd in {"commands", "cmds"}:
+            self._show_command_list()
+            return
+
+        if cmd in {"q", "quit", "exit"}:
+            try:
+                handler = getattr(self, "action_quit", None)
+                if callable(handler):
+                    handler()
+                else:
+                    self.exit()
+            except Exception:
+                self.exit()
+            return
+
+        command_actions = {
+            "help": "show_help",
+            "h": "show_help",
+            "connect": "show_connection_picker",
+            "c": "show_connection_picker",
+            "disconnect": "disconnect",
+            "dc": "disconnect",
+            "theme": "change_theme",
+            "run": "execute_query",
+            "r": "execute_query",
+            "run!": "execute_query_insert",
+            "r!": "execute_query_insert",
+            "process-worker": "toggle_process_worker",
+            "process_worker": "toggle_process_worker",
+            "process-worker!": "toggle_process_worker",
+            "worker": "toggle_process_worker",
+        }
+
+        if cmd == "set" and args:
+            target = args[0].lower().replace("-", "_")
+            value = args[1].lower() if len(args) > 1 else ""
+            if target in {"process_worker"}:
+                if not value:
+                    self._execute_command_action("toggle_process_worker")
+                    return
+                enable_values = {"1", "true", "on", "yes", "enable", "enabled"}
+                disable_values = {"0", "false", "off", "no", "disable", "disabled"}
+                if value in enable_values:
+                    self._set_process_worker(True)
+                    return
+                if value in disable_values:
+                    self._set_process_worker(False)
+                    return
+                self.notify(f"Unknown value for process_worker: {value}", severity="warning")
+                return
+            if target in {"process_worker_warm", "process_worker_warm_on_idle", "process_worker_lazy"}:
+                if not value:
+                    current = bool(self.services.runtime.process_worker_warm_on_idle)
+                    desired = not current
+                else:
+                    enable_values = {"1", "true", "on", "yes", "enable", "enabled"}
+                    disable_values = {"0", "false", "off", "no", "disable", "disabled"}
+                    if value in enable_values:
+                        desired = True
+                    elif value in disable_values:
+                        desired = False
+                    else:
+                        self.notify(f"Unknown value for {target}: {value}", severity="warning")
+                        return
+                if target == "process_worker_lazy":
+                    desired = not desired
+                self._set_process_worker_warm_on_idle(desired)
+                return
+            if target in {"process_worker_auto_shutdown", "process_worker_auto_shutdown_s"}:
+                if not value:
+                    self.notify("Provide seconds or 'off' for process_worker_auto_shutdown", severity="warning")
+                    return
+                disable_values = {"0", "false", "off", "no", "disable", "disabled"}
+                if value in disable_values:
+                    self._set_process_worker_auto_shutdown(0.0)
+                    return
+                try:
+                    seconds = float(value)
+                except ValueError:
+                    self.notify(f"Invalid process_worker_auto_shutdown value: {value}", severity="warning")
+                    return
+                if seconds < 0:
+                    self.notify("process_worker_auto_shutdown must be >= 0", severity="warning")
+                    return
+                self._set_process_worker_auto_shutdown(seconds)
+                return
+
+        if dispatch_command(self, cmd, args):
+            return
+
+        action = command_actions.get(cmd)
+        if action is None:
+            self.notify("Unknown command. Try :commands", severity="warning")
+            return
+        self._execute_command_action(action)
+
+    def _show_command_list(self) -> None:
+        columns = ["Title", "Command", "Description", "Hint"]
+        rows = [
+            ("General", ":commands", "Show this command list", ""),
+            ("General", ":help, :h", "Show keyboard shortcuts", ""),
+            ("General", ":q, :quit, :exit", "Quit sqlit", ""),
+            ("Connection", ":connect, :c", "Open connection picker", ""),
+            ("Connection", ":disconnect, :dc", "Disconnect from current server", ""),
+            ("Appearance", ":theme", "Open theme selection", ""),
+            ("Query", ":run, :r", "Execute query", ""),
+            ("Query", ":run!, :r!", "Execute query (stay in INSERT)", ""),
+            (
+                "Worker",
+                ":process-worker, :worker",
+                "Toggle process worker",
+                "Spawns a separate OS process to run SQL queries, avoiding GIL starvation for better UI responsiveness; uses more RAM while active.",
+            ),
+            (
+                "Worker",
+                ":worker info",
+                "Show process worker status",
+                "Displays worker mode, active state, and last activity.",
+            ),
+            (
+                "Watchdog",
+                ":wd <ms|off>",
+                "Set UI stall watchdog threshold",
+                "Logs when the UI thread stalls longer than the threshold.",
+            ),
+            ("Watchdog", ":wd list", "Show UI stall warnings", ""),
+            ("Watchdog", ":wd clear", "Clear UI stall log", ""),
+            (
+                "Debug",
+                ":debug on|off",
+                "Toggle debug event logging",
+                "Captures screen stack, connection picker, password prompts, and key events.",
+            ),
+            ("Debug", ":debug", "Show debug status", ""),
+            ("Debug", ":debug list", "Show debug events", ""),
+            ("Debug", ":debug clear", "Clear debug event log", ""),
+            ("Settings", ":set process_worker_warm on|off", "Warm worker on idle", ""),
+            ("Settings", ":set process_worker_lazy on|off", "Lazy worker start", ""),
+            ("Settings", ":set process_worker_auto_shutdown <seconds>", "Auto-shutdown worker", ""),
+        ]
+        if hasattr(self, "_replace_results_table"):
+            self._replace_results_table(columns, rows)
+
+    def _execute_command_action(self, action: str) -> None:
+        ctx = self._get_input_context()
+        if not self._state_machine.check_action(ctx, action):
+            self.notify(f"Command not available: {action}", severity="warning")
+            return
+        handler = getattr(self, f"action_{action}", None)
+        if not callable(handler):
+            self.notify(f"Unknown action: {action}", severity="warning")
+            return
+        handler()
+
+    def _set_process_worker(self, enabled: bool) -> None:
+        self.services.runtime.process_worker = enabled
+        try:
+            self.services.settings_store.set("process_worker", enabled)
+        except Exception:
+            pass
+        if not enabled:
+            close_fn = getattr(self, "_close_process_worker_client", None)
+            if callable(close_fn):
+                close_fn()
+            cancel_warm = getattr(self, "_cancel_process_worker_warm", None)
+            if callable(cancel_warm):
+                cancel_warm()
+        else:
+            schedule_warm = getattr(self, "_schedule_process_worker_warm", None)
+            if callable(schedule_warm):
+                schedule_warm()
+        state = "enabled" if enabled else "disabled"
+        self.notify(f"Process worker {state}")
+
+    def _set_process_worker_warm_on_idle(self, enabled: bool) -> None:
+        self.services.runtime.process_worker_warm_on_idle = enabled
+        try:
+            self.services.settings_store.set("process_worker_warm_on_idle", enabled)
+        except Exception:
+            pass
+        cancel_warm = getattr(self, "_cancel_process_worker_warm", None)
+        if callable(cancel_warm):
+            cancel_warm()
+        if enabled and self.services.runtime.process_worker:
+            schedule_warm = getattr(self, "_schedule_process_worker_warm", None)
+            if callable(schedule_warm):
+                schedule_warm()
+        state = "enabled" if enabled else "disabled"
+        self.notify(f"Process worker warm-on-idle {state}")
+
+    def _set_process_worker_auto_shutdown(self, seconds: float) -> None:
+        self.services.runtime.process_worker_auto_shutdown_s = float(seconds)
+        try:
+            self.services.settings_store.set("process_worker_auto_shutdown_s", float(seconds))
+        except Exception:
+            pass
+        if seconds <= 0:
+            clear_fn = getattr(self, "_clear_process_worker_auto_shutdown", None)
+            if callable(clear_fn):
+                clear_fn()
+            state = "disabled"
+        else:
+            arm_fn = getattr(self, "_arm_process_worker_auto_shutdown", None)
+            if callable(arm_fn):
+                arm_fn()
+            state = f"{seconds:g}s"
+        self.notify(f"Process worker auto-shutdown {state}")
 
 
     @property
@@ -435,6 +903,9 @@ class SSMSTUI(
         if idle_timer is not None:
             idle_timer.stop()
             self._idle_scheduler_bar_timer = None
+        if self._ui_stall_watchdog_timer is not None:
+            self._ui_stall_watchdog_timer.stop()
+            self._ui_stall_watchdog_timer = None
 
     def _startup_stamp(self, name: str) -> None:
         if not self._startup_profile:
@@ -450,6 +921,207 @@ class SSMSTUI(
     def watch_theme(self, old_theme: str, new_theme: str) -> None:
         """Save theme whenever it changes."""
         self._theme_manager.on_theme_changed(new_theme)
+
+    def watch_query_executing(self, old_value: bool, new_value: bool) -> None:
+        """React to query execution status changes."""
+        self._update_footer_bindings()
+        self._update_status_bar()
+
+    def _start_ui_stall_watchdog(self) -> None:
+        threshold_ms = float(getattr(self.services.runtime, "ui_stall_watchdog_ms", 0) or 0)
+        if threshold_ms <= 0:
+            return
+        interval = min(0.2, max(0.05, (threshold_ms / 1000.0) / 2.0))
+        self._ui_stall_watchdog_threshold_s = threshold_ms / 1000.0
+        self._ui_stall_watchdog_interval_s = interval
+        self._ui_stall_watchdog_expected = time.perf_counter() + interval
+        if self._ui_stall_watchdog_timer is not None:
+            self._ui_stall_watchdog_timer.stop()
+        self._ui_stall_watchdog_timer = self.set_interval(interval, self._check_ui_stall)
+
+    def _check_ui_stall(self) -> None:
+        if self._ui_stall_watchdog_expected is None:
+            self._ui_stall_watchdog_expected = time.perf_counter() + self._ui_stall_watchdog_interval_s
+            return
+        now = time.perf_counter()
+        expected = self._ui_stall_watchdog_expected
+        stall = now - expected
+        if stall > self._ui_stall_watchdog_threshold_s:
+            suffix = self._build_ui_stall_context()
+            wall_now = time.time()
+            recent_debug = self._collect_recent_debug_events(now=wall_now)
+            try:
+                timestamp = datetime.now().strftime("%H:%M:%S")
+            except Exception:
+                timestamp = ""
+            self._ui_stall_watchdog_events.append((timestamp, stall * 1000.0, suffix))
+            if len(self._ui_stall_watchdog_events) > 50:
+                self._ui_stall_watchdog_events = self._ui_stall_watchdog_events[-50:]
+            extra_lines: list[str] = []
+            if recent_debug:
+                context = suffix.strip()
+                if context.startswith("(") and context.endswith(")"):
+                    context = context[1:-1]
+                self.emit_debug_event(
+                    "watchdog.stall",
+                    category="watchdog",
+                    stall_ms=stall * 1000.0,
+                    context=context,
+                    recent=recent_debug,
+                )
+                for item in recent_debug:
+                    data = item.get("data", "")
+                    data_suffix = f" {data}" if data else ""
+                    extra_lines.append(
+                        f"  debug {item.get('time','')} {item.get('category','')} {item.get('name','')} age={item.get('age_ms',0)}ms{data_suffix}"
+                    )
+            self._schedule_ui_stall_log_write(timestamp, stall * 1000.0, suffix, extra_lines=extra_lines)
+            try:
+                self.log.warning("UI stall %.1f ms%s", stall * 1000.0, suffix)
+            except Exception:
+                pass
+            self._ui_stall_watchdog_expected = now + self._ui_stall_watchdog_interval_s
+            return
+        if stall < -self._ui_stall_watchdog_interval_s:
+            self._ui_stall_watchdog_expected = now + self._ui_stall_watchdog_interval_s
+            return
+        self._ui_stall_watchdog_expected = expected + self._ui_stall_watchdog_interval_s
+
+    def _build_ui_stall_context(self) -> str:
+        parts: list[str] = []
+        now = time.perf_counter()
+        try:
+            focused = self.focused
+        except Exception:
+            focused = None
+        focus_id = getattr(focused, "id", None)
+        if focus_id:
+            parts.append(f"focus={focus_id}")
+        elif focused is not None:
+            parts.append(f"focus={focused.__class__.__name__}")
+
+        last_pane = getattr(self, "_last_active_pane", None)
+        if last_pane:
+            parts.append(f"pane={last_pane}")
+
+        if getattr(self, "query_executing", False):
+            parts.append("query=1")
+        if getattr(self, "_connecting_config", None):
+            parts.append("connect=1")
+        if getattr(self, "_schema_indexing", False):
+            parts.append("schema=1")
+        if getattr(self, "_command_mode", False):
+            parts.append("command=1")
+        if getattr(self, "_tree_filter_visible", False):
+            parts.append("tree_filter=1")
+        if getattr(self, "_results_filter_visible", False):
+            parts.append("results_filter=1")
+        if getattr(self, "in_transaction", False):
+            parts.append("tx=1")
+
+        last_key = getattr(self, "_last_key", None)
+        if last_key:
+            parts.append(f"key={last_key}")
+        last_char = getattr(self, "_last_key_char", None)
+        if last_char and last_char.strip():
+            parts.append(f"char={last_char}")
+        if getattr(self, "_last_action", None):
+            parts.append(f"action={self._last_action}")
+            last_action_at = getattr(self, "_last_action_at", None)
+            if last_action_at is not None:
+                age_ms = max(0.0, (now - last_action_at) * 1000.0)
+                parts.append(f"action_age={age_ms:.0f}ms")
+        if getattr(self, "_last_command", None):
+            parts.append(f"cmd=:{self._last_command}")
+            last_command_at = getattr(self, "_last_command_at", None)
+            if last_command_at is not None:
+                age_ms = max(0.0, (now - last_command_at) * 1000.0)
+                parts.append(f"cmd_age={age_ms:.0f}ms")
+
+        try:
+            if self.current_config:
+                parts.append(f"conn={self.current_config.name}")
+                parts.append(f"dbtype={self.current_config.db_type}")
+        except Exception:
+            pass
+        try:
+            if hasattr(self, "_get_effective_database"):
+                db_name = self._get_effective_database()
+                if db_name:
+                    parts.append(f"db={db_name}")
+        except Exception:
+            pass
+        try:
+            node = self.object_tree.cursor_node
+        except Exception:
+            node = None
+        if node and getattr(node, "data", None):
+            try:
+                kind = self._get_node_kind(node)
+            except Exception:
+                kind = None
+            name = getattr(node.data, "name", None)
+            if name and kind:
+                parts.append(f"tree={kind}:{name}")
+            elif name:
+                parts.append(f"tree={name}")
+
+        try:
+            if hasattr(self, "_process_worker_client") and self._process_worker_client is not None:
+                parts.append("worker=1")
+            else:
+                parts.append("worker=0")
+        except Exception:
+            pass
+        try:
+            runtime = getattr(self.services, "runtime", None)
+            if runtime is not None:
+                worker_setting = "1" if getattr(runtime, "process_worker", False) else "0"
+                parts.append(f"worker_setting={worker_setting}")
+        except Exception:
+            pass
+
+        try:
+            if self.query_input is not None:
+                text_len = len(self.query_input.text)
+                parts.append(f"query_len={text_len}")
+        except Exception:
+            pass
+
+        if not parts:
+            return ""
+        return f" ({', '.join(parts)})"
+
+    def _schedule_ui_stall_log_write(
+        self,
+        timestamp: str,
+        ms: float,
+        suffix: str,
+        *,
+        extra_lines: list[str] | None = None,
+    ) -> None:
+        line = f"[{timestamp}] {ms:.1f} ms{suffix}"
+        path = self._ui_stall_watchdog_log_path
+
+        def work() -> None:
+            try:
+                path.parent.mkdir(parents=True, exist_ok=True)
+                try:
+                    os.chmod(path.parent, 0o700)
+                except OSError:
+                    pass
+                with path.open("a", encoding="utf-8") as handle:
+                    handle.write(line + "\n")
+                    if extra_lines:
+                        for extra in extra_lines:
+                            handle.write(extra + "\n")
+            except Exception:
+                pass
+
+        try:
+            self.run_worker(work, name="ui-stall-log", thread=True, exclusive=False)
+        except Exception:
+            pass
 
     def get_custom_theme_names(self) -> set[str]:
         return self._theme_manager.get_custom_theme_names()
