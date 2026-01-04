@@ -40,6 +40,12 @@ from sqlit.domains.shell.app.theme_manager import ThemeManager
 from sqlit.domains.shell.state import UIStateMachine
 from sqlit.domains.shell.ui.mixins.ui_navigation import UINavigationMixin
 from sqlit.shared.app import AppServices, RuntimeConfig, build_app_services
+from sqlit.shared.core.debug_events import (
+    DebugEvent,
+    DebugEventBus,
+    serialize_debug_event,
+    set_debug_emitter,
+)
 from sqlit.shared.core.store import CONFIG_DIR
 from sqlit.shared.ui.protocols import AppProtocol, UINavigationMixinHost
 from sqlit.shared.ui.widgets import (
@@ -155,6 +161,12 @@ class SSMSTUI(
         self._ui_stall_watchdog_threshold_s: float = 0.0
         self._ui_stall_watchdog_events: list[tuple[str, float, str]] = []
         self._ui_stall_watchdog_log_path: Path = CONFIG_DIR / "ui_stall_watchdog.txt"
+        self._debug_event_bus = DebugEventBus()
+        self._debug_events_enabled: bool = False
+        self._debug_event_history: list[DebugEvent] = []
+        self._debug_event_history_limit: int = 200
+        self._debug_event_log_path: Path = CONFIG_DIR / "debug_events.txt"
+        set_debug_emitter(self.emit_debug_event)
         self._last_key: str | None = None
         self._last_key_char: str | None = None
         self._last_key_at: float | None = None
@@ -259,6 +271,86 @@ class SSMSTUI(
             stacked_result_count=stacked_result_count,
         )
 
+    def _debug_screen_label(self, screen: Any | None) -> str:
+        if screen is None:
+            return "none"
+        name = getattr(screen, "name", None)
+        if name:
+            return str(name)
+        return screen.__class__.__name__
+
+    def _debug_screen_stack(self) -> list[str]:
+        try:
+            return [self._debug_screen_label(screen) for screen in self.screen_stack]
+        except Exception:
+            return []
+
+    def emit_debug_event(self, name: str, *, category: str = "", **data: Any) -> None:
+        self._debug_event_bus.emit(name, category=category, **data)
+
+    def _handle_debug_event(self, event: DebugEvent) -> None:
+        self._debug_event_history.append(event)
+        if len(self._debug_event_history) > self._debug_event_history_limit:
+            self._debug_event_history = self._debug_event_history[-self._debug_event_history_limit:]
+        self._write_debug_event(event)
+
+    def _write_debug_event(self, event: DebugEvent) -> None:
+        path = self._debug_event_log_path
+        try:
+            path.parent.mkdir(parents=True, exist_ok=True)
+            try:
+                path.parent.chmod(0o700)
+            except OSError:
+                pass
+            with path.open("a", encoding="utf-8") as handle:
+                handle.write(serialize_debug_event(event))
+                handle.write("\n")
+        except Exception:
+            pass
+
+    def _set_debug_events_enabled(self, enabled: bool) -> None:
+        if enabled == self._debug_events_enabled:
+            return
+        if enabled:
+            self._debug_event_bus.subscribe(self._handle_debug_event)
+        else:
+            self._debug_event_bus.unsubscribe(self._handle_debug_event)
+        self._debug_events_enabled = enabled
+        if enabled:
+            try:
+                from sqlit.core.keymap import emit_keybinding_snapshot
+
+                emit_keybinding_snapshot()
+            except Exception:
+                pass
+
+    async def _check_bindings(self, key: str, priority: bool = False) -> bool:
+        chain = (
+            reversed(self.screen._binding_chain)
+            if priority
+            else self.screen._modal_binding_chain
+        )
+        for namespace, bindings in chain:
+            key_bindings = bindings.key_to_bindings.get(key, ())
+            for binding in key_bindings:
+                if binding.priority != priority:
+                    continue
+                handled = await self.run_action(binding.action, namespace)
+                if handled:
+                    self.emit_debug_event(
+                        "keybinding.execute",
+                        category="keybinding",
+                        source="textual",
+                        key=key,
+                        action=binding.action,
+                        namespace=namespace.__class__.__name__,
+                        namespace_id=getattr(namespace, "id", None),
+                        screen=self._debug_screen_label(self.screen),
+                        priority=priority,
+                    )
+                    return True
+        return False
+
     def on_key(self, event: Key) -> None:
         """Route key presses through the core key router."""
         self._last_key = event.key
@@ -266,6 +358,13 @@ class SSMSTUI(
         self._last_key_at = time.perf_counter()
         ctx = self._get_input_context()
         if ctx.modal_open:
+            if event.key in {"escape", "enter"}:
+                self.emit_debug_event(
+                    "key.modal",
+                    key=event.key,
+                    screen=self._debug_screen_label(self.screen),
+                    stack=self._debug_screen_stack(),
+                )
             return
 
         if self._handle_command_input(event, ctx):
@@ -289,11 +388,50 @@ class SSMSTUI(
         if action:
             handler = getattr(self, f"action_{action}", None)
             if handler:
+                self.emit_debug_event(
+                    "keybinding.execute",
+                    category="keybinding",
+                    source="core",
+                    key=event.key,
+                    action=action,
+                    screen=self._debug_screen_label(self.screen),
+                    state=self._state_machine.get_active_state_name(ctx),
+                    focus=ctx.focus,
+                    vim_mode=str(ctx.vim_mode),
+                    leader_pending=ctx.leader_pending,
+                )
                 self._last_action = action
                 self._last_action_at = time.perf_counter()
                 handler()
                 event.prevent_default()
                 event.stop()
+
+    def push_screen(
+        self,
+        screen: Any,
+        callback: Callable[[Any], None] | Callable[[Any], Awaitable[None]] | None = None,
+        wait_for_dismiss: bool = False,
+    ) -> Any:
+        stack_before = self._debug_screen_stack()
+        result = super().push_screen(screen, callback, wait_for_dismiss)
+        screen_label = screen if isinstance(screen, str) else self._debug_screen_label(screen)
+        self.emit_debug_event(
+            "screen.push",
+            screen=screen_label,
+            stack_before=stack_before,
+            stack_after=self._debug_screen_stack(),
+        )
+        return result
+
+    def pop_screen(self) -> Any:
+        stack_before = self._debug_screen_stack()
+        result = super().pop_screen()
+        self.emit_debug_event(
+            "screen.pop",
+            stack_before=stack_before,
+            stack_after=self._debug_screen_stack(),
+        )
+        return result
 
     def _start_command_mode(self) -> None:
         if getattr(self, "_leader_pending", False) and hasattr(self, "_cancel_leader_pending"):
@@ -484,6 +622,15 @@ class SSMSTUI(
             ),
             ("Watchdog", ":wd list", "Show UI stall warnings", ""),
             ("Watchdog", ":wd clear", "Clear UI stall log", ""),
+            (
+                "Debug",
+                ":debug on|off",
+                "Toggle debug event logging",
+                "Captures screen stack, connection picker, password prompts, and key events.",
+            ),
+            ("Debug", ":debug", "Show debug status", ""),
+            ("Debug", ":debug list", "Show debug events", ""),
+            ("Debug", ":debug clear", "Clear debug event log", ""),
             ("Settings", ":set process_worker_warm on|off", "Warm worker on idle", ""),
             ("Settings", ":set process_worker_lazy on|off", "Lazy worker start", ""),
             ("Settings", ":set process_worker_auto_shutdown <seconds>", "Auto-shutdown worker", ""),

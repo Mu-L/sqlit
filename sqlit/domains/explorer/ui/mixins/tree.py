@@ -40,6 +40,11 @@ class TreeMixin(TreeSchemaMixin, TreeLabelMixin):
     _schema_service: Any | None = None
     _schema_service_session: Any | None = None
 
+    def _emit_debug(self: TreeMixinHost, name: str, **data: Any) -> None:
+        emit = getattr(self, "emit_debug_event", None)
+        if callable(emit):
+            emit(name, **data)
+
     def on_tree_node_collapsed(self: TreeMixinHost, event: Tree.NodeCollapsed) -> None:
         """Save state when a node is collapsed."""
         tree_expansion_state.update_expanded_state(self, event.node, expanded=False)
@@ -173,6 +178,11 @@ class TreeMixin(TreeSchemaMixin, TreeLabelMixin):
 
         if self._get_node_kind(node) == "connection":
             config = data.config
+            self._emit_debug(
+                "tree.connection_selected",
+                connection=config.name,
+                current_connection=getattr(self.current_config, "name", None),
+            )
             if self.current_config and self.current_config.name == config.name:
                 return
             self.connect_to_server(config)

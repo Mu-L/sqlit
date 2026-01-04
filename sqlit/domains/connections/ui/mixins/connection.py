@@ -50,6 +50,11 @@ class ConnectionMixin:
 
     _connection_flow: ConnectionFlow | None = None
 
+    def _emit_debug(self: ConnectionMixinHost, name: str, **data: Any) -> None:
+        emit = getattr(self, "emit_debug_event", None)
+        if callable(emit):
+            emit(name, **data)
+
     def watch_current_config(self: ConnectionMixinHost, old_config: ConnectionConfig | None, new_config: ConnectionConfig | None) -> None:
         if not getattr(self, "_screen_stack", None):
             return
@@ -96,6 +101,7 @@ class ConnectionMixin:
                 services=self.services,
                 connection_manager=manager,
                 prompter=_ScreenPrompter(self),
+                emit_debug=getattr(self, "emit_debug_event", None),
             )
             self._connection_flow = flow
         else:
@@ -123,6 +129,11 @@ class ConnectionMixin:
         If the connection requires a password that is not stored (empty),
         the user will be prompted to enter the password before connecting.
         """
+        self._emit_debug(
+            "connection.request",
+            connection=config.name,
+            db_type=str(config.db_type),
+        )
         flow = self._get_connection_flow()
         flow.start(config, self._do_connect)
 
@@ -185,6 +196,12 @@ class ConnectionMixin:
             self._connection_attempt_id = 0
         self._connection_attempt_id += 1
         attempt_id = self._connection_attempt_id
+        self._emit_debug(
+            "connection.attempt_start",
+            connection=config.name,
+            db_type=str(config.db_type),
+            attempt_id=attempt_id,
+        )
 
         def work() -> ConnectionSession:
             manager = getattr(self, "_connection_manager", None)
@@ -241,6 +258,11 @@ class ConnectionMixin:
             if self.current_provider:
                 for message in self.current_provider.post_connect_warnings(config):
                     self.notify(message, severity="warning")
+            self._emit_debug(
+                "connection.attempt_success",
+                connection=config.name,
+                attempt_id=attempt_id,
+            )
 
         def on_error(error: Exception) -> None:
             # Ignore if a newer connection attempt was started
@@ -258,6 +280,13 @@ class ConnectionMixin:
             connect_failed = getattr(self, "_on_connect_failed", None)
             if callable(connect_failed):
                 connect_failed(config)
+
+            self._emit_debug(
+                "connection.attempt_error",
+                connection=config.name,
+                attempt_id=attempt_id,
+                error=str(error),
+            )
 
             if handle_connection_error(self, error, config):
                 return
@@ -569,6 +598,7 @@ class ConnectionMixin:
     def action_show_connection_picker(self: ConnectionMixinHost) -> None:
         from ..screens import ConnectionPickerScreen
 
+        self._emit_debug("connection_picker.open_request")
         self.push_screen(
             ConnectionPickerScreen(self.connections),
             self._handle_connection_picker_result,
@@ -576,10 +606,12 @@ class ConnectionMixin:
 
     def _handle_connection_picker_result(self: ConnectionMixinHost, result: Any) -> None:
         if result is None:
+            self._emit_debug("connection_picker.result", result="none")
             return
 
         # Handle special "new connection" action
         if result == "__new_connection__":
+            self._emit_debug("connection_picker.result", result="new_connection")
             self.action_new_connection()
             return
 
@@ -587,30 +619,46 @@ class ConnectionMixin:
 
         if isinstance(result, ConnectionConfig):
             config = result
+            self._emit_debug(
+                "connection_picker.result",
+                result="config",
+                connection=config.name,
+                db_type=str(config.db_type),
+            )
             matching_config = next((c for c in self.connections if c.name == config.name), None)
             if matching_config:
                 config = matching_config
             for node in self.object_tree.root.children:
                 node_config = self._get_connection_config_from_node(node)
                 if node_config and node_config.name == config.name:
+                    self._emit_debug(
+                        "connection_picker.select_node",
+                        connection=config.name,
+                    )
                     self.object_tree.select_node(node)
                     break
             if self.current_config and self.current_config.name == config.name:
+                self._emit_debug("connection_picker.already_connected", connection=config.name)
                 self.notify(f"Already connected to {config.name}")
                 return
+            self._emit_debug("connection_picker.connect", connection=config.name)
             self.connect_to_server(config)
             return
 
         selected_config = next((c for c in self.connections if c.name == result), None)
         if selected_config:
+            self._emit_debug("connection_picker.result", result="name", connection=selected_config.name)
             for node in self.object_tree.root.children:
                 node_config = self._get_connection_config_from_node(node)
                 if node_config and node_config.name == result:
+                    self._emit_debug("connection_picker.select_node", connection=selected_config.name)
                     self.object_tree.select_node(node)
                     break
 
             if self.current_config and self.current_config.name == selected_config.name:
+                self._emit_debug("connection_picker.already_connected", connection=selected_config.name)
                 self.notify(f"Already connected to {selected_config.name}")
                 return
+            self._emit_debug("connection_picker.connect", connection=selected_config.name)
             # Don't disconnect here - we'll disconnect only after successful connection
             self.connect_to_server(selected_config)
