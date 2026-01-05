@@ -1,11 +1,14 @@
 # Maintainer: Peter <peter.w.adams96@gmail.com>
-pkgname=python-sqlit-tui
+pkgname=sqlit
 pkgver=1.2.1.3
 pkgrel=1
 pkgdesc="The lazygit of SQL databases - a lightweight TUI for SQL Server, PostgreSQL, MySQL, SQLite, and more"
 arch=('any')
 url="https://github.com/Maxteabag/sqlit"
 license=('MIT')
+provides=('python-sqlit-tui')
+conflicts=('python-sqlit-tui')
+replaces=('python-sqlit-tui')
 depends=(
     'python'
     'python-textual'

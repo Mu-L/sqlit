@@ -118,7 +118,7 @@ jobs:
       - name: Publish to AUR
         uses: KSXGitHub/github-actions-deploy-aur@v3.0.1
         with:
-          pkgname: python-sqlit-tui
+          pkgname: sqlit
           pkgbuild: ./aur/PKGBUILD
           commit_username: Peter
           commit_email: peter.w.adams96@gmail.com
