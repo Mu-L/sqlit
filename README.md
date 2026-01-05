@@ -100,11 +100,11 @@ sqlit is for the developer who just wants to query their database with a user fr
 
 ## Installation
 
-| Method | Command |
-| :----- | :------ |
-| pipx *(recommended)* | `pipx install sqlit-tui` |
-| uv | `uv tool install sqlit-tui` |
-| pip | `pip install sqlit-tui` |
+```text
+# pipx (recommended)  pipx install sqlit-tui
+# uv                 uv tool install sqlit-tui
+# pip                pip install sqlit-tui
+```
 
 ## Usage
 
@@ -247,7 +247,7 @@ sqlit is built with [Textual](https://github.com/Textualize/textual) and inspire
 
 ## Contributing
 
-See `CONTRIBUTING.md` for development setup, testing, CI, and CockroachDB quickstart steps.
+See `CONTRIBUTING.md` for development setup, testing, and CI steps.
 
 ### Driver Reference
 
@@ -274,11 +274,11 @@ Most of the time you can just run `sqlit` and connect. If a Python driver is mis
 
 SSH tunnel functionality requires additional dependencies. Install with the `ssh` extra:
 
-| Method | Command                            |
-| :----- | :--------------------------------- |
-| pipx   | `pipx install 'sqlit-tui[ssh]'`    |
-| uv     | `uv tool install 'sqlit-tui[ssh]'` |
-| pip    | `pip install 'sqlit-tui[ssh]'`     |
+```text
+# pipx  pipx install 'sqlit-tui[ssh]'
+# uv    uv tool install 'sqlit-tui[ssh]'
+# pip   pip install 'sqlit-tui[ssh]'
+```
 
 If you try to create an SSH connection without these dependencies, sqlit will detect this and show you the exact command to install them for your environment.
 
