@@ -61,6 +61,12 @@ class BigQueryAdapter(CursorBasedAdapter):
         # BigQuery supports cross-dataset queries
         return True
 
+    def apply_database_override(self, config: ConnectionConfig, database: str) -> ConnectionConfig:
+        """Apply a default dataset for unqualified queries."""
+        if not database:
+            return config
+        return config.with_endpoint(database=database)
+
     @property
     def system_databases(self) -> frozenset[str]:
         return frozenset({"INFORMATION_SCHEMA"})
