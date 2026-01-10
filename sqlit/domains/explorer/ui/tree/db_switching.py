@@ -129,7 +129,7 @@ def update_database_labels(host: TreeMixinHost) -> None:
                         continue
                     is_active = active_db and db_name.lower() == active_db.lower()
                     if is_active:
-                        db_node.set_label(f"[{primary}]{escape_markup(db_name)}[/]")
+                        db_node.set_label(f"[{primary}]* {escape_markup(db_name)}[/]")
                     else:
                         db_node.set_label(escape_markup(db_name))
             break

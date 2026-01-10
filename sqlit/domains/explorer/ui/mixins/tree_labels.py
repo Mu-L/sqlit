@@ -39,7 +39,7 @@ class TreeLabelMixin:
         if status == "connected":
             primary = getattr(getattr(self, "current_theme", None), "primary", "#7E9CD8")
             label = (
-                f"[{primary}]{source_emoji}{escaped_name}[/]"
+                f"[{primary}]* {source_emoji}{escaped_name}[/]"
                 f" [{db_type_label}] ({display_info})"
             )
         elif status == "connecting":
@@ -50,8 +50,8 @@ class TreeLabelMixin:
             )
         else:
             label = (
-                f"{source_emoji}{escaped_name}"
-                f" [{db_type_label}] ({display_info})"
+                f"[dim]{source_emoji}{escaped_name}"
+                f" [{db_type_label}] ({display_info})[/]"
             )
 
         if is_selected:

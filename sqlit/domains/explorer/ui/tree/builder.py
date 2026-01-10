@@ -469,7 +469,7 @@ def populate_connected_tree(host: TreeMixinHost) -> None:
         selected_prefix = "[bright_cyan][x][/] " if config.name in selected else ""
         if connected:
             primary = getattr(getattr(host, "current_theme", None), "primary", "#7E9CD8")
-            name = f"{selected_prefix}[{primary}]{source_emoji}{escaped_name}[/]"
+            name = f"{selected_prefix}[{primary}]* {source_emoji}{escaped_name}[/]"
         else:
             name = f"{selected_prefix}{source_emoji}{escaped_name}"
         return f"{name} [{db_type_label}] ({display_info})"
@@ -498,8 +498,7 @@ def populate_connected_tree(host: TreeMixinHost) -> None:
                 add_database_object_nodes(host, active_node, specific_db)
                 active_node.expand()
             else:
-                primary = getattr(getattr(host, "current_theme", None), "primary", "#7E9CD8")
-                dbs_node = active_node.add(f"[{primary}]📁 Databases[/]")
+                dbs_node = active_node.add("Databases")
                 dbs_node.data = FolderNode(folder_type="databases")
                 dbs_node.allow_expand = True
                 active_node.expand()
@@ -523,12 +522,11 @@ def add_database_object_nodes(host: TreeMixinHost, parent_node: Any, database: s
 
     caps = host.current_provider.capabilities
     node_provider = host.current_provider.explorer_nodes
-    primary = getattr(getattr(host, "current_theme", None), "primary", "#7E9CD8")
 
     for folder in node_provider.get_root_folders(caps):
         if folder.requires(caps):
-            folder_node = parent_node.add(f"[{primary}]📁 {folder.label}[/]")
+            folder_node = parent_node.add(folder.label)
             folder_node.data = FolderNode(folder_type=folder.kind, database=database)
             folder_node.allow_expand = True
         else:
-            parent_node.add_leaf(f"[dim]📁 {folder.label} (Not available)[/]")
+            parent_node.add_leaf(f"[dim]{folder.label} (Not available)[/]")
