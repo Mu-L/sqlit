@@ -40,6 +40,7 @@ class QueryEditingCursorMixin:
         self._clear_leader_pending()
         self._move_with_motion("gE")
 
+
     def action_cursor_left(self: QueryMixinHost) -> None:
         """Move cursor left (h in normal mode)."""
         row, col = self.query_input.cursor_location
@@ -84,13 +85,6 @@ class QueryEditingCursorMixin:
         """Move cursor to previous WORD (B)."""
         self._move_with_motion("B")
 
-    def action_cursor_word_end(self: QueryMixinHost) -> None:
-        """Move cursor to end of word (e)."""
-        self._move_with_motion("e")
-
-    def action_cursor_WORD_end(self: QueryMixinHost) -> None:
-        """Move cursor to end of WORD (E)."""
-        self._move_with_motion("E")
 
     def action_cursor_line_start(self: QueryMixinHost) -> None:
         """Move cursor to start of line (0)."""

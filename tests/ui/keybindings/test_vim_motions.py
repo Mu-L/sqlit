@@ -50,29 +50,6 @@ class TestVimMotionKeybindings:
             assert app.query_input.cursor_location == (0, 0)
 
     @pytest.mark.asyncio
-    async def test_word_end_motions_e_E(self) -> None:
-        app = _make_app()
-
-        async with app.run_test(size=(100, 35)) as pilot:
-            app.action_focus_query()
-            await pilot.pause()
-
-            app.query_input.text = "foo-bar baz"
-            app.query_input.cursor_location = (0, 0)
-            await pilot.pause()
-
-            await pilot.press("e")
-            await pilot.pause()
-            assert app.query_input.cursor_location == (0, 2)
-
-            app.query_input.cursor_location = (0, 0)
-            await pilot.pause()
-
-            await pilot.press("E")
-            await pilot.pause()
-            assert app.query_input.cursor_location == (0, 6)
-
-    @pytest.mark.asyncio
     async def test_line_motions_0_dollar_G(self) -> None:
         app = _make_app()
 

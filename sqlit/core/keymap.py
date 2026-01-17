@@ -350,8 +350,6 @@ class DefaultKeymapProvider(KeymapProvider):
             ActionKeyDef("W", "cursor_WORD_forward", "query_normal"),
             ActionKeyDef("b", "cursor_word_back", "query_normal"),
             ActionKeyDef("B", "cursor_WORD_back", "query_normal"),
-            ActionKeyDef("e", "cursor_word_end", "query_normal"),
-            ActionKeyDef("E", "cursor_WORD_end", "query_normal"),
             ActionKeyDef("0", "cursor_line_start", "query_normal"),
             ActionKeyDef("dollar_sign", "cursor_line_end", "query_normal"),
             ActionKeyDef("G", "cursor_last_line", "query_normal"),
