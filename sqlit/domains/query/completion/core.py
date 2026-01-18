@@ -426,6 +426,23 @@ def build_alias_map(refs: list[TableRef], known_tables: list[str]) -> dict[str, 
     Only includes aliases for tables that exist in known_tables.
     """
     known_lower = {t.lower() for t in known_tables}
+
+    def strip_identifier(value: str) -> str:
+        value = value.strip()
+        if len(value) >= 2 and value[0] == value[-1] and value[0] in {"`", '"'}:
+            return value[1:-1]
+        if value.startswith("[") and value.endswith("]") and len(value) >= 2:
+            return value[1:-1]
+        return value
+
+    # Add unqualified table names for qualified entries (db.schema.table, schema.table, etc.).
+    for table in known_tables:
+        parts = [strip_identifier(part) for part in table.split(".")]
+        # Take the last non-empty component as the unqualified table name.
+        for part in reversed(parts):
+            if part:
+                known_lower.add(part.lower())
+                break
     alias_map: dict[str, str] = {}
 
     for ref in refs:

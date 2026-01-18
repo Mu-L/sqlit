@@ -37,10 +37,27 @@ class AutocompleteSuggestionsMixin:
         table_refs = extract_table_refs(text)
         known_tables = set(t.lower() for t in self._schema_cache.get("tables", []))
         known_tables.update(t.lower() for t in self._schema_cache.get("views", []))
+        table_metadata = getattr(self, "_table_metadata", {}) or {}
+        known_metadata = {key.lower() for key in table_metadata.keys()}
 
         alias_map: dict[str, str] = {}
+
+        def is_known(name: str) -> bool:
+            lowered = name.lower()
+            return lowered in known_tables or lowered in known_metadata
+
         for ref in table_refs:
-            if ref.alias and ref.name.lower() in known_tables:
+            if not ref.alias:
+                continue
+
+            # Prefer schema-qualified name when present (db.table or schema.table).
+            if ref.schema:
+                qualified = f"{ref.schema}.{ref.name}"
+                if is_known(qualified):
+                    alias_map[ref.alias.lower()] = qualified
+                    continue
+
+            if is_known(ref.name):
                 alias_map[ref.alias.lower()] = ref.name
         return alias_map
 
