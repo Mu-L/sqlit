@@ -339,6 +339,8 @@ class DefaultKeymapProvider(KeymapProvider):
             ActionKeyDef("backspace", "show_history", "query_normal"),
             ActionKeyDef("N", "new_query", "query_normal"),
             ActionKeyDef("d", "delete_leader_key", "query_normal"),
+            ActionKeyDef("C", "change_line_end_motion", "query_normal"),
+            ActionKeyDef("D", "delete_line_end", "query_normal"),
             ActionKeyDef("u", "undo", "query_normal"),
             ActionKeyDef("ctrl+r", "redo", "query_normal"),
             # Vim cursor movement (normal mode)

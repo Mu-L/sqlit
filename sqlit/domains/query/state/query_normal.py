@@ -43,6 +43,9 @@ class QueryNormalModeState(State):
         # Vim open line
         self.allows("open_line_below", help="Open line below")
         self.allows("open_line_above", help="Open line above")
+        # Vim delete or change
+        self.allows("change_line_end_motion", help="Change to line end")
+        self.allows("delete_line_end", help="Delete to line end")
         # Clipboard actions
         self.allows("select_all", help="Select all text")
         self.allows("copy_selection", help="Copy selection")
