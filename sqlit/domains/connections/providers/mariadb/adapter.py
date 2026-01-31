@@ -100,6 +100,7 @@ class MariaDBAdapter(MySQLBaseAdapter):
                 connect_args["ssl_verify_cert"] = tls_mode_verifies_cert(tls_mode)
                 connect_args["ssl_verify_identity"] = tls_mode_verifies_hostname(tls_mode)
 
+        connect_args.update(config.extra_options)
         conn = mariadb_any.connect(**connect_args)
         self._supports_sequences = self._detect_sequences_support(conn)
         return conn
