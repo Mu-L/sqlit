@@ -44,8 +44,8 @@ class TestTreeRefresh:
         # Before: 1 connection
         assert len(mock_host.connections) == 1
 
-        # Call refresh using the mixin method bound to our mock
-        TreeMixin.action_refresh_tree(mock_host)
+        # Call _refresh_tree_common directly (action_refresh_tree just delegates to it)
+        TreeMixin._refresh_tree_common(mock_host, notify=True)
 
         # Verify store.load_all was called
         mock_store.load_all.assert_called_once_with(load_credentials=False)
@@ -80,7 +80,7 @@ class TestTreeRefresh:
         from sqlit.domains.explorer.ui.mixins.tree import TreeMixin
 
         # Should not raise, should keep existing connections
-        TreeMixin.action_refresh_tree(mock_host)
+        TreeMixin._refresh_tree_common(mock_host, notify=True)
 
         # Connections should be unchanged
         assert len(mock_host.connections) == 1
@@ -108,7 +108,7 @@ class TestTreeRefresh:
         from sqlit.domains.explorer.ui.mixins.tree import TreeMixin
 
         # Should not raise
-        TreeMixin.action_refresh_tree(mock_host)
+        TreeMixin._refresh_tree_common(mock_host, notify=True)
 
         # Connections should be unchanged
         assert len(mock_host.connections) == 1
