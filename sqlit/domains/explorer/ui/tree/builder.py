@@ -75,6 +75,7 @@ def _add_connection_node(
     is_connected: bool,
     is_connecting: bool,
     spinner: str | None,
+    skip_folder: bool = False,
 ) -> Any:
     if is_connected:
         label = host._format_connection_label(config, "connected")
@@ -83,8 +84,11 @@ def _add_connection_node(
     else:
         label = host._format_connection_label(config, "idle")
 
-    folder_parts = _split_folder_path(getattr(config, "folder_path", ""))
-    parent = _ensure_connection_folder_path(host, folder_parts)
+    if skip_folder:
+        parent = host.object_tree.root
+    else:
+        folder_parts = _split_folder_path(getattr(config, "folder_path", ""))
+        parent = _ensure_connection_folder_path(host, folder_parts)
 
     node = parent.add(label)
     node.data = ConnectionNode(config=config)
@@ -232,7 +236,9 @@ def refresh_tree(host: TreeMixinHost) -> None:
     if connecting_config and not any(c.name == connecting_config.name for c in connections):
         connections = connections + [connecting_config]
     connections = _sort_connections_for_display(connections)
-    _build_connection_folders(host, connections)
+    # Skip folder structure in exclusive mode
+    if not exclusive_active:
+        _build_connection_folders(host, connections)
 
     for conn in connections:
         is_connected = host.current_config is not None and conn.name == host.current_config.name
@@ -243,6 +249,7 @@ def refresh_tree(host: TreeMixinHost) -> None:
             is_connected=is_connected,
             is_connecting=is_connecting,
             spinner=connecting_spinner,
+            skip_folder=exclusive_active,
         )
 
     restore_subtree_expansion(host, host.object_tree.root)
@@ -294,7 +301,9 @@ def refresh_tree_chunked(
     if connecting_config and not any(c.name == connecting_config.name for c in connections):
         connections = connections + [connecting_config]
     connections = _sort_connections_for_display(connections)
-    _build_connection_folders(host, connections)
+    # Skip folder structure in exclusive mode
+    if not exclusive_active:
+        _build_connection_folders(host, connections)
 
     def schedule_populate() -> None:
         if getattr(host, "_tree_refresh_token", None) is not token:
@@ -353,6 +362,7 @@ def refresh_tree_chunked(
                 is_connected=is_connected,
                 is_connecting=is_connecting,
                 spinner=connecting_spinner,
+                skip_folder=exclusive_active,
             )
 
         def finish_sync() -> None:
@@ -379,6 +389,7 @@ def refresh_tree_chunked(
                 is_connected=is_connected,
                 is_connecting=is_connecting,
                 spinner=connecting_spinner,
+                skip_folder=exclusive_active,
             )
         idx = end
         if idx < len(connections):
