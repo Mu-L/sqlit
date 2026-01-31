@@ -749,6 +749,22 @@ class SSMSTUI(
             ("Query", ":run, :r", "Execute query", ""),
             ("Query", ":run!, :r!", "Execute query (stay in INSERT)", ""),
             (
+                "Navigation",
+                ":<number>",
+                "Go to line number",
+                "Jump to specified line in query editor (e.g., :25 goes to line 25).",
+            ),
+            (
+                "Navigation",
+                "<count>G",
+                "Go to line with count prefix",
+                "In NORMAL mode, type a number then G to go to that line (e.g., 25G).",
+            ),
+            ("Editor", ":set number, :set nu", "Show line numbers", ""),
+            ("Editor", ":set nonumber, :set nonu", "Hide line numbers", ""),
+            ("Editor", ":set relativenumber, :set rnu", "Show relative line numbers", ""),
+            ("Editor", ":set norelativenumber, :set nornu", "Show absolute line numbers", ""),
+            (
                 "Worker",
                 ":process-worker, :worker",
                 "Toggle process worker",
@@ -760,6 +776,9 @@ class SSMSTUI(
                 "Show process worker status",
                 "Displays worker mode, active state, and last activity.",
             ),
+            ("Settings", ":set process_worker_warm on|off", "Warm worker on idle", ""),
+            ("Settings", ":set process_worker_lazy on|off", "Lazy worker start", ""),
+            ("Settings", ":set process_worker_auto_shutdown <seconds>", "Auto-shutdown worker", ""),
             (
                 "Watchdog",
                 ":wd <ms|off>",
@@ -777,25 +796,6 @@ class SSMSTUI(
             ("Debug", ":debug", "Show debug status", ""),
             ("Debug", ":debug list", "Show debug events", ""),
             ("Debug", ":debug clear", "Clear debug event log", ""),
-            ("Settings", ":set process_worker_warm on|off", "Warm worker on idle", ""),
-            ("Settings", ":set process_worker_lazy on|off", "Lazy worker start", ""),
-            ("Settings", ":set process_worker_auto_shutdown <seconds>", "Auto-shutdown worker", ""),
-            ("Editor", ":set number, :set nu", "Show line numbers", ""),
-            ("Editor", ":set nonumber, :set nonu", "Hide line numbers", ""),
-            ("Editor", ":set relativenumber, :set rnu", "Show relative line numbers", ""),
-            ("Editor", ":set norelativenumber, :set nornu", "Show absolute line numbers", ""),
-            (
-                "Navigation",
-                ":<number>",
-                "Go to line number",
-                "Jump to specified line in query editor (e.g., :25 goes to line 25).",
-            ),
-            (
-                "Navigation",
-                "<count>G",
-                "Go to line with count prefix",
-                "In NORMAL mode, type a number then G to go to that line (e.g., 25G).",
-            ),
         ]
         if hasattr(self, "_replace_results_table"):
             self._replace_results_table(columns, rows)

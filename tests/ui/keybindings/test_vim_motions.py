@@ -514,6 +514,26 @@ class TestVimMotionKeybindings:
             assert app.query_input.cursor_location[0] == 24, f"Expected row 24, got {app.query_input.cursor_location[0]}"
 
     @pytest.mark.asyncio
+    async def test_3gg_goes_to_line_3(self) -> None:
+        """3gg should go to line 3 (0-indexed: row 2)."""
+        app = _make_app()
+
+        async with app.run_test(size=(100, 35)) as pilot:
+            app.action_focus_query()
+            await pilot.pause()
+
+            # Create 10 lines
+            lines = [f"line{i+1}" for i in range(10)]
+            app.query_input.text = "\n".join(lines)
+            app.query_input.cursor_location = (7, 0)
+            await pilot.pause()
+
+            await pilot.press("3", "g", "g")
+            await pilot.pause()
+
+            assert app.query_input.cursor_location[0] == 2, f"Expected row 2, got {app.query_input.cursor_location[0]}"
+
+    @pytest.mark.asyncio
     async def test_colon_25_goes_to_line_25(self) -> None:
         """:25 command should go to line 25."""
         app = _make_app()

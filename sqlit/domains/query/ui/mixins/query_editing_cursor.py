@@ -38,9 +38,17 @@ class QueryEditingCursorMixin:
         self._start_leader_pending("g")
 
     def action_g_first_line(self: QueryMixinHost) -> None:
-        """Go to first line (gg)."""
+        """Go to first line (gg), or to line N with count prefix (e.g., 3gg)."""
         self._clear_leader_pending()
-        self.query_input.cursor_location = (0, 0)
+        count = self._get_and_clear_count()
+        if count is not None:
+            lines = self.query_input.text.split("\n")
+            num_lines = len(lines)
+            target_row = min(count - 1, num_lines - 1)
+            target_row = max(0, target_row)
+            self.query_input.cursor_location = (target_row, 0)
+        else:
+            self.query_input.cursor_location = (0, 0)
 
     def action_g_word_end_back(self: QueryMixinHost) -> None:
         """Go to end of previous word (ge)."""
