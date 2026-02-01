@@ -30,6 +30,7 @@ class RuntimeConfig:
     """Runtime configuration provided by CLI or tests."""
 
     settings_path: Path | None = None
+    theme: str | None = None
     max_rows: int | None = None
     debug_mode: bool = False
     debug_idle_scheduler: bool = False

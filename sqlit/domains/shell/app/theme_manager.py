@@ -94,9 +94,15 @@ class ThemeAppProtocol(Protocol):
 class ThemeManager:
     """Centralized theme handling for the app."""
 
-    def __init__(self, app: ThemeAppProtocol, settings_store: SettingsStoreProtocol | None = None) -> None:
+    def __init__(
+        self,
+        app: ThemeAppProtocol,
+        settings_store: SettingsStoreProtocol | None = None,
+        override_theme: str | None = None,
+    ) -> None:
         self._app = app
         self._settings_store = settings_store or SettingsStore.get_instance()
+        self._override_theme = override_theme
         self._custom_theme_names: set[str] = set()
         self._custom_theme_paths: dict[str, Path] = {}
         self._light_theme_names: set[str] = set(LIGHT_THEME_NAMES)
@@ -241,6 +247,11 @@ class ThemeManager:
         return theme.name
 
     def _init_omarchy_theme(self, settings: dict) -> None:
+        # CLI --theme flag takes precedence over everything
+        if self._override_theme and self._override_theme in self._app.available_themes:
+            self._app._apply_theme_safe(self._override_theme)
+            return
+
         saved_theme = settings.get("theme")
         if not is_omarchy_installed():
             self._app._apply_theme_safe(saved_theme or DEFAULT_THEME)

@@ -85,14 +85,7 @@ class TreeOnConnectionState(State):
             )
         )
         seen.add("edit_connection")
-        left.append(
-            DisplayBinding(
-                key=resolve_display_key("duplicate_connection") or "D",
-                label="Duplicate",
-                action="duplicate_connection",
-            )
-        )
-        seen.add("duplicate_connection")
+        seen.add("duplicate_connection")  # Still in help menu via _setup_actions
         left.append(
             DisplayBinding(
                 key=resolve_display_key("move_connection_to_folder") or "m",

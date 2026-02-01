@@ -211,22 +211,22 @@
     }
 
     .theme-ansi DataTable > .datatable--cursor {
-        background: ansi_blue 18%;
-        color: $text;
+        background: ansi_bright_blue;
+        color: ansi_black;
     }
 
     .theme-ansi DataTable > .datatable--selectrange {
-        background: ansi_blue 8%;
+        background: ansi_blue 30%;
         color: $text;
     }
 
     .theme-ansi DataTable > .datatable--fixed-cursor {
-        background: ansi_blue 12%;
+        background: ansi_blue 40%;
         color: $text;
     }
 
     .theme-ansi DataTable > .datatable--header-cursor {
-        background: ansi_blue 12%;
+        background: ansi_blue 40%;
         color: $text;
     }
 

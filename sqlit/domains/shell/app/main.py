@@ -185,7 +185,11 @@ class SSMSTUI(
         self._last_action_at: float | None = None
         self._last_command: str | None = None
         self._last_command_at: float | None = None
-        self._theme_manager = ThemeManager(self, settings_store=self.services.settings_store)
+        self._theme_manager = ThemeManager(
+            self,
+            settings_store=self.services.settings_store,
+            override_theme=self.services.runtime.theme,
+        )
         self._spinner_index: int = 0
         self._spinner_timer: Timer | None = None
         # Schema indexing state

@@ -69,6 +69,7 @@ def _extract_connection_url(argv: list[str]) -> tuple[str | None, list[str]]:
                     "--db-type",
                     "--name",
                     "--settings",
+                    "--theme",
                     "--mock-missing-drivers",
                     "--mock-install",
                     "--mock-pipx",
@@ -296,6 +297,7 @@ def _build_runtime(args: argparse.Namespace, startup_mark: float) -> RuntimeConf
 
     return RuntimeConfig(
         settings_path=settings_path,
+        theme=getattr(args, "theme", None),
         max_rows=max_rows,
         debug_mode=bool(args.debug),
         debug_idle_scheduler=bool(args.debug_idle_scheduler),
@@ -371,6 +373,11 @@ def main() -> int:
         "--settings",
         metavar="PATH",
         help="Path to settings JSON file (overrides ~/.sqlit/settings.json)",
+    )
+    parser.add_argument(
+        "--theme",
+        metavar="NAME",
+        help="Theme to use (e.g., dracula, gruvbox, tokyo-night, textual-ansi for terminal colors)",
     )
     parser.add_argument(
         "--mock-missing-drivers",
