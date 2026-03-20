@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import re
 from typing import TYPE_CHECKING, Any
 
 from sqlit.domains.connections.providers.adapters.base import (
@@ -47,6 +48,28 @@ class TeradataAdapter(CursorBasedAdapter):
     @property
     def supports_stored_procedures(self) -> bool:
         return True
+
+    _TERADATA_SELECT_KEYWORDS = frozenset(
+        {"SELECT", "SEL", "WITH", "SHOW", "DESCRIBE", "EXPLAIN", "HELP"}
+    )
+
+    _LOCKING_RE = re.compile(
+        r"\bFOR\s+(?:ACCESS|READ|WRITE|EXCLUSIVE)(?:\s+NOWAIT)?\s+(\w+)",
+        re.IGNORECASE,
+    )
+
+    def classify_query(self, query: str) -> bool:
+        """Classify Teradata queries, handling LOCKING/LOCK prefix and SEL abbreviation."""
+        query_upper = query.strip().upper()
+        first_word = query_upper.split()[0] if query_upper else ""
+
+        # Strip LOCKING/LOCK request modifier to find the actual statement keyword
+        if first_word in ("LOCKING", "LOCK"):
+            match = self._LOCKING_RE.search(query_upper)
+            if match:
+                first_word = match.group(1)
+
+        return first_word in self._TERADATA_SELECT_KEYWORDS
 
     def apply_database_override(self, config: ConnectionConfig, database: str) -> ConnectionConfig:
         """Apply a default database for unqualified queries."""
