@@ -302,7 +302,7 @@ class TestVisualModeOperators:
             await pilot.press("v")
             await pilot.pause()
 
-            # Select "hello" by moving to the space
+            # Select "hello w" — w moves to col 6, inclusive of cursor char
             await pilot.press("w")
             await pilot.pause()
 
@@ -310,7 +310,7 @@ class TestVisualModeOperators:
             await pilot.pause()
 
             assert app.vim_mode == VimMode.NORMAL
-            assert app._internal_clipboard == "hello "
+            assert app._internal_clipboard == "hello w"
             # Text should be unchanged
             assert app.query_input.text == "hello world"
 
@@ -336,7 +336,7 @@ class TestVisualModeOperators:
             await pilot.pause()
 
             assert app.vim_mode == VimMode.NORMAL
-            assert app.query_input.text == "world"
+            assert app.query_input.text == "orld"
 
     @pytest.mark.asyncio
     async def test_visual_change_enters_insert(self) -> None:
@@ -360,7 +360,7 @@ class TestVisualModeOperators:
             await pilot.pause()
 
             assert app.vim_mode == VimMode.INSERT
-            assert app.query_input.text == "world"
+            assert app.query_input.text == "orld"
 
     @pytest.mark.asyncio
     async def test_visual_line_yank(self) -> None:

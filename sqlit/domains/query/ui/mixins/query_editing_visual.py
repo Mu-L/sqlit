@@ -13,9 +13,18 @@ class QueryEditingVisualMixin:
     def action_enter_visual_mode(self: QueryMixinHost) -> None:
         """Enter charwise visual mode (v)."""
         from sqlit.core.vim import VimMode
+        from textual.widgets.text_area import Selection
 
-        self._visual_anchor = self.query_input.cursor_location
+        cursor = self.query_input.cursor_location
+        self._visual_anchor = cursor
         self.vim_mode = VimMode.VISUAL
+
+        # Highlight the character under the cursor immediately
+        row, col = cursor
+        lines = self.query_input.text.split("\n")
+        end_col = min(col + 1, len(lines[row]) if row < len(lines) else 0)
+        self.query_input.selection = Selection(cursor, (row, end_col))
+
         self._update_vim_mode_visuals()
         self._update_footer_bindings()
 
@@ -64,7 +73,12 @@ class QueryEditingVisualMixin:
     def _update_query_visual_selection(
         self: QueryMixinHost, cursor: tuple[int, int] | None = None
     ) -> None:
-        """Update selection from anchor to cursor position."""
+        """Update selection from anchor to cursor position.
+
+        Vim visual mode is inclusive — both the anchor and cursor characters
+        are part of the selection. Textual's Selection is half-open (end is
+        exclusive), so we extend the far end by one character.
+        """
         from textual.widgets.text_area import Selection
 
         anchor = self._visual_anchor
@@ -74,7 +88,18 @@ class QueryEditingVisualMixin:
         if cursor is None:
             cursor = self.query_input.cursor_location
 
-        self.query_input.selection = Selection(anchor, cursor)
+        lines = self.query_input.text.split("\n")
+
+        if cursor >= anchor:
+            # Forward: extend cursor end by 1 to include cursor char
+            row, col = cursor
+            end_col = min(col + 1, len(lines[row]) if row < len(lines) else 0)
+            self.query_input.selection = Selection(anchor, (row, end_col))
+        else:
+            # Backward: extend anchor end by 1 to include anchor char
+            a_row, a_col = anchor
+            end_col = min(a_col + 1, len(lines[a_row]) if a_row < len(lines) else 0)
+            self.query_input.selection = Selection((a_row, end_col), cursor)
 
     def action_visual_yank(self: QueryMixinHost) -> None:
         """Yank the charwise selection."""
