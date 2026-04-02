@@ -20,7 +20,14 @@ class QueryEditingCursorMixin:
         count = self._get_and_clear_count() or 1
 
         text = self.query_input.text
-        row, col = self.query_input.cursor_location
+        # In charwise visual mode, read the logical cursor position (not the
+        # extended selection end) so motions operate from the correct position.
+        from sqlit.core.vim import VimMode as _VM
+
+        if self.vim_mode == _VM.VISUAL and getattr(self, "_visual_cursor", None) is not None:
+            row, col = self._visual_cursor
+        else:
+            row, col = self.query_input.cursor_location
 
         # Apply motion `count` times
         for _ in range(count):

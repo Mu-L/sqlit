@@ -9,22 +9,17 @@ class QueryEditingVisualMixin:
     """Visual mode (v) for the query editor — charwise selection."""
 
     _visual_anchor: tuple[int, int] | None = None
+    _visual_cursor: tuple[int, int] | None = None
 
     def action_enter_visual_mode(self: QueryMixinHost) -> None:
         """Enter charwise visual mode (v)."""
         from sqlit.core.vim import VimMode
-        from textual.widgets.text_area import Selection
 
         cursor = self.query_input.cursor_location
         self._visual_anchor = cursor
+        self._visual_cursor = cursor
         self.vim_mode = VimMode.VISUAL
-
-        # Highlight the character under the cursor immediately
-        row, col = cursor
-        lines = self.query_input.text.split("\n")
-        end_col = min(col + 1, len(lines[row]) if row < len(lines) else 0)
-        self.query_input.selection = Selection(cursor, (row, end_col))
-
+        self._update_query_visual_selection(cursor=cursor)
         self._update_vim_mode_visuals()
         self._update_footer_bindings()
 
@@ -34,6 +29,7 @@ class QueryEditingVisualMixin:
         from textual.widgets.text_area import Selection
 
         self._visual_anchor = None
+        self._visual_cursor = None
         self.vim_mode = VimMode.NORMAL
         cursor = self.query_input.cursor_location
         self.query_input.selection = Selection(cursor, cursor)
@@ -49,6 +45,7 @@ class QueryEditingVisualMixin:
         anchor_row = anchor[0] if anchor else cursor_row
 
         self._visual_anchor = None
+        self._visual_cursor = None
         self._visual_line_anchor_row = anchor_row
         self.vim_mode = VimMode.VISUAL_LINE
         self._update_visual_line_selection(cursor_row=cursor_row)
@@ -78,6 +75,9 @@ class QueryEditingVisualMixin:
         Vim visual mode is inclusive — both the anchor and cursor characters
         are part of the selection. Textual's Selection is half-open (end is
         exclusive), so we extend the far end by one character.
+
+        The logical cursor position is stored in _visual_cursor so that
+        motion functions read the correct position (not the extended one).
         """
         from textual.widgets.text_area import Selection
 
@@ -86,8 +86,9 @@ class QueryEditingVisualMixin:
             return
 
         if cursor is None:
-            cursor = self.query_input.cursor_location
+            cursor = self._visual_cursor or self.query_input.cursor_location
 
+        self._visual_cursor = cursor
         lines = self.query_input.text.split("\n")
 
         if cursor >= anchor:
@@ -115,6 +116,7 @@ class QueryEditingVisualMixin:
         from sqlit.core.vim import VimMode
 
         self._visual_anchor = None
+        self._visual_cursor = None
         self.vim_mode = VimMode.NORMAL
         self.query_input.cursor_location = (start[0], start[1])
 
@@ -130,6 +132,7 @@ class QueryEditingVisualMixin:
         self._delete_selection()
 
         self._visual_anchor = None
+        self._visual_cursor = None
 
         from sqlit.core.vim import VimMode
 
@@ -140,6 +143,7 @@ class QueryEditingVisualMixin:
     def action_visual_change(self: QueryMixinHost) -> None:
         """Change (delete + insert) the charwise selection."""
         self._visual_anchor = None
+        self._visual_cursor = None
         self._push_undo_state()
         # _change_selection calls _enter_insert_mode which handles
         # vim_mode, visuals, and footer updates.
@@ -150,6 +154,7 @@ class QueryEditingVisualMixin:
         self.action_execute_query()
 
         self._visual_anchor = None
+        self._visual_cursor = None
 
         from sqlit.core.vim import VimMode
         from textual.widgets.text_area import Selection
