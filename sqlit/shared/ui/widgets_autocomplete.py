@@ -65,7 +65,7 @@ class AutocompleteDropdown(VerticalScroll):
 
         self.selected_index = 0
         self._rebuild()
-        self._set_width()
+        self._update_width()
         # Reset scroll to top
         self.scroll_to(y=0, animate=False)
 
@@ -129,8 +129,8 @@ class AutocompleteDropdown(VerticalScroll):
         """Check if dropdown is visible."""
         return "visible" in self.classes
 
-    def _set_width(self) -> None:
-        """Set width of the dropdown based on filtered items."""
+    def _update_width(self) -> None:
+        """Update the width of the dropdown based on filtered items."""
 
         width = self.MIN_WIDTH
         if self.filtered_items:
