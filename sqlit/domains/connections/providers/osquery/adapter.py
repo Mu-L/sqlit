@@ -131,8 +131,14 @@ class OsqueryAdapter(DatabaseAdapter):
             instance.open()
             return OsqueryConnection(instance, is_spawned=False)
         else:
-            # Spawn embedded instance
-            instance = osquery_module.SpawnInstance()
+            # Spawn embedded instance. Accept an optional `binary_path` config
+            # option so users can point at a portable osqueryd (e.g. installed
+            # in ~/.local/bin) rather than the SDK's hardcoded /usr/bin/osqueryd.
+            binary_path = config.get_option("binary_path")
+            if binary_path:
+                instance = osquery_module.SpawnInstance(path=str(binary_path))
+            else:
+                instance = osquery_module.SpawnInstance()
             instance.open()
             return OsqueryConnection(instance, is_spawned=True)
 
