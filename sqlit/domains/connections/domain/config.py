@@ -19,12 +19,14 @@ class DatabaseType(str, Enum):
     FIREBIRD = "firebird"
     FLIGHT = "flight"
     HANA = "hana"
+    IMPALA = "impala"
     MARIADB = "mariadb"
     MOTHERDUCK = "motherduck"
     MSSQL = "mssql"
     MYSQL = "mysql"
     ORACLE = "oracle"
     ORACLE_LEGACY = "oracle_legacy"
+    OSQUERY = "osquery"
     POSTGRESQL = "postgresql"
     PRESTO = "presto"
     REDSHIFT = "redshift"
@@ -32,6 +34,7 @@ class DatabaseType(str, Enum):
     SPANNER = "spanner"
     SQLITE = "sqlite"
     SUPABASE = "supabase"
+    SURREALDB = "surrealdb"
     TERADATA = "teradata"
     TRINO = "trino"
     TURSO = "turso"
@@ -54,6 +57,7 @@ DATABASE_TYPE_DISPLAY_ORDER: list[DatabaseType] = [
     DatabaseType.SPANNER,
     DatabaseType.TRINO,
     DatabaseType.PRESTO,
+    DatabaseType.IMPALA,
     DatabaseType.DUCKDB,
     DatabaseType.MOTHERDUCK,
     DatabaseType.REDSHIFT,
@@ -65,6 +69,8 @@ DATABASE_TYPE_DISPLAY_ORDER: list[DatabaseType] = [
     DatabaseType.ATHENA,
     DatabaseType.FIREBIRD,
     DatabaseType.FLIGHT,
+    DatabaseType.OSQUERY,
+    DatabaseType.SURREALDB,
 ]
 
 
