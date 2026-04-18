@@ -292,6 +292,8 @@ class DefaultKeymapProvider(KeymapProvider):
             # rye results export menu
             LeaderCommandDef("c", "csv", "Export as CSV", "Export", menu="rye"),
             LeaderCommandDef("j", "json", "Export as JSON", "Export", menu="rye"),
+            # rg results g motion menu (vim-style gg)
+            LeaderCommandDef("g", "first_row", "Go to first row", "Go to", menu="rg"),
             # vy value view yank menu (tree mode)
             LeaderCommandDef("y", "value", "Copy value", "Copy", menu="vy"),
             LeaderCommandDef("f", "field", "Copy field", "Copy", menu="vy"),
@@ -447,6 +449,14 @@ class DefaultKeymapProvider(KeymapProvider):
             ActionKeyDef("j", "results_cursor_down", "results"),
             ActionKeyDef("k", "results_cursor_up", "results"),
             ActionKeyDef("l", "results_cursor_right", "results"),
+            ActionKeyDef("g", "rg_leader_key", "results"),
+            ActionKeyDef("G", "results_cursor_last_row", "results"),
+            ActionKeyDef("ctrl+u", "results_page_up", "results"),
+            ActionKeyDef("ctrl+d", "results_page_down", "results"),
+            ActionKeyDef("0", "results_cursor_first_column", "results"),
+            ActionKeyDef("dollar_sign", "results_cursor_last_column", "results"),
+            ActionKeyDef("f", "results_column_picker", "results"),
+            ActionKeyDef("F", "results_column_picker", "results", primary=False),
             ActionKeyDef("tab", "next_result_section", "results"),
             ActionKeyDef("shift+tab", "prev_result_section", "results"),
             ActionKeyDef("z", "toggle_result_section", "results"),

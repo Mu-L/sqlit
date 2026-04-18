@@ -681,6 +681,72 @@ class ResultsMixin:
         if table and table.has_focus:
             table.action_cursor_right()
 
+    def action_rg_leader_key(self: ResultsMixinHost) -> None:
+        """Show the results g motion leader menu (first press of gg)."""
+        self._start_leader_pending("rg")
+
+    def action_rg_first_row(self: ResultsMixinHost) -> None:
+        """Jump to the first row of the results table (vim gg)."""
+        self._clear_leader_pending()
+        table, _columns, _rows, _stacked = self._get_active_results_context()
+        if table and table.row_count > 0:
+            table.action_cursor_table_start()
+
+    def action_results_cursor_last_row(self: ResultsMixinHost) -> None:
+        """Jump to the last row of the results table (vim G)."""
+        table, _columns, _rows, _stacked = self._get_active_results_context()
+        if table and table.row_count > 0:
+            table.action_cursor_table_end()
+
+    def action_results_page_up(self: ResultsMixinHost) -> None:
+        """Scroll results up one page (vim Ctrl+U)."""
+        table, _columns, _rows, _stacked = self._get_active_results_context()
+        if table and table.row_count > 0:
+            table.action_page_up()
+
+    def action_results_page_down(self: ResultsMixinHost) -> None:
+        """Scroll results down one page (vim Ctrl+D)."""
+        table, _columns, _rows, _stacked = self._get_active_results_context()
+        if table and table.row_count > 0:
+            table.action_page_down()
+
+    def action_results_cursor_first_column(self: ResultsMixinHost) -> None:
+        """Move cursor to the first column of the current row (vim 0)."""
+        table, _columns, _rows, _stacked = self._get_active_results_context()
+        if table and table.row_count > 0:
+            table.action_cursor_row_start()
+
+    def action_results_cursor_last_column(self: ResultsMixinHost) -> None:
+        """Move cursor to the last column of the current row (vim $)."""
+        table, _columns, _rows, _stacked = self._get_active_results_context()
+        if table and table.row_count > 0:
+            table.action_cursor_row_end()
+
+    def action_results_column_picker(self: ResultsMixinHost) -> None:
+        """Open a filterable column picker; jump cursor to the selected column (vim f/F)."""
+        from textual.coordinate import Coordinate
+
+        from sqlit.domains.results.ui.screens import ColumnPickerScreen
+
+        table, columns, _rows, _stacked = self._get_active_results_context()
+        if not table or table.row_count <= 0 or not columns:
+            self.notify("No results", severity="warning")
+            return
+
+        def handle_result(column_index: int | None) -> None:
+            if column_index is None:
+                return
+            try:
+                current_row = table.cursor_coordinate.row
+            except Exception:
+                current_row = 0
+            try:
+                table.cursor_coordinate = Coordinate(row=current_row, column=column_index)
+            except Exception:
+                pass
+
+        self.push_screen(ColumnPickerScreen(list(columns)), handle_result)
+
     def action_clear_results(self: ResultsMixinHost) -> None:
         """Clear the results table."""
         if self.results_area.has_class("stacked-mode"):
