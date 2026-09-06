@@ -264,24 +264,6 @@ Vim submenu motions and dialog scopes are not supported for this promotion.
 
 ## FAQ
 
-### Databricks authentication
-
-The Databricks extra includes the SQL connector and the SDK required for service-principal OAuth.
-PATs and client secrets are kept in the OS credential store, including connections created with
-`connections add --url-stdin`. A PAT URL has this shape:
-`databricks://token:TOKEN@HOST/CATALOG?http_path=/sql/1.0/warehouses/WAREHOUSE_ID`.
-Use stdin to keep the URL out of shell history and process arguments. Browser OAuth does not ask
-for a database password. Unity Catalog and the legacy Hive metastore use their respective metadata APIs.
-
-### Exasol authentication and TLS
-
-For Exasol SaaS, select username/password authentication and use the database username from
-connection details with your personal access token as the password. OpenID access/refresh token
-modes are for those credential types, not SaaS PATs. The selected secret uses the OS credential
-store. Default TLS follows pyexasol's certificate verification; use `--tls-mode require` only
-when deliberately connecting to a self-signed development server. `verify-ca` validates the CA,
-while `verify-full` also checks the hostname.
-
 ### How are sensitive credentials stored?
 
 Connection details are stored in `connections.json` inside the config directory, but passwords are stored in your OS keyring when available (macOS Keychain, Windows Credential Locker, Linux Secret Service).
